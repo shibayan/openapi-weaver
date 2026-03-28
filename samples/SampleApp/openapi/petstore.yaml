@@ -1,0 +1,84 @@
+openapi: 3.0.1
+info:
+  title: Pet Store
+  version: v1
+servers:
+  - url: https://example.test
+paths:
+  /pets/{petId}:
+    get:
+      operationId: getPetById
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: includeVaccinationStatus
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: x-correlation-id
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pet found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+  /pets:
+    post:
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePetRequest'
+      responses:
+        '201':
+          description: Pet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+components:
+  schemas:
+    Pet:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        birthday:
+          type: string
+          format: date
+        tags:
+          type: array
+          items:
+            type: string
+    CreatePetRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        birthday:
+          type: string
+          format: date
+        tags:
+          type: array
+          items:
+            type: string

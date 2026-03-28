@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/SampleApp/SampleApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/OpenApiClientGenerator/OpenApiClientGenerator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenApiClientGenerator.Tests/OpenApiClientGenerator.Tests.csproj" />
+  </Folder>
+</Solution>
