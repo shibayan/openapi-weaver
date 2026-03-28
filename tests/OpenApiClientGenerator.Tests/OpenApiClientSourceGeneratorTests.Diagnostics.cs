@@ -4,7 +4,7 @@ using Xunit;
 
 namespace OpenApiClientGenerator.Tests;
 
-public sealed partial class SourceGeneratorRequestResponseTests
+public sealed partial class OpenApiClientSourceGeneratorTests
 {
     [Fact]
     public void EmptyDocument_ReportsDiagnostic_AndDoesNotGenerateSource()

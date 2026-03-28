@@ -224,23 +224,7 @@ public sealed partial class OpenApiClientSourceGenerator
 
         private ResponseInfo ResolveResponse(OpenApiResponses responses)
         {
-            IOpenApiResponse? response = null;
-            var bestStatusCode = int.MaxValue;
-
-            foreach (var item in responses)
-            {
-                if (!item.Key.StartsWith("2", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var statusCode = ParseResponseStatusCode(item.Key);
-                if (statusCode < bestStatusCode)
-                {
-                    bestStatusCode = statusCode;
-                    response = item.Value;
-                }
-            }
+            var response = SelectSuccessResponse(responses);
 
             if (response?.Content is null || response.Content.Count == 0)
             {
@@ -310,10 +294,16 @@ public sealed partial class OpenApiClientSourceGenerator
                 return null;
             }
 
+            return SelectSuccessResponse(operation.Responses)?.Description;
+        }
+
+        private static IOpenApiResponse? SelectSuccessResponse(OpenApiResponses responses)
+        {
             IOpenApiResponse? selectedResponse = null;
             var bestStatusCode = int.MaxValue;
+            var selectedHasUsableContent = false;
 
-            foreach (var item in operation.Responses)
+            foreach (var item in responses)
             {
                 if (!item.Key.StartsWith("2", StringComparison.Ordinal))
                 {
@@ -321,14 +311,47 @@ public sealed partial class OpenApiClientSourceGenerator
                 }
 
                 var statusCode = ParseResponseStatusCode(item.Key);
-                if (statusCode < bestStatusCode)
+                var hasUsableContent = HasUsableResponseContent(item.Value);
+
+                if (selectedResponse is null
+                    || (hasUsableContent && !selectedHasUsableContent)
+                    || (hasUsableContent == selectedHasUsableContent && statusCode < bestStatusCode))
                 {
-                    bestStatusCode = statusCode;
                     selectedResponse = item.Value;
+                    bestStatusCode = statusCode;
+                    selectedHasUsableContent = hasUsableContent;
                 }
             }
 
-            return selectedResponse?.Description;
+            return selectedResponse;
+        }
+
+        private static bool HasUsableResponseContent(IOpenApiResponse response)
+        {
+            if (response.Content is null || response.Content.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var mediaType in response.Content)
+            {
+                if (IsUsableResponseMediaType(mediaType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsUsableResponseMediaType(KeyValuePair<string, IOpenApiMediaType> mediaType)
+        {
+            if (mediaType.Value.Schema is not null)
+            {
+                return true;
+            }
+
+            return mediaType.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace OpenApiClientGenerator.Tests;
 
-public sealed partial class SourceGeneratorRequestResponseTests
+public sealed partial class OpenApiClientSourceGeneratorTests
 {
     private static string GenerateSource(string openApi)
     {

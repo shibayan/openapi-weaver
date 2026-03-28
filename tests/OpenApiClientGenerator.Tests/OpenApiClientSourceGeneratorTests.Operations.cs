@@ -2,7 +2,7 @@
 
 namespace OpenApiClientGenerator.Tests;
 
-public sealed partial class SourceGeneratorRequestResponseTests
+public sealed partial class OpenApiClientSourceGeneratorTests
 {
     [Fact]
     public void MultipartRequestBody_UsesMultipartContent_AndBinarySchemaType()
@@ -266,6 +266,89 @@ public sealed partial class SourceGeneratorRequestResponseTests
         Assert.Contains("public async Task<PetResponse> ", source);
         Assert.Contains("ReadFromJsonAsync<PetResponse>", source);
         Assert.DoesNotContain("public async Task CreatePetAsync", source);
+    }
+
+    [Fact]
+    public void MultipleSuccessResponses_PrefersBodyOverLowerNoContentStatus()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Multi Success Preference API
+              version: v1
+            paths:
+              /pets:
+                post:
+                  operationId: create_pet
+                  responses:
+                    '200':
+                      description: accepted without body
+                      content: {}
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/petResponse'
+            components:
+              schemas:
+                petResponse:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: integer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<PetResponse> ", source);
+        Assert.Contains("ReadFromJsonAsync<PetResponse>", source);
+        Assert.Contains("/// created", source);
+        Assert.DoesNotContain("public async Task CreatePetAsync", source);
+    }
+
+    [Fact]
+    public void MultipleSuccessResponses_IgnoresSchemaLessMediaTypeWhenSelectingBodyResponse()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Multi Success Shell API
+              version: v1
+            paths:
+              /pets:
+                post:
+                  operationId: create_pet
+                  responses:
+                    '200':
+                      description: placeholder media type
+                      content:
+                        application/json: {}
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/petResponse'
+            components:
+              schemas:
+                petResponse:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: integer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<PetResponse> ", source);
+        Assert.Contains("ReadFromJsonAsync<PetResponse>", source);
+        Assert.Contains("/// created", source);
+        Assert.DoesNotContain("ReadFromJsonAsync<string>", source);
     }
 
     [Fact]
@@ -573,6 +656,97 @@ public sealed partial class SourceGeneratorRequestResponseTests
         Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(int partnerId, int? page = default, CancellationToken cancellationToken = default)", source);
         Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
         Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
+    }
+
+    [Fact]
+    public void OperationLevelParameter_OverridesPathLevelParameter()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Override Parameters API
+              version: v1
+            paths:
+              /partners/{partner_id}/reports:
+                parameters:
+                  - name: partner_id
+                    in: path
+                    required: true
+                    schema:
+                      type: integer
+                  - name: page
+                    in: query
+                    required: false
+                    schema:
+                      type: integer
+                get:
+                  operationId: list_partner_reports
+                  parameters:
+                    - name: page
+                      in: query
+                      required: false
+                      schema:
+                        type: string
+                    - name: partner_id
+                      in: path
+                      required: true
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(string partnerId, string? page = default, CancellationToken cancellationToken = default)", source);
+        Assert.DoesNotContain("int partnerId", source);
+        Assert.DoesNotContain("int? page = default, string? page = default", source);
+        Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
+    }
+
+    [Fact]
+    public void HeaderParameterOverride_IsCaseInsensitive()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Header Override API
+              version: v1
+            paths:
+              /reports:
+                parameters:
+                  - name: X-Request-Id
+                    in: header
+                    required: false
+                    schema:
+                      type: integer
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: x-request-id
+                      in: header
+                      required: false
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListReportsAsync(string? xRequestId = default, CancellationToken cancellationToken = default)", source);
+        Assert.DoesNotContain("int? xRequestId = default", source);
+        Assert.Equal(1, source.Split("request.Headers.TryAddWithoutValidation(\"x-request-id\"").Length - 1);
     }
 
     [Fact]

@@ -25,17 +25,45 @@ public sealed partial class OpenApiClientSourceGenerator
             }
 
             var parameters = new List<IOpenApiParameter>((pathParameters?.Count ?? 0) + (operationParameters?.Count ?? 0));
+            var indices = new Dictionary<(ParameterLocation Location, string Name), int>();
             if (pathParameters is not null)
             {
-                parameters.AddRange(pathParameters);
+                foreach (var parameter in pathParameters)
+                {
+                    AddOrReplaceParameter(parameters, indices, parameter);
+                }
             }
 
             if (operationParameters is not null)
             {
-                parameters.AddRange(operationParameters);
+                foreach (var parameter in operationParameters)
+                {
+                    AddOrReplaceParameter(parameters, indices, parameter);
+                }
             }
 
             return parameters;
+        }
+
+        private static void AddOrReplaceParameter(
+            List<IOpenApiParameter> parameters,
+            Dictionary<(ParameterLocation Location, string Name), int> indices,
+            IOpenApiParameter parameter)
+        {
+            var location = parameter.In ?? ParameterLocation.Query;
+            var key = (
+                location,
+                location == ParameterLocation.Header
+                    ? (parameter.Name ?? string.Empty).ToUpperInvariant()
+                    : parameter.Name ?? string.Empty);
+            if (indices.TryGetValue(key, out var index))
+            {
+                parameters[index] = parameter;
+                return;
+            }
+
+            indices.Add(key, parameters.Count);
+            parameters.Add(parameter);
         }
 
         private static KeyValuePair<string, T> SelectPreferredContent<T>(IEnumerable<KeyValuePair<string, T>> content, Func<KeyValuePair<string, T>, int> getPriority)
@@ -235,7 +263,7 @@ public sealed partial class OpenApiClientSourceGenerator
                 return null;
             }
 
-            var segments = route.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            var segments = route.Split(['/'], StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0)
             {
                 return null;
@@ -305,7 +333,7 @@ public sealed partial class OpenApiClientSourceGenerator
                 normalized.Append(char.IsLetterOrDigit(ch) ? ch : ' ');
             }
 
-            return [.. normalized.ToString().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)];
+            return [.. normalized.ToString().Split([' '], StringSplitOptions.RemoveEmptyEntries)];
         }
 
         private static string NormalizeToken(string value)
