@@ -46,16 +46,11 @@ Operations are grouped by OpenAPI tags. If a document has a `Tags` tag, the gene
 
 ## Using the Generator in a Project
 
-The sample project shows the current development-time setup. Add the generator project as an analyzer and include your OpenAPI document as an additional file.
+Add the NuGet package to your project and include your OpenAPI document as an additional file.
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="..\..\src\OpenApiClientGenerator\OpenApiClientGenerator.csproj"
-                    OutputItemType="Analyzer"
-                    ReferenceOutputAssembly="false" />
-
-  <Analyzer Include="..\..\src\OpenApiClientGenerator\bin\Debug\netstandard2.0\Microsoft.OpenApi.dll" />
-  <Analyzer Include="..\..\src\OpenApiClientGenerator\bin\Debug\netstandard2.0\Microsoft.OpenApi.YamlReader.dll" />
+  <PackageReference Include="OpenApiClientGenerator" Version="x.y.z" PrivateAssets="all" />
 </ItemGroup>
 
 <ItemGroup>
@@ -63,7 +58,7 @@ The sample project shows the current development-time setup. Add the generator p
 </ItemGroup>
 ```
 
-Build the generator project before building the consuming project so the analyzer assembly and its dependencies exist under `bin/Debug/netstandard2.0`.
+The package contains the source generator and its analyzer dependencies, so no extra analyzer entries are required.
 
 ## Minimal Example
 
@@ -122,4 +117,4 @@ The sample project enables emitted generated files under `samples/SampleApp/obj/
 
 ## Current Status
 
-This repository is currently structured as a source generator project plus a sample consumer project. The recommended integration path in this repository is project-to-project analyzer referencing during development.
+This repository contains the source generator, tests, and a local sample app. The sample app keeps a project-to-project analyzer reference for repository development, but consuming applications should use the `OpenApiClientGenerator` NuGet package.
