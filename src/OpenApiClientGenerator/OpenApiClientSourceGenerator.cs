@@ -743,7 +743,7 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
                 builder.AppendLine("        }");
             }
 
-            builder.Append("        using var request = new HttpRequestMessage(HttpMethod.").Append(ToPascalCase(operationType.ToString().ToLowerInvariant())).AppendLine(", new Uri(path, UriKind.Relative));");
+            builder.Append("        using var request = new HttpRequestMessage(HttpMethod.").Append(ToPascalCase(operationType.ToLowerInvariant())).AppendLine(", new Uri(path, UriKind.Relative));");
 
             foreach (var parameter in parameters.Where(static parameter => parameter.In == ParameterLocation.Header))
             {
@@ -892,8 +892,7 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
                 return required ? "string" : "string?";
             }
 
-            if (schema is IOpenApiReferenceHolder<JsonSchemaReference> referenceHolder
-                && referenceHolder.Reference?.Id is not null
+            if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
                 && _schemaNames.TryGetValue(referenceHolder.Reference.Id, out var schemaName))
             {
                 return required && !IsNullableSchema(schema) ? schemaName : $"{schemaName}?";
@@ -904,17 +903,17 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
 
             var typeName = schemaType switch
             {
-                var t when t == JsonSchemaType.Integer && string.Equals(format, "int64", StringComparison.OrdinalIgnoreCase) => "long",
-                var t when t == JsonSchemaType.Integer => "int",
-                var t when t == JsonSchemaType.Number && string.Equals(format, "float", StringComparison.OrdinalIgnoreCase) => "float",
-                var t when t == JsonSchemaType.Number => "double",
-                var t when t == JsonSchemaType.Boolean => "bool",
-                var t when t == JsonSchemaType.String && string.Equals(format, "date", StringComparison.OrdinalIgnoreCase) => "DateOnly",
-                var t when t == JsonSchemaType.String && string.Equals(format, "date-time", StringComparison.OrdinalIgnoreCase) => "DateTimeOffset",
-                var t when t == JsonSchemaType.String && string.Equals(format, "uuid", StringComparison.OrdinalIgnoreCase) => "Guid",
-                var t when t == JsonSchemaType.String && string.Equals(format, "binary", StringComparison.OrdinalIgnoreCase) => "byte[]",
-                var t when t == JsonSchemaType.Array => $"IReadOnlyList<{ResolveTypeName(schema.Items, required: true)}>",
-                var t when t == JsonSchemaType.String => "string",
+                JsonSchemaType.Integer when string.Equals(format, "int64", StringComparison.OrdinalIgnoreCase) => "long",
+                JsonSchemaType.Integer => "int",
+                JsonSchemaType.Number when string.Equals(format, "float", StringComparison.OrdinalIgnoreCase) => "float",
+                JsonSchemaType.Number => "double",
+                JsonSchemaType.Boolean => "bool",
+                JsonSchemaType.String when string.Equals(format, "date", StringComparison.OrdinalIgnoreCase) => "DateOnly",
+                JsonSchemaType.String when string.Equals(format, "date-time", StringComparison.OrdinalIgnoreCase) => "DateTimeOffset",
+                JsonSchemaType.String when string.Equals(format, "uuid", StringComparison.OrdinalIgnoreCase) => "Guid",
+                JsonSchemaType.String when string.Equals(format, "binary", StringComparison.OrdinalIgnoreCase) => "byte[]",
+                JsonSchemaType.Array => $"IReadOnlyList<{ResolveTypeName(schema.Items, required: true)}>",
+                JsonSchemaType.String => "string",
                 _ => "JsonElement"
             };
 
@@ -1155,8 +1154,8 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
             var baseName = Path.GetFileNameWithoutExtension(documentPath);
             if (string.IsNullOrWhiteSpace(baseName))
             {
-                baseName = !string.IsNullOrWhiteSpace(document.Info?.Title)
-                    ? document.Info!.Title
+                baseName = !string.IsNullOrWhiteSpace(document.Info.Title)
+                    ? document.Info.Title
                     : "OpenApi";
             }
 
