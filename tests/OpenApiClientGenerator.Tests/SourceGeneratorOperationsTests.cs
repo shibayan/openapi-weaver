@@ -331,8 +331,58 @@ public sealed partial class SourceGeneratorRequestResponseTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
         Assert.DoesNotContain("ReceiptsAsync", source);
+    }
+
+    [Fact]
+    public void CollectionAndSingleResourceGet_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Companies API
+              version: v1
+            paths:
+              /companies:
+                get:
+                  operationId: get_companies
+                  tags:
+                    - companies
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /companies/{id}:
+                get:
+                  operationId: get_company
+                  tags:
+                    - companies
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("int id", source);
+        Assert.DoesNotContain("GetCompanyAsync", source);
+        Assert.DoesNotContain("GetCompaniesAsync", source);
     }
 
     [Fact]

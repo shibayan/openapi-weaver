@@ -213,7 +213,83 @@ public sealed partial class OpenApiClientSourceGenerator
                 filteredTokens.Add(operationType.ToLowerInvariant());
             }
 
+            if (string.Equals(operationType, "get", StringComparison.OrdinalIgnoreCase)
+                && TryBuildCanonicalGetMethodName(route, tagName, filteredTokens) is { } canonicalGetName)
+            {
+                return canonicalGetName;
+            }
+
             return SafeIdentifier(string.Concat(filteredTokens.Select(static token => ToPascalCase(token ?? string.Empty))));
+        }
+
+        private static string? TryBuildCanonicalGetMethodName(string route, string? tagName, IReadOnlyList<string> filteredTokens)
+        {
+            if (string.IsNullOrWhiteSpace(tagName))
+            {
+                return null;
+            }
+
+            var normalizedTag = NormalizeToken(tagName!);
+            if (normalizedTag.Length == 0 || !IsSelfReferentialGetName(filteredTokens, normalizedTag))
+            {
+                return null;
+            }
+
+            var segments = route.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            var lastSegment = segments[segments.Length - 1];
+            if (!IsPathParameterSegment(lastSegment)
+                && NormalizeToken(lastSegment) == normalizedTag)
+            {
+                return "List";
+            }
+
+            if (segments.Length >= 2
+                && IsPathParameterSegment(lastSegment)
+                && NormalizeToken(segments[segments.Length - 2]) == normalizedTag)
+            {
+                return "Get";
+            }
+
+            return null;
+        }
+
+        private static bool IsSelfReferentialGetName(IReadOnlyList<string> filteredTokens, string normalizedTag)
+        {
+            if (filteredTokens.Count == 0)
+            {
+                return true;
+            }
+
+            var index = 0;
+            if (IsCanonicalGetVerb(filteredTokens[0]))
+            {
+                index++;
+            }
+
+            if (index >= filteredTokens.Count)
+            {
+                return true;
+            }
+
+            return filteredTokens.Skip(index).All(token => token is not null && NormalizeToken(token) == normalizedTag);
+        }
+
+        private static bool IsCanonicalGetVerb(string token)
+        {
+            var normalized = NormalizeToken(token);
+            return normalized is "get" or "list";
+        }
+
+        private static bool IsPathParameterSegment(string segment)
+        {
+            return segment.Length > 2
+                && segment[0] == '{'
+                && segment[segment.Length - 1] == '}';
         }
 
         private static List<string> TokenizeWords(string value)
@@ -229,12 +305,18 @@ public sealed partial class OpenApiClientSourceGenerator
                 normalized.Append(char.IsLetterOrDigit(ch) ? ch : ' ');
             }
 
-            return [.. normalized.ToString().Split([' '], StringSplitOptions.RemoveEmptyEntries)];
+            return [.. normalized.ToString().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)];
         }
 
         private static string NormalizeToken(string value)
         {
             var normalized = value.Trim();
+            if (normalized.Length > 3
+                && normalized.EndsWith("ies", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized.Substring(0, normalized.Length - 3) + "y";
+            }
+
             if (normalized.Length > 2
                 && normalized.EndsWith("s", StringComparison.OrdinalIgnoreCase)
                 && !normalized.EndsWith("ss", StringComparison.OrdinalIgnoreCase)
