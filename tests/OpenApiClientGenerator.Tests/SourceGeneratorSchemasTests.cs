@@ -313,4 +313,73 @@ public sealed partial class SourceGeneratorRequestResponseTests
 
         Assert.Contains("public sealed class FlexibleMap : Dictionary<string, JsonElement>", source);
     }
+
+    [Fact]
+    public void SchemaDescriptions_AreEmittedAsXmlDocumentationComments()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Schema Docs API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                partnerResponse:
+                  title: Partner payload
+                  description: Represents a partner in API responses.
+                  type: object
+                  required:
+                    - company_id
+                  properties:
+                    company_id:
+                      title: Company identifier
+                      description: The owning company identifier.
+                      type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("/// Partner payload", source);
+        Assert.Contains("/// Represents a partner in API responses.", source);
+        Assert.Contains("/// Company identifier", source);
+        Assert.Contains("/// The owning company identifier.", source);
+        Assert.Contains("public required int CompanyId { get; init; }", source);
+    }
+
+    [Fact]
+    public void SchemaDocumentation_StripsHtmlTags()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Schema Docs API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                partnerResponse:
+                  title: <strong>Partner</strong> payload
+                  description: <p>Represents a <em>partner</em> in API responses.</p>
+                  type: object
+                  required:
+                    - company_id
+                  properties:
+                    company_id:
+                      title: Company <code>identifier</code>
+                      description: <div>The owning company identifier.</div>
+                      type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("/// Partner payload", source);
+        Assert.Contains("/// Represents a partner in API responses.", source);
+        Assert.Contains("/// Company identifier", source);
+        Assert.Contains("/// The owning company identifier.", source);
+        Assert.DoesNotContain("<strong>", source);
+        Assert.DoesNotContain("<em>", source);
+        Assert.DoesNotContain("<code>", source);
+        Assert.DoesNotContain("<div>", source);
+    }
 }

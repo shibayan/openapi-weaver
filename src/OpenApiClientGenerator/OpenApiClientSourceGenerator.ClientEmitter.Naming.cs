@@ -295,5 +295,185 @@ public sealed partial class OpenApiClientSourceGenerator
         {
             return typeName.EndsWith("?", StringComparison.Ordinal) ? typeName.Substring(0, typeName.Length - 1) : typeName;
         }
+
+        private static void EmitDocComment(
+            StringBuilder builder,
+            string indent,
+            string? summary = null,
+            string? remarks = null,
+            IEnumerable<KeyValuePair<string, string?>>? parameters = null,
+            string? returns = null)
+        {
+            var hasSummary = !string.IsNullOrWhiteSpace(summary);
+            var hasRemarks = !string.IsNullOrWhiteSpace(remarks);
+            var documentedParameters = parameters?
+                .Where(static item => !string.IsNullOrWhiteSpace(item.Value))
+                .ToList();
+            var hasReturns = !string.IsNullOrWhiteSpace(returns);
+
+            if (!hasSummary && !hasRemarks && (documentedParameters is null || documentedParameters.Count == 0) && !hasReturns)
+            {
+                return;
+            }
+
+            if (hasSummary)
+            {
+                AppendDocElement(builder, indent, "summary", summary!);
+            }
+
+            if (hasRemarks)
+            {
+                AppendDocElement(builder, indent, "remarks", remarks!);
+            }
+
+            if (documentedParameters is not null)
+            {
+                foreach (var parameter in documentedParameters)
+                {
+                    AppendDocElement(builder, indent, "param", parameter.Value!, $" name=\"{EscapeXmlDocumentationAttribute(parameter.Key)}\"");
+                }
+            }
+
+            if (hasReturns)
+            {
+                AppendDocElement(builder, indent, "returns", returns!);
+            }
+        }
+
+        private static void AppendDocElement(StringBuilder builder, string indent, string elementName, string content, string? attributes = null)
+        {
+            var sanitizedContent = SanitizeDocumentationContent(content);
+
+            builder.Append(indent).Append("/// <").Append(elementName);
+            if (!string.IsNullOrEmpty(attributes))
+            {
+                builder.Append(attributes);
+            }
+
+            builder.AppendLine(">");
+            foreach (var line in SplitDocumentationLines(sanitizedContent))
+            {
+                builder.Append(indent).Append("/// ").AppendLine(EscapeXmlDocumentationText(line));
+            }
+
+            builder.Append(indent).Append("/// </").Append(elementName).AppendLine(">");
+        }
+
+        private static IEnumerable<string> SplitDocumentationLines(string text)
+        {
+            return text
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Split('\n')
+                .Select(static line => line.Trim())
+                .DefaultIfEmpty(string.Empty);
+        }
+
+        private static string SanitizeDocumentationContent(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder(value.Length);
+            var insideTag = false;
+            var tagBuilder = new StringBuilder();
+
+            foreach (var ch in value)
+            {
+                if (insideTag)
+                {
+                    if (ch == '>')
+                    {
+                        AppendTagSeparator(builder, tagBuilder.ToString());
+                        tagBuilder.Clear();
+                        insideTag = false;
+                    }
+                    else
+                    {
+                        tagBuilder.Append(ch);
+                    }
+
+                    continue;
+                }
+
+                if (ch == '<')
+                {
+                    insideTag = true;
+                    continue;
+                }
+
+                builder.Append(ch);
+            }
+
+            return builder.ToString();
+        }
+
+        private static void AppendTagSeparator(StringBuilder builder, string tagContent)
+        {
+            var tagName = GetHtmlTagName(tagContent);
+            if (tagName.Length == 0)
+            {
+                return;
+            }
+
+            if (tagName is "br" or "p" or "/p" or "div" or "/div" or "li" or "/li" or "ul" or "/ul" or "ol" or "/ol")
+            {
+                if (builder.Length == 0 || builder[builder.Length - 1] == '\n')
+                {
+                    return;
+                }
+
+                builder.AppendLine();
+            }
+        }
+
+        private static string GetHtmlTagName(string tagContent)
+        {
+            if (string.IsNullOrWhiteSpace(tagContent))
+            {
+                return string.Empty;
+            }
+
+            var trimmed = tagContent.Trim();
+            var endIndex = 0;
+            while (endIndex < trimmed.Length
+                && !char.IsWhiteSpace(trimmed[endIndex])
+                && trimmed[endIndex] != '/')
+            {
+                endIndex++;
+            }
+
+            if (trimmed[0] == '/')
+            {
+                var closingEndIndex = 1;
+                while (closingEndIndex < trimmed.Length
+                    && !char.IsWhiteSpace(trimmed[closingEndIndex])
+                    && trimmed[closingEndIndex] != '/')
+                {
+                    closingEndIndex++;
+                }
+
+                return "/" + trimmed.Substring(1, closingEndIndex - 1).ToLowerInvariant();
+            }
+
+            return trimmed.Substring(0, endIndex).ToLowerInvariant();
+        }
+
+        private static string EscapeXmlDocumentationText(string value)
+        {
+            return value
+                .Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;");
+        }
+
+        private static string EscapeXmlDocumentationAttribute(string value)
+        {
+            return EscapeXmlDocumentationText(value)
+                .Replace("\"", "&quot;")
+                .Replace("'", "&apos;");
+        }
     }
 }

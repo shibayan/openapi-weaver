@@ -25,6 +25,7 @@ public sealed partial class OpenApiClientSourceGenerator
         private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
         private readonly string _clientName;
         private readonly List<TagGroup> _tagGroups = [];
+        private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);
         private readonly List<SecuritySchemeBinding> _securitySchemes = [];
         private List<SecuritySchemeBinding> _querySecuritySchemes = [];
 
@@ -141,6 +142,18 @@ public sealed partial class OpenApiClientSourceGenerator
 
         private void RegisterTagGroups()
         {
+            if (_document.Tags is not null)
+            {
+                foreach (var tag in _document.Tags)
+                {
+                    var tagName = tag.Name;
+                    if (!string.IsNullOrWhiteSpace(tagName) && !string.IsNullOrWhiteSpace(tag.Description))
+                    {
+                        _tagDescriptions[tagName!] = tag.Description!;
+                    }
+                }
+            }
+
             var groups = new Dictionary<string, TagGroup>(StringComparer.Ordinal);
 
             foreach (var path in _document.Paths)
@@ -154,7 +167,8 @@ public sealed partial class OpenApiClientSourceGenerator
 
                     if (!groups.TryGetValue(propertyName, out var group))
                     {
-                        group = new TagGroup(propertyName, className);
+                        _tagDescriptions.TryGetValue(groupName, out var tagDescription);
+                        group = new TagGroup(propertyName, className, tagDescription);
                         groups.Add(propertyName, group);
                     }
 
@@ -328,6 +342,11 @@ public sealed partial class OpenApiClientSourceGenerator
 
         private void EmitTagClient(StringBuilder builder, TagGroup tagGroup)
         {
+            EmitDocComment(
+                builder,
+                "    ",
+                summary: $"{tagGroup.PropertyName} operations.",
+                remarks: tagGroup.Description);
             builder.Append("public sealed class ").Append(tagGroup.ClassName).AppendLine();
             builder.AppendLine("{");
             builder.AppendLine("    private readonly HttpClient _httpClient;");
@@ -363,6 +382,11 @@ public sealed partial class OpenApiClientSourceGenerator
             var serverUrl = _document.Servers?.FirstOrDefault()?.Url;
             var constructorParameters = string.Join(", ", _securitySchemes.Select(static scheme => scheme.ParameterDeclaration));
 
+            EmitDocComment(
+                builder,
+                "    ",
+                summary: !string.IsNullOrWhiteSpace(_document.Info.Title) ? _document.Info.Title : _clientName,
+                remarks: _document.Info.Description);
             builder.Append("public partial class ").Append(_clientName).AppendLine(" : IDisposable");
             builder.AppendLine("{");
             builder.AppendLine("    private readonly HttpClient _httpClient;");
@@ -397,6 +421,11 @@ public sealed partial class OpenApiClientSourceGenerator
 
             foreach (var tagGroup in _tagGroups)
             {
+                EmitDocComment(
+                    builder,
+                    "        ",
+                    summary: $"{tagGroup.PropertyName} operations.",
+                    remarks: tagGroup.Description);
                 builder.Append("    public ").Append(tagGroup.ClassName).Append(' ').Append(tagGroup.PropertyName).AppendLine(" { get; }");
             }
 
@@ -412,10 +441,11 @@ public sealed partial class OpenApiClientSourceGenerator
             builder.AppendLine("}");
         }
 
-        private sealed class TagGroup(string propertyName, string className)
+        private sealed class TagGroup(string propertyName, string className, string? description)
         {
             public string PropertyName { get; } = propertyName;
             public string ClassName { get; } = className;
+            public string? Description { get; } = description;
             public List<OperationGroupItem> Operations { get; } = [];
         }
 

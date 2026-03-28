@@ -18,6 +18,7 @@ public sealed partial class OpenApiClientSourceGenerator
 
             var requestBody = ResolveRequestBody(operation.RequestBody);
             var response = ResolveResponse(operation.Responses ?? []);
+            var parameterDocumentation = new List<KeyValuePair<string, string?>>();
 
             var requiredMethodParameters = new List<string>();
             var optionalMethodParameters = new List<string>();
@@ -34,6 +35,8 @@ public sealed partial class OpenApiClientSourceGenerator
                 {
                     optionalMethodParameters.Add($"{parameterDeclaration} = default");
                 }
+
+                parameterDocumentation.Add(new KeyValuePair<string, string?>(parameterName, parameter.Description));
             }
 
             if (requestBody is not null)
@@ -48,12 +51,23 @@ public sealed partial class OpenApiClientSourceGenerator
                 {
                     optionalMethodParameters.Add($"{bodyParameter} = default");
                 }
+
+                parameterDocumentation.Add(new KeyValuePair<string, string?>("body", operation.RequestBody?.Description));
             }
 
             var methodParameters = requiredMethodParameters
                 .Concat(optionalMethodParameters)
                 .Append("CancellationToken cancellationToken = default")
                 .ToList();
+            parameterDocumentation.Add(new KeyValuePair<string, string?>("cancellationToken", "A cancellation token that can be used to cancel the operation."));
+
+            EmitDocComment(
+                builder,
+                "        ",
+                summary: operation.Summary ?? operation.Description ?? $"{ToPascalCase(operationType.ToLowerInvariant())} {route}.",
+                remarks: operation.Summary is not null && !string.IsNullOrWhiteSpace(operation.Description) ? operation.Description : null,
+                parameters: parameterDocumentation,
+                returns: response.Kind == ResponseKind.None ? null : ResolveResponseDocumentation(operation));
 
             if (response.Kind == ResponseKind.None)
             {
@@ -287,6 +301,34 @@ public sealed partial class OpenApiClientSourceGenerator
             return int.TryParse(statusCode, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
                 ? value
                 : int.MaxValue;
+        }
+
+        private static string? ResolveResponseDocumentation(OpenApiOperation operation)
+        {
+            if (operation.Responses is null)
+            {
+                return null;
+            }
+
+            IOpenApiResponse? selectedResponse = null;
+            var bestStatusCode = int.MaxValue;
+
+            foreach (var item in operation.Responses)
+            {
+                if (!item.Key.StartsWith("2", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var statusCode = ParseResponseStatusCode(item.Key);
+                if (statusCode < bestStatusCode)
+                {
+                    bestStatusCode = statusCode;
+                    selectedResponse = item.Value;
+                }
+            }
+
+            return selectedResponse?.Description;
         }
     }
 }

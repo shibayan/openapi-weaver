@@ -36,6 +36,11 @@ public sealed partial class OpenApiClientSourceGenerator
             var properties = GetSchemaProperties(schema);
             var hasDictionaryShape = TryGetDictionaryValueType(schema, out var dictionaryValueType);
 
+            EmitDocComment(
+                builder,
+                "    ",
+                summary: schema.Title ?? typeName,
+                remarks: schema.Description);
             if (hasDictionaryShape)
             {
                 builder.Append("public sealed class ").Append(typeName).Append(" : Dictionary<string, ").Append(dictionaryValueType).AppendLine(">");
@@ -54,6 +59,11 @@ public sealed partial class OpenApiClientSourceGenerator
                     var propertyName = SafeIdentifier(ToPascalCase(property.Name));
                     var propertyType = ResolveTypeName(property.Schema, property.Required);
                     var requiredModifier = property.Required ? "required " : string.Empty;
+                    EmitDocComment(
+                        builder,
+                        "        ",
+                        summary: property.Schema.Title ?? propertyName,
+                        remarks: property.Schema.Description);
                     builder.Append("    [JsonPropertyName(\"").Append(EscapeStringLiteral(property.Name)).AppendLine("\")]");
                     builder.Append("    public ").Append(requiredModifier).Append(propertyType).Append(' ').Append(propertyName).AppendLine(" { get; init; }");
                 }
@@ -69,6 +79,11 @@ public sealed partial class OpenApiClientSourceGenerator
 
         private static void EmitEnumSchema(StringBuilder builder, string typeName, IOpenApiSchema schema)
         {
+            EmitDocComment(
+                builder,
+                "    ",
+                summary: schema.Title ?? typeName,
+                remarks: schema.Description);
             builder.Append("[JsonConverter(typeof(").Append(typeName).AppendLine("JsonConverter))]");
             builder.Append("public readonly record struct ").Append(typeName).AppendLine("(string Value)");
             builder.AppendLine("{");

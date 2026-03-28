@@ -524,4 +524,102 @@ public sealed partial class SourceGeneratorRequestResponseTests
         Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
         Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
     }
+
+    [Fact]
+    public void OperationDescriptions_AreEmittedAsXmlDocumentationComments()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              description: Client for pet operations.
+              version: v1
+            tags:
+              - name: pets
+                description: Operations for managing pets.
+            paths:
+              /pets/{id}:
+                get:
+                  operationId: get_pet
+                  tags:
+                    - pets
+                  summary: Gets a pet.
+                  description: Returns the pet identified by the provided id.
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      description: The pet identifier.
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: The matching pet.
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("/// <summary>", source);
+        Assert.Contains("/// Pet API", source);
+        Assert.Contains("/// <remarks>", source);
+        Assert.Contains("/// Client for pet operations.", source);
+        Assert.Contains("/// Gets a pet.", source);
+        Assert.Contains("/// Returns the pet identified by the provided id.", source);
+        Assert.Contains("/// <param name=\"id\">", source);
+        Assert.Contains("/// The pet identifier.", source);
+        Assert.Contains("/// <param name=\"cancellationToken\">", source);
+        Assert.Contains("/// A cancellation token that can be used to cancel the operation.", source);
+        Assert.Contains("/// <returns>", source);
+        Assert.Contains("/// The matching pet.", source);
+        Assert.Contains("/// Operations for managing pets.", source);
+    }
+
+    [Fact]
+    public void OperationDocumentation_StripsHtmlTags()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              description: <p>Client <strong>for</strong> pet operations.</p>
+              version: v1
+            paths:
+              /pets/{id}:
+                get:
+                  operationId: get_pet
+                  summary: <strong>Gets</strong> a pet.<br/>Fast.
+                  description: <p>Returns the <code>pet</code> identified by the provided id.</p>
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      description: <span>The pet</span> identifier.
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: <div>The matching <em>pet</em>.</div>
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("/// Client for pet operations.", source);
+        Assert.Contains("/// Gets a pet.", source);
+        Assert.Contains("/// Fast.", source);
+        Assert.Contains("/// Returns the pet identified by the provided id.", source);
+        Assert.Contains("/// The pet identifier.", source);
+        Assert.Contains("/// The matching pet.", source);
+        Assert.DoesNotContain("<strong>", source);
+        Assert.DoesNotContain("<br/>", source);
+        Assert.DoesNotContain("<code>", source);
+        Assert.DoesNotContain("<div>", source);
+    }
 }
