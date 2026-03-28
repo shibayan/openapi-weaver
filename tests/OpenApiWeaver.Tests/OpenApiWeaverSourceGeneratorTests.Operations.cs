@@ -1,8 +1,8 @@
 ﻿using Xunit;
 
-namespace OpenApiClientGenerator.Tests;
+namespace OpenApiWeaver.Tests;
 
-public sealed partial class OpenApiClientSourceGeneratorTests
+public sealed partial class OpenApiWeaverSourceGeneratorTests
 {
     [Fact]
     public void MultipartRequestBody_UsesMultipartContent_AndBinarySchemaType()

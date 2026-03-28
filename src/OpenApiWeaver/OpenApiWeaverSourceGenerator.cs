@@ -5,10 +5,10 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.OpenApi.Reader;
 using Microsoft.OpenApi.YamlReader;
 
-namespace OpenApiClientGenerator;
+namespace OpenApiWeaver;
 
 [Generator]
-public sealed partial class OpenApiClientSourceGenerator : IIncrementalGenerator
+public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -122,7 +122,7 @@ public sealed partial class OpenApiClientSourceGenerator : IIncrementalGenerator
             "OARSG002",
             "OpenAPI document is empty",
             "The OpenAPI document '{0}' is empty",
-            "OpenApiClientGenerator",
+            "OpenApiWeaver",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
@@ -130,7 +130,7 @@ public sealed partial class OpenApiClientSourceGenerator : IIncrementalGenerator
             "OARSG003",
             "OpenAPI document has validation warnings",
             "The OpenAPI document '{0}' was loaded with validation warnings: {1}",
-            "OpenApiClientGenerator",
+            "OpenApiWeaver",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
@@ -138,7 +138,7 @@ public sealed partial class OpenApiClientSourceGenerator : IIncrementalGenerator
             "OARSG004",
             "OpenAPI document is invalid",
             "The OpenAPI document '{0}' could not be parsed: {1}",
-            "OpenApiClientGenerator",
+            "OpenApiWeaver",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
     }

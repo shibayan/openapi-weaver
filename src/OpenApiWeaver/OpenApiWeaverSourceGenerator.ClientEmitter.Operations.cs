@@ -3,9 +3,9 @@ using System.Text;
 
 using Microsoft.OpenApi;
 
-namespace OpenApiClientGenerator;
+namespace OpenApiWeaver;
 
-public sealed partial class OpenApiClientSourceGenerator
+public sealed partial class OpenApiWeaverSourceGenerator
 {
     private sealed partial class ClientEmitter
     {
