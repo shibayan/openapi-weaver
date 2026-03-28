@@ -3,9 +3,9 @@
     <Project Path="samples/SampleApp/SampleApp.csproj" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/OpenApiClientGenerator/OpenApiClientGenerator.csproj" />
+    <Project Path="src/OpenApiWeaver/OpenApiWeaver.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/OpenApiClientGenerator.Tests/OpenApiClientGenerator.Tests.csproj" />
+    <Project Path="tests/OpenApiWeaver.Tests/OpenApiWeaver.Tests.csproj" />
   </Folder>
 </Solution>

@@ -19,6 +19,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\OpenApiClientGenerator\OpenApiClientGenerator.csproj" />
+    <ProjectReference Include="..\..\src\OpenApiWeaver\OpenApiWeaver.csproj" />
   </ItemGroup>
 </Project>

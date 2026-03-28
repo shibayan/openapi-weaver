@@ -2,9 +2,9 @@
 
 using Xunit;
 
-namespace OpenApiClientGenerator.Tests;
+namespace OpenApiWeaver.Tests;
 
-public sealed partial class OpenApiClientSourceGeneratorTests
+public sealed partial class OpenApiWeaverSourceGeneratorTests
 {
     [Fact]
     public void EmptyDocument_ReportsDiagnostic_AndDoesNotGenerateSource()

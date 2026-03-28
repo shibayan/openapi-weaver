@@ -6,9 +6,9 @@ using Microsoft.CodeAnalysis.Text;
 
 using Xunit;
 
-namespace OpenApiClientGenerator.Tests;
+namespace OpenApiWeaver.Tests;
 
-public sealed partial class OpenApiClientSourceGeneratorTests
+public sealed partial class OpenApiWeaverSourceGeneratorTests
 {
     private static string GenerateSource(string openApi)
     {
@@ -25,7 +25,7 @@ public sealed partial class OpenApiClientSourceGeneratorTests
 
     private static GeneratorTestResult RunGenerator(string openApi)
     {
-        var generator = new OpenApiClientSourceGenerator();
+        var generator = new OpenApiWeaverSourceGenerator();
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
         var syntaxTree = CSharpSyntaxTree.ParseText("public sealed class Marker {}", parseOptions);
 

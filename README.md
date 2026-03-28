@@ -1,6 +1,6 @@
-# openapi-roslyn
+# OpenApiWeaver
 
-`openapi-roslyn` is an incremental Roslyn source generator that turns OpenAPI documents into strongly typed C# HTTP clients at build time.
+`OpenApiWeaver` is an incremental Roslyn source generator that turns OpenAPI documents into strongly typed C# HTTP clients at build time.
 
 The generator reads OpenAPI `.json`, `.yaml`, and `.yml` files added as `AdditionalFiles`, parses them with `Microsoft.OpenApi`, and emits:
 
@@ -22,8 +22,8 @@ The generator reads OpenAPI `.json`, `.yaml`, and `.yml` files added as `Additio
 
 ## Repository Layout
 
-- `src/OpenApiClientGenerator`: source generator implementation
-- `tests/OpenApiClientGenerator.Tests`: xUnit tests for generated output behavior
+- `src/OpenApiWeaver`: source generator implementation
+- `tests/OpenApiWeaver.Tests`: xUnit tests for generated output behavior
 - `samples/SampleApp`: minimal sample project that consumes the generator
 
 ## Requirements
@@ -50,7 +50,7 @@ Add the NuGet package to your project and include your OpenAPI document as an ad
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="OpenApiClientGenerator" Version="x.y.z" PrivateAssets="all" />
+  <PackageReference Include="OpenApiWeaver" Version="x.y.z" PrivateAssets="all" />
 </ItemGroup>
 
 <ItemGroup>
@@ -98,13 +98,13 @@ Current test coverage verifies the following behavior:
 ## Build
 
 ```bash
-dotnet build OpenApiRoslyn.slnx
+dotnet build OpenApiWeaver.slnx
 ```
 
 ## Test
 
 ```bash
-dotnet test OpenApiRoslyn.slnx
+dotnet test OpenApiWeaver.slnx
 ```
 
 ## Sample App
@@ -117,4 +117,4 @@ The sample project enables emitted generated files under `samples/SampleApp/obj/
 
 ## Current Status
 
-This repository contains the source generator, tests, and a local sample app. The sample app keeps a project-to-project analyzer reference for repository development, but consuming applications should use the `OpenApiClientGenerator` NuGet package.
+This repository contains the source generator, tests, and a local sample app. The sample app keeps a project-to-project analyzer reference for repository development, but consuming applications should use the `OpenApiWeaver` NuGet package.

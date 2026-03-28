@@ -10,10 +10,10 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
-    <PackageId>OpenApiClientGenerator</PackageId>
-    <Description>OpenAPI source generator packaged as a Roslyn analyzer.</Description>
+    <PackageId>OpenApiWeaver</PackageId>
+    <Description>OpenAPI source generator for strongly typed C# HTTP clients.</Description>
     <Authors>shibayan</Authors>
-    <RepositoryUrl>https://github.com/shibayan/openapi-roslyn</RepositoryUrl>
+    <RepositoryUrl>https://github.com/shibayan/openapi-weaver</RepositoryUrl>
     <PackageTags>openapi;source-generator;roslyn;analyzer</PackageTags>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackAnalyzerAssemblies</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
