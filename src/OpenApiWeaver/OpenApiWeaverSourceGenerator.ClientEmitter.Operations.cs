@@ -9,11 +9,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
 {
     private sealed partial class ClientEmitter
     {
-        private void EmitOperation(StringBuilder builder, string route, IOpenApiPathItem pathItem, string operationType, OpenApiOperation operation)
+        private void EmitOperation(StringBuilder builder, string route, string operationType, OpenApiOperation operation, List<IOpenApiParameter> parameters)
         {
             var tagName = GetTagName(operation);
             var methodName = BuildOperationMethodName(operation.OperationId, operationType, route, tagName);
-            var parameters = CollectParameters(pathItem, operation);
             var hasHeaderParameters = parameters.Any(x => x.In == ParameterLocation.Header);
 
             var requestBody = ResolveRequestBody(operation.RequestBody);
@@ -87,7 +86,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 builder.Append("        path = path.Replace(\"{").Append(parameter.Name).Append("}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine(")));");
             }
 
-            var queryParameters = parameters.Where(static parameter => parameter.In == ParameterLocation.Query).ToList();
+            var queryParameters = parameters.Where(static parameter => parameter.In is ParameterLocation.Query or ParameterLocation.QueryString).ToList();
             if (queryParameters.Count > 0)
             {
                 builder.AppendLine("        var query = new List<string>();");
@@ -122,7 +121,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 builder.AppendLine("        }");
             }
 
-            builder.Append("        using var request = new HttpRequestMessage(HttpMethod.").Append(ToPascalCase(operationType.ToLowerInvariant())).AppendLine(", new Uri(path, UriKind.Relative));");
+            var httpMethodExpression = GetHttpMethodExpression(operationType);
+            builder.Append("        using var request = new HttpRequestMessage(").Append(httpMethodExpression).AppendLine(", new Uri(path, UriKind.Relative));");
 
             if (hasHeaderParameters)
             {
@@ -294,7 +294,13 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return null;
             }
 
-            return SelectSuccessResponse(operation.Responses)?.Description;
+            var response = SelectSuccessResponse(operation.Responses);
+            if (response is null)
+            {
+                return null;
+            }
+
+            return !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description;
         }
 
         private static IOpenApiResponse? SelectSuccessResponse(OpenApiResponses responses)

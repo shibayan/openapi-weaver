@@ -382,4 +382,137 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.DoesNotContain("<code>", source);
         Assert.DoesNotContain("<div>", source);
     }
+
+    [Fact]
+    public void NullableTypeArray_GeneratesNullableProperty()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Nullable Type Array API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                partnerResponse:
+                  type: object
+                  required:
+                    - company_id
+                  properties:
+                    company_id:
+                      type: integer
+                    display_name:
+                      type: ["string", "null"]
+                    note:
+                      type:
+                        - string
+                        - "null"
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required int CompanyId { get; init; }", source);
+        Assert.Contains("public string? DisplayName { get; init; }", source);
+        Assert.Contains("public string? Note { get; init; }", source);
+    }
+
+    [Fact]
+    public void NullableTypeArrayInteger_GeneratesNullableIntProperty()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Nullable Int API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                partnerResponse:
+                  type: object
+                  required:
+                    - company_id
+                  properties:
+                    company_id:
+                      type: integer
+                    optional_count:
+                      type: ["integer", "null"]
+                    optional_amount:
+                      type: ["number", "null"]
+                    optional_flag:
+                      type: ["boolean", "null"]
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required int CompanyId { get; init; }", source);
+        Assert.Contains("public int? OptionalCount { get; init; }", source);
+        Assert.Contains("public double? OptionalAmount { get; init; }", source);
+        Assert.Contains("public bool? OptionalFlag { get; init; }", source);
+    }
+
+    [Fact]
+    public void NullableTypeArrayResponse_GeneratesNullableReturnType()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Nullable Type Array Response API
+              version: v1
+            paths:
+              /partners/{id}:
+                get:
+                  operationId: get_partner
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: ["object", "null"]
+                            properties:
+                              company_id:
+                                type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement?> ", source);
+        Assert.Contains("return await response.Content.ReadFromJsonAsync<JsonElement?>", source);
+        Assert.DoesNotContain("The response body was empty.", source);
+    }
+
+    [Fact]
+    public void RequiredNullableTypeArrayProperty_GeneratesRequiredNullableProperty()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Required Nullable API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                partnerResponse:
+                  type: object
+                  required:
+                    - company_id
+                    - display_name
+                  properties:
+                    company_id:
+                      type: integer
+                    display_name:
+                      type: ["string", "null"]
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required int CompanyId { get; init; }", source);
+        Assert.Contains("public required string? DisplayName { get; init; }", source);
+    }
 }

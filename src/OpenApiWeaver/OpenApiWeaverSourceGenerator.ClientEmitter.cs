@@ -27,7 +27,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private readonly List<TagGroup> _tagGroups = [];
         private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);
         private readonly List<SecuritySchemeBinding> _securitySchemes = [];
-        private List<SecuritySchemeBinding> _querySecuritySchemes = [];
+        private List<SecuritySchemeBinding> _querySecuritySchemes = null!;
 
         private bool _needsFormUrlEncoded;
         private bool _needsMultipartFormData;
@@ -94,10 +94,25 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private void AnalyzeRequiredHelpers()
         {
+            if (_querySecuritySchemes.Count > 0)
+            {
+                _needsFormatParameter = true;
+            }
+
             foreach (var tagGroup in _tagGroups)
             {
+                if (_needsFormUrlEncoded && _needsMultipartFormData && _needsFormatParameter)
+                {
+                    break;
+                }
+
                 foreach (var operation in tagGroup.Operations)
                 {
+                    if (_needsFormUrlEncoded && _needsMultipartFormData && _needsFormatParameter)
+                    {
+                        break;
+                    }
+
                     var requestBody = ResolveRequestBody(operation.Operation.RequestBody);
                     if (requestBody is not null)
                     {
@@ -119,11 +134,6 @@ public sealed partial class OpenApiWeaverSourceGenerator
                         _needsFormatParameter = true;
                     }
                 }
-            }
-
-            if (_querySecuritySchemes.Count > 0)
-            {
-                _needsFormatParameter = true;
             }
         }
 
@@ -172,7 +182,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                         groups.Add(propertyName, group);
                     }
 
-                    group.Operations.Add(new OperationGroupItem(path.Key, path.Value, operation.Key.ToString(), operation.Value, CollectParameters(path.Value, operation.Value)));
+                    group.Operations.Add(new OperationGroupItem(path.Key, operation.Key.ToString(), operation.Value, CollectParameters(path.Value, operation.Value)));
                 }
             }
 
@@ -371,7 +381,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             foreach (var operation in tagGroup.Operations)
             {
                 builder.AppendLine();
-                EmitOperation(builder, operation.Route, operation.PathItem, operation.OperationType, operation.Operation);
+                EmitOperation(builder, operation.Route, operation.OperationType, operation.Operation, operation.Parameters);
             }
 
             builder.AppendLine("}");
@@ -408,11 +418,11 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 EmitSecuritySchemeInitialization(builder, securityScheme);
             }
 
+            var constructorArguments = string.Join(", ",
+                new[] { "_httpClient" }.Concat(
+                    _querySecuritySchemes.Select(static scheme => scheme.FieldName)));
             foreach (var tagGroup in _tagGroups)
             {
-                var constructorArguments = string.Join(", ",
-                    new[] { "_httpClient" }.Concat(
-                        _querySecuritySchemes.Select(static scheme => scheme.FieldName)));
                 builder.Append("        ").Append(tagGroup.PropertyName).Append(" = new ").Append(tagGroup.ClassName).Append('(').Append(constructorArguments).AppendLine(");");
             }
 
@@ -449,12 +459,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
             public List<OperationGroupItem> Operations { get; } = [];
         }
 
-        private sealed class OperationGroupItem(string route, IOpenApiPathItem pathItem, string operationType, OpenApiOperation operation, List<IOpenApiParameter> parameters)
+        private sealed class OperationGroupItem(string route, string operationType, OpenApiOperation operation, List<IOpenApiParameter> parameters)
         {
             public string Route { get; } = route;
-            public IOpenApiPathItem PathItem { get; } = pathItem;
             public string OperationType { get; } = operationType;
             public OpenApiOperation Operation { get; } = operation;
+            public List<IOpenApiParameter> Parameters { get; } = parameters;
             public bool HasParameters { get; } = parameters.Count > 0;
         }
 

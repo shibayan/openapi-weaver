@@ -846,4 +846,278 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.DoesNotContain("<code>", source);
         Assert.DoesNotContain("<div>", source);
     }
+
+    [Fact]
+    public void OpenApi32_BasicOperation_GeneratesClient()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pets:
+                get:
+                  operationId: list_pets
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/petResponse'
+            components:
+              schemas:
+                petResponse:
+                  type: object
+                  required:
+                    - id
+                    - name
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<IReadOnlyList<PetResponse>> ListPetsAsync(CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public sealed class PetResponse", source);
+        Assert.Contains("public required int Id { get; init; }", source);
+        Assert.Contains("public required string Name { get; init; }", source);
+    }
+
+    [Fact]
+    public void OpenApi32_ResponseSummary_IsEmittedAsDocumentation()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Summary API
+              version: v1
+            paths:
+              /pets/{id}:
+                get:
+                  operationId: get_pet
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      summary: A pet object.
+                      description: The pet identified by the provided id.
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("/// <returns>", source);
+        Assert.Contains("/// A pet object.", source);
+    }
+
+    [Fact]
+    public void OpenApi32_MultipartRequestBody_WorksCorrectly()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Upload API
+              version: v1
+            paths:
+              /uploads:
+                post:
+                  operationId: create_upload
+                  requestBody:
+                    required: true
+                    content:
+                      multipart/form-data:
+                        schema:
+                          $ref: '#/components/schemas/uploadParams'
+                  responses:
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              schemas:
+                uploadParams:
+                  type: object
+                  required:
+                    - file
+                  properties:
+                    file:
+                      type: string
+                      format: binary
+                    description:
+                      type: ["string", "null"]
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required byte[] File", source);
+        Assert.Contains("public string? Description", source);
+        Assert.Contains("request.Content = OpenApiClientHelpers.CreateMultipartFormDataContent(body);", source);
+    }
+
+    [Fact]
+    public void OpenApi32_QueryAndPathParameters_WorkCorrectly()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Parameter API
+              version: v1
+            paths:
+              /partners/{partner_id}/reports:
+                get:
+                  operationId: list_partner_reports
+                  parameters:
+                    - name: partner_id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                    - name: page
+                      in: query
+                      required: false
+                      schema:
+                        type: integer
+                    - name: start_date
+                      in: query
+                      required: true
+                      schema:
+                        type: string
+                        format: date
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("int partnerId", source);
+        Assert.Contains("DateOnly startDate", source);
+        Assert.Contains("int? page = default", source);
+        Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
+        Assert.Contains("query.Add(\"start_date=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(startDate)));", source);
+    }
+
+    [Fact]
+    public void OpenApi32_ServerUrl_SetsBaseAddress()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Server URL API
+              version: v1
+            servers:
+              - url: https://api.example.com/v2
+                name: production
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v2\", UriKind.Absolute);", source);
+    }
+
+    [Fact]
+    public void OpenApi32_NullableTypeArrayBodyProperty_GeneratesNullableParameter()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Nullable Body API
+              version: v1
+            paths:
+              /partners:
+                post:
+                  operationId: create_partner
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/partnerCreateParams'
+                  responses:
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              schemas:
+                partnerCreateParams:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                    note:
+                      type: ["string", "null"]
+                    age:
+                      type: ["integer", "null"]
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class PartnerCreateParams", source);
+        Assert.Contains("public required string Name { get; init; }", source);
+        Assert.Contains("public string? Note { get; init; }", source);
+        Assert.Contains("public int? Age { get; init; }", source);
+    }
+
+    [Fact]
+    public void OpenApi32_CustomHttpMethod_GeneratesNewHttpMethod()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Custom Method API
+              version: v1
+            paths:
+              /resources:
+                query:
+                  operationId: query_resources
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("new HttpMethod(\"QUERY\")", source);
+        Assert.Contains("QueryResourcesAsync", source);
+    }
 }
