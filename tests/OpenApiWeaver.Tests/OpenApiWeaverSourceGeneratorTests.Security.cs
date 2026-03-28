@@ -178,4 +178,81 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Contains("public TestClient(string? sessionApiKey = default)", source);
         Assert.Contains("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"Cookie\", \"session_id=\" + sessionApiKey);", source);
     }
+
+    [Fact]
+    public void OpenApi32_BearerSecurityScheme_GeneratesAuthorizationHeader()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Bearer Security API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                partner:
+                  type: http
+                  scheme: bearer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public TestClient(string? partnerToken = default)", source);
+        Assert.Contains("_httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", partnerToken);", source);
+    }
+
+    [Fact]
+    public void OpenApi32_ApiKeySecuritySchemes_WorkCorrectly()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: APIKey Security API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                queryKey:
+                  type: apiKey
+                  in: query
+                  name: api_key
+                headerKey:
+                  type: apiKey
+                  in: header
+                  name: X-API-Key
+                cookieKey:
+                  type: apiKey
+                  in: cookie
+                  name: session_token
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("queryKeyApiKey", source);
+        Assert.Contains("headerKeyApiKey", source);
+        Assert.Contains("cookieKeyApiKey", source);
+        Assert.Contains("api_key", source);
+        Assert.Contains("X-API-Key", source);
+        Assert.Contains("session_token", source);
+    }
 }

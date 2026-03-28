@@ -142,7 +142,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return required && !IsNullableSchema(schema) ? dictionaryType : $"{dictionaryType}?";
             }
 
-            var typeName = schema.Type switch
+            var baseType = schema.Type & ~JsonSchemaType.Null;
+
+            var typeName = baseType switch
             {
                 JsonSchemaType.Integer when string.Equals(schema.Format, "int64", StringComparison.OrdinalIgnoreCase) => "long",
                 JsonSchemaType.Integer => "int",
