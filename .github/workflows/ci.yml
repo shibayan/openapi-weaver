@@ -32,10 +32,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore OpenApiRoslyn.slnx
+        run: dotnet restore OpenApiWeaver.slnx
 
       - name: Build
-        run: dotnet build OpenApiRoslyn.slnx --configuration Release --no-restore
+        run: dotnet build OpenApiWeaver.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test OpenApiRoslyn.slnx --configuration Release --no-build
+        run: dotnet test OpenApiWeaver.slnx --configuration Release --no-build
