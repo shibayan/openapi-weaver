@@ -1,37 +1,9 @@
-﻿using System.Collections.Immutable;
-
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Text;
-
-using Xunit;
+﻿using Xunit;
 
 namespace OpenApiClientGenerator.Tests;
 
-public sealed class SourceGeneratorRequestResponseTests
+public sealed partial class OpenApiClientSourceGeneratorTests
 {
-    [Fact]
-    public void EmptyDocument_ReportsDiagnostic_AndDoesNotGenerateSource()
-    {
-        var result = RunGenerator("   ");
-
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OARSG002", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.Empty(result.GeneratedSources);
-    }
-
-    [Fact]
-    public void InvalidDocument_ReportsDiagnostic_AndDoesNotGenerateSource()
-    {
-        var result = RunGenerator("not: [valid");
-
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OARSG004", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.Empty(result.GeneratedSources);
-    }
-
     [Fact]
     public void MultipartRequestBody_UsesMultipartContent_AndBinarySchemaType()
     {
@@ -187,36 +159,6 @@ public sealed class SourceGeneratorRequestResponseTests
     }
 
     [Fact]
-    public void SnakeCaseSchema_UsesJsonPropertyNameAttributes()
-    {
-        const string openApi = """
-            openapi: 3.0.1
-            info:
-              title: Naming API
-              version: v1
-            paths: {}
-            components:
-              schemas:
-                partnerResponse:
-                  type: object
-                  required:
-                    - company_id
-                  properties:
-                    company_id:
-                      type: integer
-                    display_name:
-                      type: string
-        """;
-
-        var source = GenerateSource(openApi);
-
-        Assert.Contains("[JsonPropertyName(\"company_id\")]", source);
-        Assert.Contains("public required int CompanyId { get; init; }", source);
-        Assert.Contains("[JsonPropertyName(\"display_name\")]", source);
-        Assert.Contains("public string? DisplayName { get; init; }", source);
-    }
-
-    [Fact]
     public void RequestBody_WithJsonAndFormMediaTypes_PrefersJson()
     {
         const string openApi = """
@@ -327,6 +269,89 @@ public sealed class SourceGeneratorRequestResponseTests
     }
 
     [Fact]
+    public void MultipleSuccessResponses_PrefersBodyOverLowerNoContentStatus()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Multi Success Preference API
+              version: v1
+            paths:
+              /pets:
+                post:
+                  operationId: create_pet
+                  responses:
+                    '200':
+                      description: accepted without body
+                      content: {}
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/petResponse'
+            components:
+              schemas:
+                petResponse:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: integer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<PetResponse> ", source);
+        Assert.Contains("ReadFromJsonAsync<PetResponse>", source);
+        Assert.Contains("/// created", source);
+        Assert.DoesNotContain("public async Task CreatePetAsync", source);
+    }
+
+    [Fact]
+    public void MultipleSuccessResponses_IgnoresSchemaLessMediaTypeWhenSelectingBodyResponse()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Multi Success Shell API
+              version: v1
+            paths:
+              /pets:
+                post:
+                  operationId: create_pet
+                  responses:
+                    '200':
+                      description: placeholder media type
+                      content:
+                        application/json: {}
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/petResponse'
+            components:
+              schemas:
+                petResponse:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: integer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<PetResponse> ", source);
+        Assert.Contains("ReadFromJsonAsync<PetResponse>", source);
+        Assert.Contains("/// created", source);
+        Assert.DoesNotContain("ReadFromJsonAsync<string>", source);
+    }
+
+    [Fact]
     public void NullableJsonResponse_DoesNotForceNonNullBody()
     {
         const string openApi = """
@@ -365,74 +390,6 @@ public sealed class SourceGeneratorRequestResponseTests
     }
 
     [Fact]
-    public void QueryApiKeySecurityScheme_GeneratesConstructorParameter_AndAppendsToPath()
-    {
-        const string openApi = """
-            openapi: 3.0.1
-            info:
-              title: Query Security API
-              version: v1
-            paths:
-              /reports:
-                get:
-                  operationId: list_reports
-                  responses:
-                    '200':
-                      description: ok
-                      content:
-                        application/json:
-                          schema:
-                            type: object
-            components:
-              securitySchemes:
-                partner:
-                  type: apiKey
-                  in: query
-                  name: api_key
-        """;
-
-        var source = GenerateSource(openApi);
-
-        Assert.Contains("private readonly string? _partnerApiKey;", source);
-        Assert.Contains("public partial class TestClient : IDisposable", source);
-        Assert.Contains("public TestClient(string? partnerApiKey = default)", source);
-        Assert.Contains("_partnerApiKey = partnerApiKey;", source);
-        Assert.Contains("path += \"api_key=\" + Uri.EscapeDataString(_partnerApiKey);", source);
-    }
-
-    [Fact]
-    public void BearerSecurityScheme_GeneratesAuthorizationHeaderInitialization()
-    {
-        const string openApi = """
-            openapi: 3.0.1
-            info:
-              title: Bearer Security API
-              version: v1
-            paths:
-              /reports:
-                get:
-                  operationId: list_reports
-                  responses:
-                    '200':
-                      description: ok
-                      content:
-                        application/json:
-                          schema:
-                            type: object
-            components:
-              securitySchemes:
-                partner:
-                  type: http
-                  scheme: bearer
-        """;
-
-        var source = GenerateSource(openApi);
-
-        Assert.Contains("public TestClient(string? partnerToken = default)", source);
-        Assert.Contains("_httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", partnerToken);", source);
-    }
-
-    [Fact]
     public void OperationIdMatchingTag_FallsBackToHttpVerbMethodName()
     {
         const string openApi = """
@@ -457,39 +414,58 @@ public sealed class SourceGeneratorRequestResponseTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
         Assert.DoesNotContain("ReceiptsAsync", source);
     }
 
     [Fact]
-    public void EnumSchema_GeneratesEnumType()
+    public void CollectionAndSingleResourceGet_UseListAndGetMethodNames()
     {
         const string openApi = """
             openapi: 3.0.1
             info:
-              title: Enum API
+              title: Companies API
               version: v1
-            paths: {}
-            components:
-              schemas:
-                orderStatus:
-                  type: string
-                  enum:
-                    - pending
-                    - processing
-                    - completed
-                    - cancelled
-            """;
+            paths:
+              /companies:
+                get:
+                  operationId: get_companies
+                  tags:
+                    - companies
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /companies/{id}:
+                get:
+                  operationId: get_company
+                  tags:
+                    - companies
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public readonly record struct OrderStatus(string Value)", source);
-        Assert.Contains("public static readonly OrderStatus Pending = new(\"pending\");", source);
-        Assert.Contains("public static readonly OrderStatus Processing = new(\"processing\");", source);
-        Assert.Contains("public static readonly OrderStatus Completed = new(\"completed\");", source);
-        Assert.Contains("public static readonly OrderStatus Cancelled = new(\"cancelled\");", source);
-        Assert.Contains("public override string ToString() => Value;", source);
-        Assert.Contains("public sealed class OrderStatusJsonConverter : JsonConverter<OrderStatus>", source);
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("int id", source);
+        Assert.DoesNotContain("GetCompanyAsync", source);
+        Assert.DoesNotContain("GetCompaniesAsync", source);
     }
 
     [Fact]
@@ -522,7 +498,7 @@ public sealed class SourceGeneratorRequestResponseTests
                         application/json:
                           schema:
                             type: object
-            """;
+        """;
 
         var source = GenerateSource(openApi);
 
@@ -555,7 +531,7 @@ public sealed class SourceGeneratorRequestResponseTests
                         application/json:
                           schema:
                             type: object
-            """;
+        """;
 
         var source = GenerateSource(openApi);
 
@@ -584,52 +560,11 @@ public sealed class SourceGeneratorRequestResponseTests
                         application/json:
                           schema:
                             type: object
-            """;
+        """;
 
         var source = GenerateSource(openApi);
 
         Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v1\", UriKind.Absolute);", source);
-    }
-
-    [Fact]
-    public void MultipleSecuritySchemes_GeneratesMultipleConstructorParameters()
-    {
-        const string openApi = """
-            openapi: 3.0.1
-            info:
-              title: Multi Security API
-              version: v1
-            paths:
-              /reports:
-                get:
-                  operationId: list_reports
-                  responses:
-                    '200':
-                      description: ok
-                      content:
-                        application/json:
-                          schema:
-                            type: object
-            components:
-              securitySchemes:
-                oauth2:
-                  type: oauth2
-                  flows:
-                    authorizationCode:
-                      authorizationUrl: https://example.com/auth
-                      tokenUrl: https://example.com/token
-                partner:
-                  type: apiKey
-                  in: query
-                  name: api_key
-            """;
-
-        var source = GenerateSource(openApi);
-
-        Assert.Contains("accessToken", source);
-        Assert.Contains("partnerApiKey", source);
-        Assert.Contains("Authorization", source);
-        Assert.Contains("api_key", source);
     }
 
     [Fact]
@@ -670,7 +605,7 @@ public sealed class SourceGeneratorRequestResponseTests
                         application/json:
                           schema:
                             type: object
-            """;
+        """;
 
         var source = GenerateSource(openApi);
 
@@ -684,47 +619,29 @@ public sealed class SourceGeneratorRequestResponseTests
     }
 
     [Fact]
-    public void ArrayJsonResponse_GeneratesReadOnlyListReturnType_AndNonNullGuard()
+    public void PathAndOperationParameters_AreCombinedIntoMethodSignature()
     {
         const string openApi = """
             openapi: 3.0.1
             info:
-              title: Array Response API
+              title: Combined Parameters API
               version: v1
             paths:
-              /tags:
+              /partners/{partner_id}/reports:
+                parameters:
+                  - name: partner_id
+                    in: path
+                    required: true
+                    schema:
+                      type: integer
                 get:
-                  operationId: list_tags
-                  responses:
-                    '200':
-                      description: ok
-                      content:
-                        application/json:
-                          schema:
-                            type: array
-                            items:
-                              type: string
-            """;
-
-        var source = GenerateSource(openApi);
-
-        Assert.Contains("public async Task<IReadOnlyList<string>> ListTagsAsync(CancellationToken cancellationToken = default)", source);
-        Assert.Contains("return await response.Content.ReadFromJsonAsync<IReadOnlyList<string>>(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)", source);
-        Assert.Contains("?? throw new InvalidOperationException(\"The response body was empty.\");", source);
-    }
-
-    [Fact]
-    public void HeaderApiKeySecurityScheme_GeneratesDefaultHeaderInitialization()
-    {
-        const string openApi = """
-            openapi: 3.0.1
-            info:
-              title: Header Security API
-              version: v1
-            paths:
-              /reports:
-                get:
-                  operationId: list_reports
+                  operationId: list_partner_reports
+                  parameters:
+                    - name: page
+                      in: query
+                      required: false
+                      schema:
+                        type: integer
                   responses:
                     '200':
                       description: ok
@@ -732,32 +649,49 @@ public sealed class SourceGeneratorRequestResponseTests
                         application/json:
                           schema:
                             type: object
-            components:
-              securitySchemes:
-                partner:
-                  type: apiKey
-                  in: header
-                  name: X-Partner-Key
-            """;
+        """;
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public TestClient(string? partnerApiKey = default)", source);
-        Assert.Contains("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"X-Partner-Key\", partnerApiKey);", source);
+        Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(int partnerId, int? page = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
+        Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
     }
 
     [Fact]
-    public void CookieApiKeySecurityScheme_GeneratesCookieHeaderInitialization()
+    public void OperationLevelParameter_OverridesPathLevelParameter()
     {
         const string openApi = """
             openapi: 3.0.1
             info:
-              title: Cookie Security API
+              title: Override Parameters API
               version: v1
             paths:
-              /reports:
+              /partners/{partner_id}/reports:
+                parameters:
+                  - name: partner_id
+                    in: path
+                    required: true
+                    schema:
+                      type: integer
+                  - name: page
+                    in: query
+                    required: false
+                    schema:
+                      type: integer
                 get:
-                  operationId: list_reports
+                  operationId: list_partner_reports
+                  parameters:
+                    - name: page
+                      in: query
+                      required: false
+                      schema:
+                        type: string
+                    - name: partner_id
+                      in: path
+                      required: true
+                      schema:
+                        type: string
                   responses:
                     '200':
                       description: ok
@@ -765,90 +699,151 @@ public sealed class SourceGeneratorRequestResponseTests
                         application/json:
                           schema:
                             type: object
-            components:
-              securitySchemes:
-                session:
-                  type: apiKey
-                  in: cookie
-                  name: session_id
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(string partnerId, string? page = default, CancellationToken cancellationToken = default)", source);
+        Assert.DoesNotContain("int partnerId", source);
+        Assert.DoesNotContain("int? page = default, string? page = default", source);
+        Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
+    }
+
+    [Fact]
+    public void HeaderParameterOverride_IsCaseInsensitive()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Header Override API
+              version: v1
+            paths:
+              /reports:
+                parameters:
+                  - name: X-Request-Id
+                    in: header
+                    required: false
+                    schema:
+                      type: integer
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: x-request-id
+                      in: header
+                      required: false
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListReportsAsync(string? xRequestId = default, CancellationToken cancellationToken = default)", source);
+        Assert.DoesNotContain("int? xRequestId = default", source);
+        Assert.Equal(1, source.Split("request.Headers.TryAddWithoutValidation(\"x-request-id\"").Length - 1);
+    }
+
+    [Fact]
+    public void OperationDescriptions_AreEmittedAsXmlDocumentationComments()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              description: Client for pet operations.
+              version: v1
+            tags:
+              - name: pets
+                description: Operations for managing pets.
+            paths:
+              /pets/{id}:
+                get:
+                  operationId: get_pet
+                  tags:
+                    - pets
+                  summary: Gets a pet.
+                  description: Returns the pet identified by the provided id.
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      description: The pet identifier.
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: The matching pet.
+                      content:
+                        application/json:
+                          schema:
+                            type: object
             """;
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public TestClient(string? sessionApiKey = default)", source);
-        Assert.Contains("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"Cookie\", \"session_id=\" + sessionApiKey);", source);
+        Assert.Contains("/// <summary>", source);
+        Assert.Contains("/// Pet API", source);
+        Assert.Contains("/// <remarks>", source);
+        Assert.Contains("/// Client for pet operations.", source);
+        Assert.Contains("/// Gets a pet.", source);
+        Assert.Contains("/// Returns the pet identified by the provided id.", source);
+        Assert.Contains("/// <param name=\"id\">", source);
+        Assert.Contains("/// The pet identifier.", source);
+        Assert.Contains("/// <param name=\"cancellationToken\">", source);
+        Assert.Contains("/// A cancellation token that can be used to cancel the operation.", source);
+        Assert.Contains("/// <returns>", source);
+        Assert.Contains("/// The matching pet.", source);
+        Assert.Contains("/// Operations for managing pets.", source);
     }
 
-    private static string GenerateSource(string openApi)
+    [Fact]
+    public void OperationDocumentation_StripsHtmlTags()
     {
-        var result = RunGenerator(openApi);
-        Assert.DoesNotContain(result.Diagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-        return Assert.Single(result.GeneratedSources);
-    }
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              description: <p>Client <strong>for</strong> pet operations.</p>
+              version: v1
+            paths:
+              /pets/{id}:
+                get:
+                  operationId: get_pet
+                  summary: <strong>Gets</strong> a pet.<br/>Fast.
+                  description: <p>Returns the <code>pet</code> identified by the provided id.</p>
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      description: <span>The pet</span> identifier.
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: <div>The matching <em>pet</em>.</div>
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
 
-    private static readonly ImmutableArray<MetadataReference> s_metadataReferences = [..
-        ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))!
-            .Split(Path.PathSeparator)
-            .Distinct()
-            .Select(static path => (MetadataReference)MetadataReference.CreateFromFile(path))];
+        var source = GenerateSource(openApi);
 
-    private static GeneratorTestResult RunGenerator(string openApi)
-    {
-        var generator = new OpenApiClientSourceGenerator();
-        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
-        var syntaxTree = CSharpSyntaxTree.ParseText("public sealed class Marker {}", parseOptions);
-
-        var compilation = CSharpCompilation.Create(
-            "GeneratorTests",
-            [syntaxTree],
-            s_metadataReferences,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        var additionalText = new InMemoryAdditionalText("test.yaml", openApi);
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            generators: [generator.AsSourceGenerator()],
-            additionalTexts: [additionalText],
-            parseOptions: parseOptions);
-
-        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
-
-        var generatorDiagnostics = driver.GetRunResult()
-            .Results
-            .SelectMany(static result => result.Diagnostics)
-            .ToArray();
-
-        var compilationErrors = diagnostics
-            .Concat(outputCompilation.GetDiagnostics())
-            .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
-                && diagnostic.Id != "OARSG002"
-                && diagnostic.Id != "OARSG004")
-            .ToArray();
-
-        Assert.True(compilationErrors.Length == 0, string.Join(Environment.NewLine, compilationErrors.Select(static error => error.ToString())));
-
-        var generatedSources = driver.GetRunResult()
-            .Results
-            .SelectMany(static result => result.GeneratedSources)
-            .Select(static source => source.SourceText.ToString())
-            .ToArray();
-
-        return new GeneratorTestResult(generatorDiagnostics, generatedSources);
-    }
-
-    private sealed class InMemoryAdditionalText(string path, string content) : AdditionalText
-    {
-        public override string Path { get; } = path;
-
-        public override SourceText GetText(CancellationToken cancellationToken = default)
-            => SourceText.From(content);
-    }
-
-    private sealed class GeneratorTestResult(
-        IReadOnlyList<Diagnostic> diagnostics,
-        IReadOnlyList<string> generatedSources)
-    {
-        public IReadOnlyList<Diagnostic> Diagnostics { get; } = diagnostics;
-
-        public IReadOnlyList<string> GeneratedSources { get; } = generatedSources;
+        Assert.Contains("/// Client for pet operations.", source);
+        Assert.Contains("/// Gets a pet.", source);
+        Assert.Contains("/// Fast.", source);
+        Assert.Contains("/// Returns the pet identified by the provided id.", source);
+        Assert.Contains("/// The pet identifier.", source);
+        Assert.Contains("/// The matching pet.", source);
+        Assert.DoesNotContain("<strong>", source);
+        Assert.DoesNotContain("<br/>", source);
+        Assert.DoesNotContain("<code>", source);
+        Assert.DoesNotContain("<div>", source);
     }
 }
