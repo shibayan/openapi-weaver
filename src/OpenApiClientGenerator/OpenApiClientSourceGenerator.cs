@@ -1,9 +1,4 @@
-﻿
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Linq;
+﻿using System.Globalization;
 using System.Text;
 
 using Microsoft.CodeAnalysis;
@@ -44,12 +39,7 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
             ReadResult readResult;
             try
             {
-                using var stream = new MemoryStream();
-                using (var writer = new StreamWriter(stream, Encoding.UTF8, bufferSize: 1024, leaveOpen: true))
-                {
-                    sourceText!.Write(writer);
-                }
-                stream.Position = 0;
+                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content), writable: false);
                 readResult = ReadOpenApiDocument(file.Path, stream);
             }
             catch (Exception exception)
@@ -170,7 +160,6 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
         };
 
         private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
-        private readonly HashSet<string> _enumSchemaIds = new(StringComparer.Ordinal);
         private readonly string _clientName = BuildClientName(documentPath, document);
         private readonly List<TagGroup> _tagGroups = [];
         private readonly List<SecuritySchemeBinding> _securitySchemes = [];
@@ -254,8 +243,7 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
                         }
                     }
 
-                    var parameters = (operation.PathItem.Parameters ?? []).Concat(operation.Operation.Parameters ?? []).ToList();
-                    if (parameters.Count > 0)
+                    if (operation.HasParameters)
                     {
                         _needsFormatParameter = true;
                     }
@@ -278,10 +266,6 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
             foreach (var schema in document.Components.Schemas)
             {
                 _schemaNames[schema.Key] = SafeIdentifier(ToPascalCase(schema.Key));
-                if (IsEnumSchema(schema.Value))
-                {
-                    _enumSchemaIds.Add(schema.Key);
-                }
             }
         }
 
@@ -304,7 +288,7 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
                         groups.Add(propertyName, group);
                     }
 
-                    group.Operations.Add(new OperationGroupItem(path.Key, path.Value, operation.Key.ToString(), operation.Value));
+                    group.Operations.Add(new OperationGroupItem(path.Key, path.Value, operation.Key.ToString(), operation.Value, CollectParameters(path.Value, operation.Value)));
                 }
             }
 
@@ -651,7 +635,9 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
         {
             var tagName = GetTagName(operation);
             var methodName = BuildOperationMethodName(operation.OperationId, operationType, route, tagName);
-            var parameters = (pathItem.Parameters ?? []).Concat(operation.Parameters ?? []).ToList();
+            var parameters = CollectParameters(pathItem, operation);
+            var hasHeaderParameters = parameters.Any(x => x.In == ParameterLocation.Header);
+
             var requestBody = ResolveRequestBody(operation.RequestBody);
             var response = ResolveResponse(operation.Responses ?? []);
 
@@ -745,13 +731,21 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
 
             builder.Append("        using var request = new HttpRequestMessage(HttpMethod.").Append(ToPascalCase(operationType.ToLowerInvariant())).AppendLine(", new Uri(path, UriKind.Relative));");
 
-            foreach (var parameter in parameters.Where(static parameter => parameter.In == ParameterLocation.Header))
+            if (hasHeaderParameters)
             {
-                var parameterName = SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty));
-                builder.Append("        if (").Append(parameterName).AppendLine(" is not null)");
-                builder.AppendLine("        {");
-                builder.Append("            request.Headers.TryAddWithoutValidation(\"").Append(parameter.Name).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
-                builder.AppendLine("        }");
+                foreach (var parameter in parameters)
+                {
+                    if (parameter.In != ParameterLocation.Header)
+                    {
+                        continue;
+                    }
+
+                    var parameterName = SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty));
+                    builder.Append("        if (").Append(parameterName).AppendLine(" is not null)");
+                    builder.AppendLine("        {");
+                    builder.Append("            request.Headers.TryAddWithoutValidation(\"").Append(parameter.Name).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
+                    builder.AppendLine("        }");
+                }
             }
 
             if (requestBody is not null)
@@ -822,21 +816,12 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
                 return null;
             }
 
-            var selectedContent = requestBody.Content.FirstOrDefault(static item => string.Equals(item.Key, "application/json", StringComparison.OrdinalIgnoreCase));
-            if (string.IsNullOrEmpty(selectedContent.Key))
-            {
-                selectedContent = requestBody.Content.FirstOrDefault(static item => string.Equals(item.Key, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (string.IsNullOrEmpty(selectedContent.Key))
-            {
-                selectedContent = requestBody.Content.FirstOrDefault(static item => string.Equals(item.Key, "multipart/form-data", StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (string.IsNullOrEmpty(selectedContent.Key))
-            {
-                selectedContent = requestBody.Content.First();
-            }
+            var selectedContent = SelectPreferredContent(
+                requestBody.Content,
+                static item => string.Equals(item.Key, "application/json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                    string.Equals(item.Key, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase) ? 1 :
+                    string.Equals(item.Key, "multipart/form-data", StringComparison.OrdinalIgnoreCase) ? 2 :
+                    int.MaxValue);
 
             return new RequestBodyInfo(
                 ResolveRequestBodyKind(selectedContent.Key),
@@ -846,32 +831,35 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
 
         private ResponseInfo ResolveResponse(OpenApiResponses responses)
         {
-            var response = responses
-                .Where(static item => item.Key.StartsWith("2", StringComparison.Ordinal))
-                .OrderBy(static item => ParseResponseStatusCode(item.Key))
-                .Select(static item => item.Value)
-                .FirstOrDefault();
+            IOpenApiResponse? response = null;
+            var bestStatusCode = int.MaxValue;
+
+            foreach (var item in responses)
+            {
+                if (!item.Key.StartsWith("2", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var statusCode = ParseResponseStatusCode(item.Key);
+                if (statusCode < bestStatusCode)
+                {
+                    bestStatusCode = statusCode;
+                    response = item.Value;
+                }
+            }
 
             if (response?.Content is null || response.Content.Count == 0)
             {
                 return new ResponseInfo(ResponseKind.None, string.Empty);
             }
 
-            var selectedContent = response.Content.FirstOrDefault(static item => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase));
-            if (string.IsNullOrEmpty(selectedContent.Key))
-            {
-                selectedContent = response.Content.FirstOrDefault(static item => HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (string.IsNullOrEmpty(selectedContent.Key))
-            {
-                selectedContent = response.Content.FirstOrDefault(static item => item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (string.IsNullOrEmpty(selectedContent.Key))
-            {
-                selectedContent = response.Content.First();
-            }
+            var selectedContent = SelectPreferredContent(
+                response.Content,
+                static item => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                    HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 1 :
+                    item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 2 :
+                    int.MaxValue);
 
             var kind = ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
             var typeName = kind switch
@@ -960,6 +948,56 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
         private static string MakeNullableTypeName(string typeName)
         {
             return typeName.EndsWith("?", StringComparison.Ordinal) ? typeName : $"{typeName}?";
+        }
+
+        private static List<IOpenApiParameter> CollectParameters(IOpenApiPathItem pathItem, OpenApiOperation operation)
+        {
+            var pathParameters = pathItem.Parameters;
+            var operationParameters = operation.Parameters;
+
+            if ((pathParameters is null || pathParameters.Count == 0)
+                && (operationParameters is null || operationParameters.Count == 0))
+            {
+                return [];
+            }
+
+            var parameters = new List<IOpenApiParameter>((pathParameters?.Count ?? 0) + (operationParameters?.Count ?? 0));
+            if (pathParameters is not null)
+            {
+                parameters.AddRange(pathParameters);
+            }
+
+            if (operationParameters is not null)
+            {
+                parameters.AddRange(operationParameters);
+            }
+
+            return parameters;
+        }
+
+        private static KeyValuePair<string, T> SelectPreferredContent<T>(IEnumerable<KeyValuePair<string, T>> content, Func<KeyValuePair<string, T>, int> getPriority)
+        {
+            using var enumerator = content.GetEnumerator();
+            if (!enumerator.MoveNext())
+            {
+                throw new InvalidOperationException("The content collection must not be empty.");
+            }
+
+            var selected = enumerator.Current;
+            var bestPriority = getPriority(selected);
+
+            while (enumerator.MoveNext())
+            {
+                var candidate = enumerator.Current;
+                var priority = getPriority(candidate);
+                if (priority < bestPriority)
+                {
+                    selected = candidate;
+                    bestPriority = priority;
+                }
+            }
+
+            return selected;
         }
 
         private static string SafeIdentifier(string value)
@@ -1172,12 +1210,13 @@ public sealed class OpenApiClientSourceGenerator : IIncrementalGenerator
             public List<OperationGroupItem> Operations { get; } = [];
         }
 
-        private sealed class OperationGroupItem(string route, IOpenApiPathItem pathItem, string operationType, OpenApiOperation operation)
+        private sealed class OperationGroupItem(string route, IOpenApiPathItem pathItem, string operationType, OpenApiOperation operation, List<IOpenApiParameter> parameters)
         {
             public string Route { get; } = route;
             public IOpenApiPathItem PathItem { get; } = pathItem;
             public string OperationType { get; } = operationType;
             public OpenApiOperation Operation { get; } = operation;
+            public bool HasParameters { get; } = parameters.Count > 0;
         }
 
         private sealed class SecuritySchemeBinding(string parameterName, string parameterDeclaration, string headerOrParameterName, SecuritySchemeLocation location, bool isBearerToken)
