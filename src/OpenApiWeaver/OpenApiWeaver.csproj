@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive\OpenApiWeaver.props" Pack="true" PackagePath="buildTransitive\OpenApiWeaver.props" />
+    <None Include="buildTransitive\OpenApiWeaver.targets" Pack="true" PackagePath="buildTransitive\OpenApiWeaver.targets" />
   </ItemGroup>
 
   <ItemGroup>

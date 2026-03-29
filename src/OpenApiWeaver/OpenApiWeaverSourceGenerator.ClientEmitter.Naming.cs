@@ -387,9 +387,14 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return operation.Tags?.FirstOrDefault()?.Name;
         }
 
-        private static string BuildClientName(string documentPath, OpenApiDocument document)
+        private static string BuildClientName(string documentPath, OpenApiDocument document, string? configuredClientName)
         {
-            var baseName = Path.GetFileNameWithoutExtension(documentPath);
+            var baseName = configuredClientName;
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = Path.GetFileNameWithoutExtension(documentPath);
+            }
+
             if (string.IsNullOrWhiteSpace(baseName))
             {
                 baseName = !string.IsNullOrWhiteSpace(document.Info.Title)

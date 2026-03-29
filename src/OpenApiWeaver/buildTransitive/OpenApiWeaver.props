@@ -1,0 +1,8 @@
+<Project>
+  <ItemDefinitionGroup>
+    <OpenApiWeaverDocument>
+      <ClientName></ClientName>
+      <Namespace></Namespace>
+    </OpenApiWeaverDocument>
+  </ItemDefinitionGroup>
+</Project>
