@@ -137,8 +137,7 @@ The generator itself targets **netstandard2.0** and works with any compatible SD
 
 ## License
 
-This project is licensed under the terms of the license file in this repository.
-- Other shapes that require runtime inspection to serialize
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Generated Behavior
 
