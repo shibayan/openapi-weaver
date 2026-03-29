@@ -515,4 +515,181 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Contains("public required int CompanyId { get; init; }", source);
         Assert.Contains("public required string? DisplayName { get; init; }", source);
     }
+
+    [Fact]
+    public void ConsecutiveUppercaseAbbreviation_SplitsOnCaseBoundary()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Abbreviation API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                HTTPResponse:
+                  type: object
+                  required:
+                    - statusCode
+                  properties:
+                    statusCode:
+                      type: integer
+                    responseURL:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class HttpResponse", source);
+        Assert.Contains("public required int StatusCode { get; init; }", source);
+        Assert.Contains("public string? ResponseUrl { get; init; }", source);
+    }
+
+    [Fact]
+    public void NonAsciiPropertyNames_GeneratesValidIdentifiers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Non-ASCII API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                companyResponse:
+                  type: object
+                  required:
+                    - company_name
+                  properties:
+                    company_name:
+                      type: string
+                    note:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class CompanyResponse", source);
+        Assert.Contains("[JsonPropertyName(\"company_name\")]", source);
+        Assert.Contains("public required string CompanyName { get; init; }", source);
+    }
+
+    [Fact]
+    public void CircularAllOfReference_DoesNotCauseInfiniteLoop()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Circular API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                nodeA:
+                  allOf:
+                    - $ref: '#/components/schemas/nodeB'
+                    - type: object
+                      properties:
+                        name:
+                          type: string
+                nodeB:
+                  allOf:
+                    - $ref: '#/components/schemas/nodeA'
+                    - type: object
+                      properties:
+                        value:
+                          type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class NodeA", source);
+        Assert.Contains("public sealed class NodeB", source);
+    }
+
+    [Fact]
+    public void SelfReferencingSchema_GeneratesValidType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Tree API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                treeNode:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                    children:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/treeNode'
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class TreeNode", source);
+        Assert.Contains("public required string Name { get; init; }", source);
+        Assert.Contains("public IReadOnlyList<TreeNode>? Children { get; init; }", source);
+    }
+
+    [Fact]
+    public void ExtremelyLongSchemaName_GeneratesValidIdentifier()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Long Schema API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                this_is_an_extremely_long_schema_name_that_should_still_work_correctly:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class ThisIsAnExtremelyLongSchemaNameThatShouldStillWorkCorrectly", source);
+        Assert.Contains("public required int Id { get; init; }", source);
+    }
+
+    [Fact]
+    public void ReservedWordPropertyName_GeneratesSafeIdentifier()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Reserved Word API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                filterResponse:
+                  type: object
+                  required:
+                    - class
+                  properties:
+                    class:
+                      type: string
+                    default:
+                      type: boolean
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonPropertyName(\"class\")]", source);
+        Assert.Contains("public required string Class { get; init; }", source);
+        Assert.Contains("[JsonPropertyName(\"default\")]", source);
+    }
 }

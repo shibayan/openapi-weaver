@@ -125,14 +125,40 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return string.Empty;
             }
 
-            var normalized = new StringBuilder(value.Length);
-            foreach (var ch in value)
+            var normalized = new StringBuilder(value.Length + 4);
+            for (var i = 0; i < value.Length; i++)
             {
-                normalized.Append(char.IsLetterOrDigit(ch) ? ch : ' ');
+                var ch = value[i];
+                if (!char.IsLetterOrDigit(ch))
+                {
+                    if (normalized.Length > 0 && normalized[normalized.Length - 1] != ' ')
+                    {
+                        normalized.Append(' ');
+                    }
+
+                    continue;
+                }
+
+                if (normalized.Length > 0 && normalized[normalized.Length - 1] != ' ')
+                {
+                    if (char.IsUpper(ch) && !char.IsUpper(normalized[normalized.Length - 1]))
+                    {
+                        // Boundary: lowercase/digit → uppercase (e.g., "listH" → "list H")
+                        normalized.Append(' ');
+                    }
+                    else if (char.IsUpper(ch) && i + 1 < value.Length && char.IsLower(value[i + 1])
+                             && normalized.Length >= 2 && char.IsUpper(normalized[normalized.Length - 1]))
+                    {
+                        // Boundary: acronym end (e.g., "PR" in "HTTPResponse" → "HTTP Response")
+                        normalized.Append(' ');
+                    }
+                }
+
+                normalized.Append(ch);
             }
 
             var parts = normalized.ToString().Split([' '], StringSplitOptions.RemoveEmptyEntries);
-            return string.Concat(parts.Select(static part => char.ToUpperInvariant(part[0]) + part.Substring(1)));
+            return string.Concat(parts.Select(static part => char.ToUpperInvariant(part[0]) + part.Substring(1).ToLowerInvariant()));
         }
 
         private static string ToCamelCase(string value)
