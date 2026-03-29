@@ -99,13 +99,13 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     var parameterName = SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty));
                     if (parameter.Required)
                     {
-                        builder.Append("        OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(parameter.Name).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
+                        builder.Append("        OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.Name ?? string.Empty)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
                     }
                     else
                     {
                         builder.Append("        if (").Append(parameterName).AppendLine(" is not null)");
                         builder.AppendLine("        {");
-                        builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(parameter.Name).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
+                        builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.Name ?? string.Empty)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
                         builder.AppendLine("        }");
                     }
                 }
@@ -115,7 +115,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 builder.Append("        if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
                 builder.AppendLine("        {");
-                builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
                 builder.AppendLine("        }");
             }
 

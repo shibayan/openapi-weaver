@@ -84,6 +84,14 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
                     file.Path,
                     exception.Message));
             }
+            catch (Exception exception)
+            {
+                productionContext.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.DocumentInvalid,
+                    Location.None,
+                    file.Path,
+                    exception.Message));
+            }
         });
     }
 

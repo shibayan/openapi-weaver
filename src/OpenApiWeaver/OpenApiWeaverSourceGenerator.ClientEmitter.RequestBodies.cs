@@ -159,6 +159,15 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             var schemaType = resolvedSchema.Type & ~JsonSchemaType.Null;
+            if (schemaType == 0 && resolvedSchema.AllOf is { Count: > 0 })
+            {
+                var nonNullMembers = resolvedSchema.AllOf.Where(s => !IsNullOnlySchema(s)).ToList();
+                if (nonNullMembers.Count == 1)
+                {
+                    return ClassifyRequestBodyValueKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0], out elementKind);
+                }
+            }
+
             switch (schemaType)
             {
                 case JsonSchemaType.Integer:
@@ -205,6 +214,15 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             var schemaType = resolvedSchema.Type & ~JsonSchemaType.Null;
+            if (schemaType == 0 && resolvedSchema.AllOf is { Count: > 0 })
+            {
+                var nonNullMembers = resolvedSchema.AllOf.Where(s => !IsNullOnlySchema(s)).ToList();
+                if (nonNullMembers.Count == 1)
+                {
+                    return ClassifyCollectionElementKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0]);
+                }
+            }
+
             return schemaType switch
             {
                 JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean => RequestBodyValueKind.Scalar,
@@ -243,7 +261,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 .Append(EscapeStringLiteral(name))
                 .Append("\", OpenApiClientHelpers.FormatParameter(")
                 .Append(valueExpression)
-                .AppendLine("))); ");
+                .AppendLine(")));");
         }
 
         private static void EmitMultipartValueAdd(StringBuilder builder, string name, string valueExpression, RequestBodyValueKind kind, int indentLevel)
