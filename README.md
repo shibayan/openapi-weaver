@@ -1,103 +1,143 @@
 # OpenApiWeaver
 
-`OpenApiWeaver` is an incremental Roslyn source generator that turns OpenAPI documents into strongly typed C# HTTP clients at build time.
+[![NuGet](https://img.shields.io/nuget/v/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver)
+[![License](https://img.shields.io/github/license/shibayan/openapi-weaver)](LICENSE)
 
-The generator reads OpenAPI `.json`, `.yaml`, and `.yml` files added as `AdditionalFiles`, parses them with `Microsoft.OpenApi`, and emits:
+**OpenApiWeaver** is an incremental Roslyn source generator that turns OpenAPI documents into strongly typed C# HTTP clients at build time. No runtime code generation, no reflection — just plain C# emitted during compilation.
 
-- A top-level client class for the document
-- Tag-based sub clients for grouped operations
-- Request and response DTOs from component schemas
-- Serialization metadata such as `JsonPropertyName` for snake_case fields
+## Quick Start
 
-## Features
-
-- Incremental source generation via Roslyn
-- Supports OpenAPI documents in JSON and YAML
-- Generates client classes grouped by OpenAPI tags
-- Generates typed request and response models from schemas
-- Handles JSON request bodies and compile-time-generatable `application/x-www-form-urlencoded` / `multipart/form-data` request bodies
-- Maps text responses to `string`, binary responses to `byte[]`, and empty success responses to `Task`
-- Initializes authentication headers from OpenAPI security schemes when possible
-- Reports diagnostics for empty, invalid, warning-producing, and unsupported OpenAPI documents
-
-## Repository Layout
-
-- `src/OpenApiWeaver`: source generator implementation
-- `tests/OpenApiWeaver.Tests`: xUnit tests for generated output behavior
-- `samples/SampleApp`: minimal sample project that consumes the generator
-
-## Requirements
-
-- .NET SDK with support for `net10.0` for the sample app and tests
-- A C# project that can reference Roslyn analyzers/source generators
-
-The generator itself targets `netstandard2.0`.
-
-## How It Works
-
-For each OpenAPI document included as an additional file, the generator creates a client whose name is based on the file name.
-
-Example:
-
-- `api-schema.json` -> `ApiSchemaClient`
-- `petstore.yaml` -> `PetstoreClient`
-
-Operations are grouped by OpenAPI tags. If a document has a `Tags` tag, the generated root client exposes a `Tags` property whose type is a generated tag client.
-
-## Using the Generator in a Project
-
-Add the NuGet package to your project and include your OpenAPI document as an additional file.
+### 1. Install the package
 
 ```xml
 <ItemGroup>
   <PackageReference Include="OpenApiWeaver" Version="x.y.z" PrivateAssets="all" />
 </ItemGroup>
+```
 
+### 2. Add your OpenAPI document as an additional file
+
+```xml
 <ItemGroup>
-  <AdditionalFiles Include="openapi\api-schema.json" />
+  <AdditionalFiles Include="openapi\petstore.yaml" />
 </ItemGroup>
 ```
 
-The package contains the source generator and its analyzer dependencies, so no extra analyzer entries are required.
+The package bundles the source generator and all required analyzer dependencies — no extra references needed.
 
-## Minimal Example
-
-If your project includes `openapi/api-schema.json`, the generated client name becomes `ApiSchemaClient`.
+### 3. Use the generated client
 
 ```csharp
-using SampleApp;
+var client = new PetstoreClient(accessToken: "your-token");
 
-using var client = new ApiSchemaClient(accessToken: "dummy-access-token");
-
-Console.WriteLine(client.Tags.GetType().FullName);
+var pets = await client.Pets.ListAsync();
 ```
 
-The generated root client:
+The client name is derived from the file name (`petstore.yaml` → `PetstoreClient`).
 
-- Creates an internal `HttpClient`
-- Sets `BaseAddress` from the first OpenAPI server URL when available
-- Applies security settings such as bearer tokens from constructor arguments
+## Features
+
+- **Incremental source generation** — leverages the Roslyn incremental generator pipeline for fast, cached rebuilds
+- **JSON & YAML support** — reads `.json`, `.yaml`, and `.yml` OpenAPI documents
+- **Tag-based sub-clients** — operations are grouped by OpenAPI tags and exposed as properties on the root client
+- **Typed request / response models** — generates sealed classes, enums (as `readonly record struct`), and collection types from `components/schemas`
+- **Multiple request body formats** — `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
+- **Security scheme initialization** — constructor parameters for OAuth2 / Bearer tokens, API keys (header, query, cookie)
+- **All HTTP methods** — GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, TRACE
+- **Build-time diagnostics** — reports errors and warnings for invalid or unsupported OpenAPI documents
+
+## How It Works
+
+For each OpenAPI document included as an `AdditionalFiles` item, the generator:
+
+1. Parses the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET)
+2. Derives a client class name from the file name (e.g. `api-schema.json` → `ApiSchemaClient`)
+3. Groups operations by OpenAPI tags into sub-client classes
+4. Emits request / response DTOs from component schemas
+5. Generates async methods for each operation, using `operationId` as the method name when available
+
+The root client:
+
+- Creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry
+- Accepts optional security credentials (bearer tokens, API keys) via constructor parameters
 - Exposes one property per tag group
 
-Generated operation methods are based on `operationId` when present.
+## Supported Schema Types
+
+| OpenAPI Type | C# Type |
+|---|---|
+| `integer` | `int` |
+| `integer` (int64) | `long` |
+| `number` (float) | `float` |
+| `number` (double) | `double` |
+| `boolean` | `bool` |
+| `string` | `string` |
+| `string` (date) | `DateOnly` |
+| `string` (date-time) | `DateTimeOffset` |
+| `string` (uuid) | `Guid` |
+| `string` (binary) | `byte[]` |
+| `array` | `IReadOnlyList<T>` |
+| `object` with `additionalProperties` | `IReadOnlyDictionary<string, T>` |
+| `allOf` | Flattened into a single class |
+| `oneOf` / `anyOf` | Union-style nullable properties |
+| `enum` | `readonly record struct` with static members |
+
+Properties use `[JsonPropertyName]` attributes for correct serialization of snake_case or other non-PascalCase field names.
+
+## Security Schemes
+
+| Scheme | Location | Behavior |
+|---|---|---|
+| OAuth2 / Bearer | `Authorization` header | `Bearer {token}` |
+| API Key | Header | Custom header via `DefaultRequestHeaders` |
+| API Key | Query | Appended to request URL |
+| API Key | Cookie | `Cookie` header with `name=value` |
+
+All security parameters are optional in the generated constructor.
 
 ## Compile-Time-Only Request Body Policy
 
-`OpenApiWeaver` does not use runtime reflection or fallback paths for form-based request bodies.
-If `application/x-www-form-urlencoded` or `multipart/form-data` content cannot be emitted entirely at compile time, generation fails with `OAW004`.
+`OpenApiWeaver` does not use runtime reflection or fallback paths for form-based request bodies. If `application/x-www-form-urlencoded` or `multipart/form-data` content cannot be emitted entirely at compile time, generation fails with `OAW004`.
 
-Supported form and multipart request bodies currently require:
+Supported form and multipart request bodies require:
 
 - A schema reference to `components/schemas`
 - An object shape whose properties are known at generation time
-- Property types that map directly to generated CLR members such as scalars, `byte[]`, and supported collections of those values
+- Property types that map directly to CLR types (scalars, `byte[]`, supported collections)
 
-The following are intentionally unsupported for form and multipart request bodies:
+The following are **intentionally unsupported** for form/multipart request bodies:
 
 - Inline request body schemas
 - `oneOf` / `anyOf`
-- `additionalProperties`
-- `patternProperties`
+- `additionalProperties` / `patternProperties`
+
+## Diagnostics
+
+| Rule ID | Severity | Description |
+|---|---|---|
+| OAW001 | Error | OpenAPI document is empty |
+| OAW002 | Warning | OpenAPI document has validation warnings |
+| OAW003 | Error | OpenAPI document is invalid or could not be parsed |
+| OAW004 | Error | OpenAPI document uses an unsupported feature |
+
+## Repository Layout
+
+```
+src/OpenApiWeaver/          # Source generator implementation (targets netstandard2.0)
+tests/OpenApiWeaver.Tests/  # xUnit tests
+samples/SampleApp/          # Minimal sample project
+```
+
+## Requirements
+
+- .NET SDK 10.0+ (for the sample app and tests)
+- Any C# project that supports Roslyn analyzers / source generators
+
+The generator itself targets **netstandard2.0** and works with any compatible SDK.
+
+## License
+
+This project is licensed under the terms of the license file in this repository.
 - Other shapes that require runtime inspection to serialize
 
 ## Generated Behavior
