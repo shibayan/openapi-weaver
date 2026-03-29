@@ -33,11 +33,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private bool _needsMultipartFormData;
         private bool _needsFormatParameter;
 
-        public ClientEmitter(string documentPath, string rootNamespace, OpenApiDocument document)
+        public ClientEmitter(string documentPath, string rootNamespace, string? namespaceOverride, string? clientNameOverride, OpenApiDocument document)
         {
-            _rootNamespace = rootNamespace;
+            var effectiveNamespace = string.IsNullOrWhiteSpace(namespaceOverride) ? rootNamespace : namespaceOverride!;
+            _rootNamespace = effectiveNamespace ?? string.Empty;
             _document = document;
-            _clientName = BuildClientName(documentPath, document);
+            _clientName = BuildClientName(documentPath, document, clientNameOverride);
         }
 
         public string Emit()

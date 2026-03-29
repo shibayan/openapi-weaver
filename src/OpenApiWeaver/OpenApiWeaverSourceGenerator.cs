@@ -1,6 +1,7 @@
 ﻿using System.Text;
 
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.OpenApi.Reader;
 using Microsoft.OpenApi.YamlReader;
@@ -12,20 +13,14 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var rootNamespace = context.AnalyzerConfigOptionsProvider
-            .Select(static (provider, _) =>
-            {
-                provider.GlobalOptions.TryGetValue("build_property.RootNamespace", out var value);
-                return value ?? string.Empty;
-            });
-
         var openApiFiles = context.AdditionalTextsProvider
-            .Where(static file => IsOpenApiDocument(file.Path));
+            .Where(static file => IsOpenApiDocument(file.Path))
+            .Combine(context.AnalyzerConfigOptionsProvider)
+            .Select(static (pair, _) => CreateInput(pair.Left, pair.Right));
 
-        context.RegisterSourceOutput(openApiFiles.Combine(rootNamespace), static (productionContext, pair) =>
+        context.RegisterSourceOutput(openApiFiles, static (productionContext, input) =>
         {
-            var file = pair.Left;
-            var configuredRootNamespace = pair.Right;
+            var file = input.File;
             var sourceText = file.GetText(productionContext.CancellationToken);
             var content = sourceText?.ToString();
             if (string.IsNullOrWhiteSpace(content))
@@ -73,7 +68,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
 
             try
             {
-                var source = new ClientEmitter(file.Path, configuredRootNamespace, document).Emit();
+                var source = new ClientEmitter(file.Path, input.RootNamespace, input.Namespace, input.ClientName, document).Emit();
                 productionContext.AddSource($"{SanitizeHintName(file.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
             }
             catch (UnsupportedGenerationException exception)
@@ -102,6 +97,24 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             || string.Equals(extension, ".yml", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static GeneratorInput CreateInput(AdditionalText file, AnalyzerConfigOptionsProvider optionsProvider)
+    {
+        optionsProvider.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
+
+        var fileOptions = optionsProvider.GetOptions(file);
+        fileOptions.TryGetValue("build_metadata.AdditionalFiles.Namespace", out var configuredNamespace);
+        fileOptions.TryGetValue("build_metadata.AdditionalFiles.ClientName", out var clientName);
+
+        return new GeneratorInput(
+            file,
+            rootNamespace ?? string.Empty,
+            NormalizeOption(configuredNamespace),
+            NormalizeOption(clientName));
+    }
+
+    private static string? NormalizeOption(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static ReadResult ReadOpenApiDocument(string path, MemoryStream stream)
     {
@@ -168,6 +181,25 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             "OpenApiWeaver",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+    }
+
+    private sealed class GeneratorInput
+    {
+        public GeneratorInput(AdditionalText file, string rootNamespace, string? @namespace, string? clientName)
+        {
+            File = file;
+            RootNamespace = rootNamespace;
+            Namespace = @namespace;
+            ClientName = clientName;
+        }
+
+        public AdditionalText File { get; }
+
+        public string RootNamespace { get; }
+
+        public string? Namespace { get; }
+
+        public string? ClientName { get; }
     }
 
     private sealed class UnsupportedGenerationException(string message) : Exception(message);

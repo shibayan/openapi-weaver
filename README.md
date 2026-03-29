@@ -15,7 +15,21 @@
 </ItemGroup>
 ```
 
-### 2. Add your OpenAPI document as an additional file
+### 2. Add your OpenAPI document
+
+Preferred configuration:
+
+```xml
+<ItemGroup>
+  <OpenApiWeaverDocument Include="openapi\petstore.yaml"
+                         ClientName="PetstoreSdk"
+                         Namespace="Contoso.Generated" />
+</ItemGroup>
+```
+
+`ClientName` and `Namespace` are optional metadata. If omitted, the generator falls back to the file name and the project's `RootNamespace`.
+
+`AdditionalFiles` is still supported for simple scenarios:
 
 ```xml
 <ItemGroup>
@@ -48,7 +62,7 @@ The client name is derived from the file name (`petstore.yaml` → `PetstoreClie
 
 ## How It Works
 
-For each OpenAPI document included as an `AdditionalFiles` item, the generator:
+For each OpenAPI document included as an `OpenApiWeaverDocument` or `AdditionalFiles` item, the generator:
 
 1. Parses the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET)
 2. Derives a client class name from the file name (e.g. `api-schema.json` → `ApiSchemaClient`)
