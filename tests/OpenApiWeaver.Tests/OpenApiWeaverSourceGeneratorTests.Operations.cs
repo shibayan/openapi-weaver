@@ -1133,4 +1133,65 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Contains("new HttpMethod(\"QUERY\")", source);
         Assert.Contains("QueryResourcesAsync", source);
     }
+
+    [Fact]
+    public void MissingOperationId_DerivesMethodNameFromRouteAndVerb()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: No OperationId API
+              version: v1
+            paths:
+              /items:
+                get:
+                  tags:
+                    - items
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: array
+                            items:
+                              type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("GetAsync(", source);
+    }
+
+    [Fact]
+    public void EmptyOperationId_DerivesMethodNameFromHttpVerb()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Empty OperationId API
+              version: v1
+            paths:
+              /items:
+                post:
+                  operationId: ""
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          type: object
+                  responses:
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("Async(", source);
+    }
 }
