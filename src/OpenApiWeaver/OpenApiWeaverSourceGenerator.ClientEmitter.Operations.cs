@@ -18,6 +18,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
             var requestBody = ResolveRequestBody(operation.RequestBody);
             var response = ResolveResponse(operation.Responses ?? []);
             var parameterDocumentation = new List<KeyValuePair<string, string?>>();
+            var pathParameters = parameters.Where(static parameter => parameter.In == ParameterLocation.Path).ToList();
+            var queryParameters = parameters.Where(static parameter => parameter.In is ParameterLocation.Query or ParameterLocation.QueryString).ToList();
 
             var requiredMethodParameters = new List<string>();
             var optionalMethodParameters = new List<string>();
@@ -78,47 +80,48 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             builder.AppendLine("    {");
-            builder.Append("        var path = \"").Append(route).AppendLine("\";");
-
-            foreach (var parameter in parameters.Where(static parameter => parameter.In == ParameterLocation.Path))
+            var usesPathBuilder = pathParameters.Count > 0 || queryParameters.Count > 0 || _querySecuritySchemes.Count > 0;
+            if (usesPathBuilder)
             {
-                var parameterName = SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty));
-                builder.Append("        path = path.Replace(\"{").Append(parameter.Name).Append("}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine(")));");
+                builder.AppendLine("        var pathBuilder = new StringBuilder();");
+                EmitRouteTemplate(builder, route, pathParameters);
+            }
+            else
+            {
+                builder.Append("        var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
             }
 
-            var queryParameters = parameters.Where(static parameter => parameter.In is ParameterLocation.Query or ParameterLocation.QueryString).ToList();
-            if (queryParameters.Count > 0)
+            if (queryParameters.Count > 0 || _querySecuritySchemes.Count > 0)
             {
-                builder.AppendLine("        var query = new List<string>();");
+                builder.AppendLine("        var hasQuery = false;");
                 foreach (var parameter in queryParameters)
                 {
                     var parameterName = SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty));
                     if (parameter.Required)
                     {
-                        builder.Append("        query.Add(\"").Append(parameter.Name).Append("=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine(")));");
+                        builder.Append("        OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.Name ?? string.Empty)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
                     }
                     else
                     {
                         builder.Append("        if (").Append(parameterName).AppendLine(" is not null)");
                         builder.AppendLine("        {");
-                        builder.Append("            query.Add(\"").Append(parameter.Name).Append("=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine(")));");
+                        builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.Name ?? string.Empty)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameterName).AppendLine("));");
                         builder.AppendLine("        }");
                     }
                 }
-
-                builder.AppendLine("        if (query.Count > 0)");
-                builder.AppendLine("        {");
-                builder.AppendLine("            path += \"?\" + string.Join(\"&\", query);");
-                builder.AppendLine("        }");
             }
 
             foreach (var securityScheme in _querySecuritySchemes)
             {
                 builder.Append("        if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
                 builder.AppendLine("        {");
-                builder.AppendLine("            path += path.Contains(\"?\", StringComparison.Ordinal) ? \"&\" : \"?\";");
-                builder.Append("            path += \"").Append(securityScheme.HeaderOrParameterName).Append("=\" + Uri.EscapeDataString(").Append(securityScheme.FieldName).AppendLine(");");
+                builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
                 builder.AppendLine("        }");
+            }
+
+            if (usesPathBuilder)
+            {
+                builder.AppendLine("        var path = pathBuilder.ToString();");
             }
 
             var httpMethodExpression = GetHttpMethodExpression(operationType);
@@ -184,22 +187,54 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("    }");
         }
 
-        private static void EmitRequestBodyContentAssignment(StringBuilder builder, RequestBodyInfo requestBody, bool nullableBody)
+        private void EmitRouteTemplate(StringBuilder builder, string route, IReadOnlyList<IOpenApiParameter> pathParameters)
         {
-            var bodyValue = nullableBody ? "body!" : "body";
+            var parameterLookup = pathParameters
+                .Where(static parameter => !string.IsNullOrEmpty(parameter.Name))
+                .ToDictionary(static parameter => parameter.Name!, StringComparer.Ordinal);
 
-            switch (requestBody.Kind)
+            var startIndex = 0;
+            while (startIndex < route.Length)
             {
-                case RequestBodyKind.FormUrlEncoded:
-                    builder.Append("            request.Content = OpenApiClientHelpers.CreateFormUrlEncodedContent(").Append(bodyValue).AppendLine(");");
+                var openBraceIndex = route.IndexOf('{', startIndex);
+                if (openBraceIndex < 0)
+                {
+                    EmitRouteLiteral(builder, route.Substring(startIndex));
                     break;
-                case RequestBodyKind.MultipartFormData:
-                    builder.Append("            request.Content = OpenApiClientHelpers.CreateMultipartFormDataContent(").Append(bodyValue).AppendLine(");");
+                }
+
+                var closeBraceIndex = route.IndexOf('}', openBraceIndex + 1);
+                if (closeBraceIndex < 0)
+                {
+                    EmitRouteLiteral(builder, route.Substring(startIndex));
                     break;
-                default:
-                    builder.Append("            request.Content = JsonContent.Create(").Append(bodyValue).AppendLine(", options: OpenApiClientHelpers.SerializerOptions);");
-                    break;
+                }
+
+                EmitRouteLiteral(builder, route.Substring(startIndex, openBraceIndex - startIndex));
+
+                var parameterName = route.Substring(openBraceIndex + 1, closeBraceIndex - openBraceIndex - 1);
+                if (parameterLookup.TryGetValue(parameterName, out var parameter))
+                {
+                    var pathParameterName = SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty));
+                    builder.AppendLine($"        pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter({pathParameterName})));");
+                }
+                else
+                {
+                    EmitRouteLiteral(builder, route.Substring(openBraceIndex, closeBraceIndex - openBraceIndex + 1));
+                }
+
+                startIndex = closeBraceIndex + 1;
             }
+        }
+
+        private static void EmitRouteLiteral(StringBuilder builder, string segment)
+        {
+            if (segment.Length == 0)
+            {
+                return;
+            }
+
+            builder.Append("        pathBuilder.Append(\"").Append(EscapeStringLiteral(segment)).AppendLine("\");");
         }
 
         private RequestBodyInfo? ResolveRequestBody(IOpenApiRequestBody? requestBody)
@@ -219,7 +254,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return new RequestBodyInfo(
                 ResolveRequestBodyKind(selectedContent.Key),
                 ResolveTypeName(selectedContent.Value.Schema, requestBody.Required),
-                requestBody.Required);
+                requestBody.Required,
+                selectedContent.Value.Schema);
         }
 
         private ResponseInfo ResolveResponse(OpenApiResponses responses)

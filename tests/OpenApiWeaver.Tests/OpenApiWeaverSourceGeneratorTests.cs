@@ -51,8 +51,9 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var compilationErrors = diagnostics
             .Concat(outputCompilation.GetDiagnostics())
             .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
-                && diagnostic.Id != "OARSG002"
-                && diagnostic.Id != "OARSG004")
+                && diagnostic.Id != "OAW001"
+                && diagnostic.Id != "OAW003"
+                && diagnostic.Id != "OAW004")
             .ToArray();
 
         Assert.True(compilationErrors.Length == 0, string.Join(Environment.NewLine, compilationErrors.Select(static error => error.ToString())));

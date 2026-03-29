@@ -15,10 +15,10 @@ The generator reads OpenAPI `.json`, `.yaml`, and `.yml` files added as `Additio
 - Supports OpenAPI documents in JSON and YAML
 - Generates client classes grouped by OpenAPI tags
 - Generates typed request and response models from schemas
-- Handles JSON, `application/x-www-form-urlencoded`, and `multipart/form-data` request bodies
+- Handles JSON request bodies and compile-time-generatable `application/x-www-form-urlencoded` / `multipart/form-data` request bodies
 - Maps text responses to `string`, binary responses to `byte[]`, and empty success responses to `Task`
 - Initializes authentication headers from OpenAPI security schemes when possible
-- Reports diagnostics for empty, invalid, and warning-producing OpenAPI documents
+- Reports diagnostics for empty, invalid, warning-producing, and unsupported OpenAPI documents
 
 ## Repository Layout
 
@@ -81,14 +81,34 @@ The generated root client:
 
 Generated operation methods are based on `operationId` when present.
 
+## Compile-Time-Only Request Body Policy
+
+`OpenApiWeaver` does not use runtime reflection or fallback paths for form-based request bodies.
+If `application/x-www-form-urlencoded` or `multipart/form-data` content cannot be emitted entirely at compile time, generation fails with `OAW004`.
+
+Supported form and multipart request bodies currently require:
+
+- A schema reference to `components/schemas`
+- An object shape whose properties are known at generation time
+- Property types that map directly to generated CLR members such as scalars, `byte[]`, and supported collections of those values
+
+The following are intentionally unsupported for form and multipart request bodies:
+
+- Inline request body schemas
+- `oneOf` / `anyOf`
+- `additionalProperties`
+- `patternProperties`
+- Other shapes that require runtime inspection to serialize
+
 ## Generated Behavior
 
 Current test coverage verifies the following behavior:
 
 - Empty documents report an error diagnostic and generate no source
 - Invalid documents report an error diagnostic and generate no source
-- Multipart request bodies generate `byte[]` properties for binary fields and multipart content helpers
-- Optional form bodies generate nullable method parameters and conditional request content assignment
+- Unsupported compile-time-only request body shapes report `OAW004` and generate no source
+- Multipart request bodies generate `byte[]` properties for binary fields and inline multipart content construction
+- Optional form bodies generate nullable method parameters and conditional form content assignment
 - No-content success responses generate non-generic `Task`
 - Binary responses generate `Task<byte[]>`
 - Snake_case schema properties are preserved with `JsonPropertyName`

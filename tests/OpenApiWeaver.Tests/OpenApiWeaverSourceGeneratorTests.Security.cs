@@ -37,7 +37,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Contains("public partial class TestClient : IDisposable", source);
         Assert.Contains("public TestClient(string? partnerApiKey = default)", source);
         Assert.Contains("_partnerApiKey = partnerApiKey;", source);
-        Assert.Contains("path += \"api_key=\" + Uri.EscapeDataString(_partnerApiKey);", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"api_key\", _partnerApiKey);", source);
     }
 
     [Fact]

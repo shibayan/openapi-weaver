@@ -48,7 +48,11 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("public required byte[] Receipt", source);
         Assert.Contains("[JsonPropertyName(\"company_id\")]", source);
-        Assert.Contains("request.Content = OpenApiClientHelpers.CreateMultipartFormDataContent(body);", source);
+        Assert.DoesNotContain("PropertyCache<TBody>", source);
+        Assert.Contains("var content = new MultipartFormDataContent();", source);
+        Assert.Contains("content.Add(new ByteArrayContent(body.Receipt), \"receipt\", \"receipt\");", source);
+        Assert.Contains("content.Add(new StringContent(OpenApiClientHelpers.FormatParameter(body.CompanyId)), \"company_id\");", source);
+        Assert.Contains("request.Content = content;", source);
     }
 
     [Fact]
@@ -88,8 +92,12 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("ExpenseApplicationCreateParams? body = default", source);
+        Assert.DoesNotContain("PropertyCache<TBody>", source);
         Assert.Contains("if (body is not null)", source);
-        Assert.Contains("request.Content = OpenApiClientHelpers.CreateFormUrlEncodedContent(body!);", source);
+        Assert.Contains("var values = new List<KeyValuePair<string, string>>();", source);
+        Assert.Contains("if (body!.CompanyId is not null)", source);
+        Assert.Contains("values.Add(new KeyValuePair<string, string>(\"company_id\", OpenApiClientHelpers.FormatParameter(body!.CompanyId)));", source);
+        Assert.Contains("request.Content = new FormUrlEncodedContent(values);", source);
     }
 
     [Fact]
@@ -502,8 +510,9 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
-        Assert.Contains("path = path.Replace(\"{item_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(itemId)));", source);
+        Assert.Contains("var pathBuilder = new StringBuilder();", source);
+        Assert.Contains("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
+        Assert.Contains("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(itemId)));", source);
     }
 
     [Fact]
@@ -610,12 +619,13 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("public async Task<JsonElement> ListReportsAsync(DateOnly reportDate, DateTimeOffset? changedAfter = default, Guid? requestId = default, CancellationToken cancellationToken = default)", source);
-        Assert.Contains("var query = new List<string>();", source);
-        Assert.Contains("query.Add(\"report_date=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(reportDate)));", source);
+        Assert.Contains("var pathBuilder = new StringBuilder();", source);
+        Assert.Contains("var hasQuery = false;", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"report_date\", OpenApiClientHelpers.FormatParameter(reportDate));", source);
         Assert.Contains("if (changedAfter is not null)", source);
-        Assert.Contains("query.Add(\"changed_after=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(changedAfter)));", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"changed_after\", OpenApiClientHelpers.FormatParameter(changedAfter));", source);
         Assert.Contains("if (requestId is not null)", source);
-        Assert.Contains("query.Add(\"request_id=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(requestId)));", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"request_id\", OpenApiClientHelpers.FormatParameter(requestId));", source);
     }
 
     [Fact]
@@ -654,8 +664,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(int partnerId, int? page = default, CancellationToken cancellationToken = default)", source);
-        Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
-        Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
+        Assert.Contains("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"page\", OpenApiClientHelpers.FormatParameter(page));", source);
     }
 
     [Fact]
@@ -706,7 +716,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(string partnerId, string? page = default, CancellationToken cancellationToken = default)", source);
         Assert.DoesNotContain("int partnerId", source);
         Assert.DoesNotContain("int? page = default, string? page = default", source);
-        Assert.Contains("query.Add(\"page=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(page)));", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"page\", OpenApiClientHelpers.FormatParameter(page));", source);
     }
 
     [Fact]
@@ -967,7 +977,10 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("public required byte[] File", source);
         Assert.Contains("public string? Description", source);
-        Assert.Contains("request.Content = OpenApiClientHelpers.CreateMultipartFormDataContent(body);", source);
+        Assert.Contains("var content = new MultipartFormDataContent();", source);
+        Assert.Contains("content.Add(new ByteArrayContent(body.File), \"file\", \"file\");", source);
+        Assert.Contains("if (body.Description is not null)", source);
+        Assert.Contains("content.Add(new StringContent(OpenApiClientHelpers.FormatParameter(body.Description)), \"description\");", source);
     }
 
     [Fact]
@@ -1013,8 +1026,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Contains("int partnerId", source);
         Assert.Contains("DateOnly startDate", source);
         Assert.Contains("int? page = default", source);
-        Assert.Contains("path = path.Replace(\"{partner_id}\", Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
-        Assert.Contains("query.Add(\"start_date=\" + Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(startDate)));", source);
+        Assert.Contains("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"start_date\", OpenApiClientHelpers.FormatParameter(startDate));", source);
     }
 
     [Fact]

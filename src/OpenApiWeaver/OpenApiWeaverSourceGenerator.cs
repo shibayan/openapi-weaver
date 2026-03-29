@@ -71,8 +71,27 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
                     string.Join(", ", diagnostic.Errors.Select(static error => error.Message))));
             }
 
-            var source = new ClientEmitter(file.Path, configuredRootNamespace, document).Emit();
-            productionContext.AddSource($"{SanitizeHintName(file.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
+            try
+            {
+                var source = new ClientEmitter(file.Path, configuredRootNamespace, document).Emit();
+                productionContext.AddSource($"{SanitizeHintName(file.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
+            }
+            catch (UnsupportedGenerationException exception)
+            {
+                productionContext.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.DocumentUnsupported,
+                    Location.None,
+                    file.Path,
+                    exception.Message));
+            }
+            catch (Exception exception)
+            {
+                productionContext.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.DocumentInvalid,
+                    Location.None,
+                    file.Path,
+                    exception.Message));
+            }
         });
     }
 
@@ -119,7 +138,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
     private static class Diagnostics
     {
         public static readonly DiagnosticDescriptor DocumentEmpty = new(
-            "OARSG002",
+            "OAW001",
             "OpenAPI document is empty",
             "The OpenAPI document '{0}' is empty",
             "OpenApiWeaver",
@@ -127,7 +146,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             isEnabledByDefault: true);
 
         public static readonly DiagnosticDescriptor DocumentHasWarnings = new(
-            "OARSG003",
+            "OAW002",
             "OpenAPI document has validation warnings",
             "The OpenAPI document '{0}' was loaded with validation warnings: {1}",
             "OpenApiWeaver",
@@ -135,11 +154,21 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             isEnabledByDefault: true);
 
         public static readonly DiagnosticDescriptor DocumentInvalid = new(
-            "OARSG004",
+            "OAW003",
             "OpenAPI document is invalid",
             "The OpenAPI document '{0}' could not be parsed: {1}",
             "OpenApiWeaver",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor DocumentUnsupported = new(
+            "OAW004",
+            "OpenAPI document uses an unsupported feature",
+            "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+            "OpenApiWeaver",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
+
+    private sealed class UnsupportedGenerationException(string message) : Exception(message);
 }
