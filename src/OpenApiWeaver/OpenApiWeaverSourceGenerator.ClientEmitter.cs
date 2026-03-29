@@ -53,11 +53,6 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("#nullable enable");
             builder.AppendLine("using System;");
 
-            if (_needsFormUrlEncoded || _needsMultipartFormData)
-            {
-                builder.AppendLine("using System.Collections;");
-            }
-
             builder.AppendLine("using System.Collections.Generic;");
 
             if (_needsFormatParameter)
@@ -67,6 +62,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             builder.AppendLine("using System.Net.Http;");
             builder.AppendLine("using System.Net.Http.Json;");
+            builder.AppendLine("using System.Text;");
             builder.AppendLine("using System.Text.Json;");
             builder.AppendLine("using System.Text.Json.Serialization;");
             builder.AppendLine("using System.Threading;");
@@ -211,132 +207,44 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("internal static class OpenApiClientHelpers");
             builder.AppendLine("{");
             builder.AppendLine("    internal static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);");
-            builder.AppendLine();
-            builder.AppendLine("    internal static string GetSerializedPropertyName(System.Reflection.PropertyInfo property)");
-            builder.AppendLine("    {");
-            builder.AppendLine("        var attribute = (JsonPropertyNameAttribute?)Attribute.GetCustomAttribute(property, typeof(JsonPropertyNameAttribute));");
-            builder.AppendLine("        if (attribute?.Name is { Length: > 0 } name)");
-            builder.AppendLine("        {");
-            builder.AppendLine("            return name;");
-            builder.AppendLine("        }");
-            builder.AppendLine();
-            builder.AppendLine("        if (property.Name.Length == 1)");
-            builder.AppendLine("        {");
-            builder.AppendLine("            return char.ToLowerInvariant(property.Name[0]).ToString();");
-            builder.AppendLine("        }");
-            builder.AppendLine();
-            builder.AppendLine("        return char.ToLowerInvariant(property.Name[0]) + property.Name[1..];");
-            builder.AppendLine("    }");
 
             if (_needsFormatParameter)
             {
+                builder.AppendLine();
+                builder.AppendLine("    internal static string FormatParameter(string? value) => value ?? string.Empty;");
+                builder.AppendLine();
+                builder.AppendLine("    internal static string FormatParameter(JsonElement value) => value.ToString();");
+                builder.AppendLine();
+                builder.AppendLine("    internal static string FormatParameter<T>(T value) where T : struct, IFormattable");
+                builder.AppendLine("    {");
+                builder.AppendLine("        return value.ToString(null, CultureInfo.InvariantCulture);");
+                builder.AppendLine("    }");
+                builder.AppendLine();
+                builder.AppendLine("    internal static string FormatParameter<T>(T? value) where T : struct, IFormattable");
+                builder.AppendLine("    {");
+                builder.AppendLine("        return value?.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty;");
+                builder.AppendLine("    }");
                 builder.AppendLine();
                 builder.AppendLine("    internal static string FormatParameter(object? value)");
                 builder.AppendLine("    {");
                 builder.AppendLine("        return value switch");
                 builder.AppendLine("        {");
                 builder.AppendLine("            null => string.Empty,");
-                builder.AppendLine("            JsonElement element => element.ToString(),");
                 builder.AppendLine("            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),");
                 builder.AppendLine("            _ => value.ToString() ?? string.Empty");
                 builder.AppendLine("        };");
                 builder.AppendLine("    }");
             }
 
-            if (_needsFormUrlEncoded)
-            {
-                builder.AppendLine();
-                builder.AppendLine("    internal static FormUrlEncodedContent CreateFormUrlEncodedContent<TBody>(TBody body)");
-                builder.AppendLine("    {");
-                builder.AppendLine("        var values = new List<KeyValuePair<string, string>>();");
-                builder.AppendLine();
-                builder.AppendLine("        foreach (var property in typeof(TBody).GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))");
-                builder.AppendLine("        {");
-                builder.AppendLine("            var value = property.GetValue(body);");
-                builder.AppendLine("            if (value is null)");
-                builder.AppendLine("            {");
-                builder.AppendLine("                continue;");
-                builder.AppendLine("            }");
-                builder.AppendLine();
-                builder.AppendLine("            var name = GetSerializedPropertyName(property);");
-                builder.AppendLine("            AddFormValues(values, name, value);");
-                builder.AppendLine("        }");
-                builder.AppendLine();
-                builder.AppendLine("        return new FormUrlEncodedContent(values);");
-                builder.AppendLine("    }");
-                builder.AppendLine();
-                builder.AppendLine("    private static void AddFormValues(List<KeyValuePair<string, string>> values, string name, object value)");
-                builder.AppendLine("    {");
-                builder.AppendLine("        if (value is string or byte[])");
-                builder.AppendLine("        {");
-                builder.AppendLine("            values.Add(new KeyValuePair<string, string>(name, FormatParameter(value)));");
-                builder.AppendLine("            return;");
-                builder.AppendLine("        }");
-                builder.AppendLine();
-                builder.AppendLine("        if (value is IEnumerable enumerable)");
-                builder.AppendLine("        {");
-                builder.AppendLine("            foreach (var item in enumerable)");
-                builder.AppendLine("            {");
-                builder.AppendLine("                if (item is not null)");
-                builder.AppendLine("                {");
-                builder.AppendLine("                    AddFormValues(values, name, item);");
-                builder.AppendLine("                }");
-                builder.AppendLine("            }");
-                builder.AppendLine();
-                builder.AppendLine("            return;");
-                builder.AppendLine("        }");
-                builder.AppendLine();
-                builder.AppendLine("        values.Add(new KeyValuePair<string, string>(name, FormatParameter(value)));");
-                builder.AppendLine("    }");
-            }
-
-            if (_needsMultipartFormData)
-            {
-                builder.AppendLine();
-                builder.AppendLine("    internal static MultipartFormDataContent CreateMultipartFormDataContent<TBody>(TBody body)");
-                builder.AppendLine("    {");
-                builder.AppendLine("        var content = new MultipartFormDataContent();");
-                builder.AppendLine();
-                builder.AppendLine("        foreach (var property in typeof(TBody).GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))");
-                builder.AppendLine("        {");
-                builder.AppendLine("            var value = property.GetValue(body);");
-                builder.AppendLine("            if (value is null)");
-                builder.AppendLine("            {");
-                builder.AppendLine("                continue;");
-                builder.AppendLine("            }");
-                builder.AppendLine();
-                builder.AppendLine("            var name = GetSerializedPropertyName(property);");
-                builder.AppendLine("            AddMultipartContent(content, name, value);");
-                builder.AppendLine("        }");
-                builder.AppendLine();
-                builder.AppendLine("        return content;");
-                builder.AppendLine("    }");
-                builder.AppendLine();
-                builder.AppendLine("    private static void AddMultipartContent(MultipartFormDataContent content, string name, object value)");
-                builder.AppendLine("    {");
-                builder.AppendLine("        switch (value)");
-                builder.AppendLine("        {");
-                builder.AppendLine("            case byte[] bytes:");
-                builder.AppendLine("                content.Add(new ByteArrayContent(bytes), name, name);");
-                builder.AppendLine("                return;");
-                builder.AppendLine("            case string text:");
-                builder.AppendLine("                content.Add(new StringContent(text), name);");
-                builder.AppendLine("                return;");
-                builder.AppendLine("            case IEnumerable enumerable:");
-                builder.AppendLine("                foreach (var item in enumerable)");
-                builder.AppendLine("                {");
-                builder.AppendLine("                    if (item is not null)");
-                builder.AppendLine("                    {");
-                builder.AppendLine("                        AddMultipartContent(content, name, item);");
-                builder.AppendLine("                    }");
-                builder.AppendLine("                }");
-                builder.AppendLine("                return;");
-                builder.AppendLine("            default:");
-                builder.AppendLine("                content.Add(new StringContent(FormatParameter(value)), name);");
-                builder.AppendLine("                return;");
-                builder.AppendLine("        }");
-                builder.AppendLine("    }");
-            }
+            builder.AppendLine();
+            builder.AppendLine("    internal static void AppendQueryParameter(StringBuilder builder, ref bool hasQuery, string name, string value)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        builder.Append(hasQuery ? '&' : '?');");
+            builder.AppendLine("        hasQuery = true;");
+            builder.AppendLine("        builder.Append(name);");
+            builder.AppendLine("        builder.Append('=');");
+            builder.AppendLine("        builder.Append(Uri.EscapeDataString(value));");
+            builder.AppendLine("    }");
 
             builder.AppendLine("}");
         }
@@ -485,11 +393,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
             Cookie
         }
 
-        private sealed class RequestBodyInfo(RequestBodyKind kind, string typeName, bool isRequired)
+        private sealed class RequestBodyInfo(RequestBodyKind kind, string typeName, bool isRequired, IOpenApiSchema? schema)
         {
             public RequestBodyKind Kind { get; } = kind;
             public string TypeName { get; } = typeName;
             public bool IsRequired { get; } = isRequired;
+            public IOpenApiSchema? Schema { get; } = schema;
         }
 
         private sealed class ResponseInfo(ResponseKind kind, string typeName)
@@ -518,6 +427,23 @@ public sealed partial class OpenApiWeaverSourceGenerator
             public string Name { get; } = name;
             public IOpenApiSchema Schema { get; } = schema;
             public bool Required { get; } = required;
+        }
+
+        private enum RequestBodyValueKind
+        {
+            Scalar,
+            Binary,
+            Collection
+        }
+
+        private sealed class RequestBodyPropertyInfo(string serializedName, string propertyName, RequestBodyValueKind kind, bool nullable, RequestBodyValueKind? elementKind = null, bool elementNullable = false)
+        {
+            public string SerializedName { get; } = serializedName;
+            public string PropertyName { get; } = propertyName;
+            public RequestBodyValueKind Kind { get; } = kind;
+            public bool Nullable { get; } = nullable;
+            public RequestBodyValueKind? ElementKind { get; } = elementKind;
+            public bool ElementNullable { get; } = elementNullable;
         }
     }
 }
