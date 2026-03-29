@@ -165,6 +165,44 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
     }
 
     [Fact]
+    public void InlineArrayObjectItems_GenerateNamedSchemaTypes()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Inline Object API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                companyIndexResponse:
+                  type: object
+                  required:
+                    - companies
+                  properties:
+                    companies:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - id
+                          - name
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required IReadOnlyList<CompanyIndexResponseCompaniesItem> Companies { get; init; }", source);
+        Assert.Contains("public sealed class CompanyIndexResponseCompaniesItem", source);
+        Assert.Contains("public required int Id { get; init; }", source);
+        Assert.Contains("public required string Name { get; init; }", source);
+    }
+
+    [Fact]
     public void NullableOneOfReferenceResponse_GeneratesNullableReferencedType()
     {
         const string openApi = """

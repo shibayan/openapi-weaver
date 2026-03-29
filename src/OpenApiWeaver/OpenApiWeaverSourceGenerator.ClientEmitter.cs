@@ -23,6 +23,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private readonly string _rootNamespace;
         private readonly OpenApiDocument _document;
         private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _inlineSchemaNames = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _usedSchemaTypeNames = new(StringComparer.Ordinal);
+        private readonly List<InlineSchemaInfo> _inlineSchemas = [];
         private readonly string _clientName;
         private readonly List<TagGroup> _tagGroups = [];
         private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);
@@ -45,6 +48,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
         {
             RegisterSchemaNames();
             RegisterTagGroups();
+            RegisterInlineSchemaNames();
             RegisterSecuritySchemes();
             _querySecuritySchemes = _securitySchemes.Where(static scheme => scheme.Location == SecuritySchemeLocation.Query).ToList();
             AnalyzeRequiredHelpers();
@@ -143,7 +147,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             foreach (var schema in _document.Components.Schemas)
             {
-                _schemaNames[schema.Key] = SafeIdentifier(ToPascalCase(schema.Key));
+                var schemaName = SafeIdentifier(ToPascalCase(schema.Key));
+                _schemaNames[schema.Key] = schemaName;
+                _usedSchemaTypeNames.Add(schemaName);
             }
         }
 
@@ -366,6 +372,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
             public string ClassName { get; } = className;
             public string? Description { get; } = description;
             public List<OperationGroupItem> Operations { get; } = [];
+        }
+
+        private sealed class InlineSchemaInfo(string typeName, IOpenApiSchema schema)
+        {
+            public string TypeName { get; } = typeName;
+            public IOpenApiSchema Schema { get; } = schema;
         }
 
         private sealed class OperationGroupItem(string route, string operationType, OpenApiOperation operation, List<IOpenApiParameter> parameters)
