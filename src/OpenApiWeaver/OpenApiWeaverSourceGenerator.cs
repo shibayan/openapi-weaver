@@ -68,7 +68,8 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
 
             try
             {
-                var source = new ClientEmitter(file.Path, input.RootNamespace, input.Namespace, input.ClientName, document).Emit();
+                var model = new DocumentTransformer(file.Path, input.RootNamespace, input.Namespace, input.ClientName, document).Transform();
+                var source = new ClientEmitter(model).Emit();
                 productionContext.AddSource($"{SanitizeHintName(file.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
             }
             catch (UnsupportedGenerationException exception)

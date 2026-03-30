@@ -203,6 +203,61 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
     }
 
     [Fact]
+    public void IdenticalInlineObjectItems_GenerateDistinctSchemaTypeDefinitions()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Shared Inline Object API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                companyIndexResponse:
+                  type: object
+                  required:
+                    - companies
+                  properties:
+                    companies:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - id
+                          - name
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                tagIndexResponse:
+                  type: object
+                  required:
+                    - tags
+                  properties:
+                    tags:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - id
+                          - name
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required IReadOnlyList<CompanyIndexResponseCompaniesItem> Companies { get; init; }", source);
+        Assert.Contains("public required IReadOnlyList<TagIndexResponseTagsItem> Tags { get; init; }", source);
+        Assert.Equal(1, source.Split("public sealed class CompanyIndexResponseCompaniesItem", StringSplitOptions.None).Length - 1);
+        Assert.Contains("public sealed class TagIndexResponseTagsItem", source);
+    }
+
+    [Fact]
     public void NullableOneOfReferenceResponse_GeneratesNullableReferencedType()
     {
         const string openApi = """

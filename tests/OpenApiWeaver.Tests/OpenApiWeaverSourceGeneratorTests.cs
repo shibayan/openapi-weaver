@@ -100,11 +100,10 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         IReadOnlyDictionary<string, string> globalOptions,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? additionalFileOptions) : AnalyzerConfigOptionsProvider
     {
-        private readonly AnalyzerConfigOptions _globalOptions = new DictionaryAnalyzerConfigOptions(globalOptions);
         private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _additionalFileOptions =
             additionalFileOptions ?? new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
 
-        public override AnalyzerConfigOptions GlobalOptions => _globalOptions;
+        public override AnalyzerConfigOptions GlobalOptions { get; } = new DictionaryAnalyzerConfigOptions(globalOptions);
 
         public override AnalyzerConfigOptions GetOptions(SyntaxTree tree)
             => DictionaryAnalyzerConfigOptions.Empty;
