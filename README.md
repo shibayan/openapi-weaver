@@ -82,8 +82,10 @@ The root client:
 |---|---|
 | `integer` | `int` |
 | `integer` (int64) | `long` |
+| `number` | `decimal` |
 | `number` (float) | `float` |
 | `number` (double) | `double` |
+| `number` (decimal) | `decimal` |
 | `boolean` | `bool` |
 | `string` | `string` |
 | `string` (date) | `DateOnly` |
