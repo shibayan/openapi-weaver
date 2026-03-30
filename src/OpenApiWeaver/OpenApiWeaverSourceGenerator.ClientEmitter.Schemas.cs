@@ -54,6 +54,11 @@ public sealed partial class OpenApiWeaverSourceGenerator
                         indent + "    ",
                         summary: property.Summary,
                         remarks: property.Description);
+                    if (!property.Required && property.TypeName.EndsWith("?", StringComparison.Ordinal))
+                    {
+                        builder.Append(indent).AppendLine("    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]");
+                    }
+
                     builder.Append(indent).Append("    [JsonPropertyName(\"").Append(EscapeStringLiteral(property.JsonName)).AppendLine("\")]");
                     builder.Append(indent).Append("    public ").Append(requiredModifier).Append(property.TypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
                 }
