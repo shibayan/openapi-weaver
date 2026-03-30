@@ -153,45 +153,18 @@ samples/SampleApp/          # Minimal sample project
 
 The generator itself targets **netstandard2.0** and works with any compatible SDK.
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test, and pull request guidance.
+
+## Code of Conduct
+
+Please review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating in issues or pull requests.
+
+## Security
+
+To report a vulnerability, follow [SECURITY.md](SECURITY.md). Do not open public issues for security reports.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## Generated Behavior
-
-Current test coverage verifies the following behavior:
-
-- Empty documents report an error diagnostic and generate no source
-- Invalid documents report an error diagnostic and generate no source
-- Unsupported compile-time-only request body shapes report `OAW004` and generate no source
-- Multipart request bodies generate `byte[]` properties for binary fields and inline multipart content construction
-- Optional form bodies generate nullable method parameters and conditional form content assignment
-- No-content success responses generate non-generic `Task`
-- Binary responses generate `Task<byte[]>`
-- Snake_case schema properties are preserved with `JsonPropertyName`
-- Mixed JSON and form request bodies prefer JSON when both are available
-- Plain text responses generate `Task<string>`
-
-## Build
-
-```bash
-dotnet build OpenApiWeaver.slnx
-```
-
-## Test
-
-```bash
-dotnet test OpenApiWeaver.slnx
-```
-
-## Sample App
-
-```bash
-dotnet run --project samples/SampleApp/SampleApp.csproj
-```
-
-The sample project enables emitted generated files under `samples/SampleApp/obj/Generated` so you can inspect the generated client code during development.
-
-## Current Status
-
-This repository contains the source generator, tests, and a local sample app. The sample app keeps a project-to-project analyzer reference for repository development, but consuming applications should use the `OpenApiWeaver` NuGet package.
