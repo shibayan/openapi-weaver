@@ -595,8 +595,43 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("public required int CompanyId { get; init; }", source);
         Assert.Contains("public int? OptionalCount { get; init; }", source);
-        Assert.Contains("public double? OptionalAmount { get; init; }", source);
+        Assert.Contains("public decimal? OptionalAmount { get; init; }", source);
         Assert.Contains("public bool? OptionalFlag { get; init; }", source);
+    }
+
+    [Fact]
+    public void NumberFormat_GeneratesConfiguredNumericTypes()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Number Format API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                metricsResponse:
+                  type: object
+                  properties:
+                    amount:
+                      type: number
+                    ratio:
+                      type: number
+                      format: float
+                    score:
+                      type: number
+                      format: double
+                    price:
+                      type: number
+                      format: decimal
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public decimal? Amount { get; init; }", source);
+        Assert.Contains("public float? Ratio { get; init; }", source);
+        Assert.Contains("public double? Score { get; init; }", source);
+        Assert.Contains("public decimal? Price { get; init; }", source);
     }
 
     [Fact]
