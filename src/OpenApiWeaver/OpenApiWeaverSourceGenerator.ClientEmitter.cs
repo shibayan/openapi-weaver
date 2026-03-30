@@ -102,6 +102,21 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
         }
 
+        private static string NormalizeBaseAddress(string serverUrl)
+        {
+            var builder = new UriBuilder(new Uri(serverUrl, UriKind.Absolute));
+            if (builder.Path.Length == 0)
+            {
+                builder.Path = "/";
+            }
+            else if (!builder.Path.EndsWith("/", StringComparison.Ordinal))
+            {
+                builder.Path += "/";
+            }
+
+            return builder.Uri.AbsoluteUri;
+        }
+
         private void EmitHelperClass(StringBuilder builder)
         {
             builder.AppendLine("internal static class OpenApiClientHelpers");
@@ -217,7 +232,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("        _httpClient = new HttpClient();");
             if (Uri.TryCreate(model.ServerUrl, UriKind.Absolute, out _))
             {
-                builder.Append("        _httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(model.ServerUrl!)).AppendLine("\", UriKind.Absolute);");
+                builder.Append("        _httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute);");
             }
 
             foreach (var securityScheme in model.SecuritySchemes)

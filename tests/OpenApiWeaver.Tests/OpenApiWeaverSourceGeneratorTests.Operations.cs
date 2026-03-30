@@ -1,4 +1,9 @@
-﻿using Xunit;
+﻿using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
+using System.Text;
+
+using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
@@ -573,7 +578,55 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v1\", UriKind.Absolute);", source);
+        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v1/\", UriKind.Absolute);", source);
+        Assert.Contains("var path = \"reports\";", source);
+        Assert.DoesNotContain("CreateRequestUri", source);
+    }
+
+    [Fact]
+    public async Task BaseAddressPath_IsPreserved_WhenOpenApiRouteStartsWithSlash()
+    {
+        await using var server = TestHttpServer.Start();
+
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            servers:
+              - url: {{server.BaseAddress}}
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+
+        var assembly = generatedAssembly.Assembly;
+        var clientType = Assert.Single(assembly.GetTypes(), static type => type.Name == "TestClient");
+        var client = Activator.CreateInstance(clientType);
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("ListReportsAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient!.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod!.Invoke(operationClient, [CancellationToken.None]));
+        await invocation;
+
+        var requestTarget = await server.GetRequestTargetAsync();
+        Assert.Equal("/api/v1/reports", requestTarget);
     }
 
     [Fact]
@@ -1056,7 +1109,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v2\", UriKind.Absolute);", source);
+        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v2/\", UriKind.Absolute);", source);
     }
 
     [Fact]
@@ -1193,5 +1246,65 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("Async(", source);
+    }
+}
+
+file sealed class TestHttpServer : IAsyncDisposable
+{
+    private readonly TcpListener _listener;
+    private readonly Task<string> _requestTargetTask;
+
+    private TestHttpServer(TcpListener listener, Uri baseAddress, Task<string> requestTargetTask)
+    {
+        _listener = listener;
+        BaseAddress = baseAddress;
+        _requestTargetTask = requestTargetTask;
+    }
+
+    public Uri BaseAddress { get; }
+
+    public static TestHttpServer Start()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+
+        var endpoint = Assert.IsType<IPEndPoint>(listener.LocalEndpoint);
+        var baseAddress = new Uri($"http://127.0.0.1:{endpoint.Port}/api/v1");
+        var requestTargetTask = AcceptSingleRequestAsync(listener);
+        return new TestHttpServer(listener, baseAddress, requestTargetTask);
+    }
+
+    public Task<string> GetRequestTargetAsync() => _requestTargetTask;
+
+    public ValueTask DisposeAsync()
+    {
+        _listener.Stop();
+        return ValueTask.CompletedTask;
+    }
+
+    private static async Task<string> AcceptSingleRequestAsync(TcpListener listener)
+    {
+        using var client = await listener.AcceptTcpClientAsync();
+        await using var stream = client.GetStream();
+        using var reader = new StreamReader(stream, Encoding.ASCII, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+
+        var requestLine = await reader.ReadLineAsync();
+        Assert.False(string.IsNullOrEmpty(requestLine));
+
+        string? headerLine;
+        do
+        {
+            headerLine = await reader.ReadLineAsync();
+        }
+        while (!string.IsNullOrEmpty(headerLine));
+
+        const string responseBody = "{}";
+        var response = $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {responseBody.Length}\r\nConnection: close\r\n\r\n{responseBody}";
+        var responseBytes = Encoding.ASCII.GetBytes(response);
+        await stream.WriteAsync(responseBytes);
+
+        var parts = requestLine!.Split(' ');
+        Assert.True(parts.Length >= 2, $"Unexpected request line: {requestLine}");
+        return parts[1];
     }
 }

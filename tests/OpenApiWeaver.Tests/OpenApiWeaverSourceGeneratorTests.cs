@@ -1,4 +1,6 @@
 ﻿using System.Collections.Immutable;
+using System.Reflection;
+using System.Runtime.Loader;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -85,7 +87,24 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
             .Select(static source => source.SourceText.ToString())
             .ToArray();
 
-        return new GeneratorTestResult(generatorDiagnostics, generatedSources);
+        return new GeneratorTestResult(generatorDiagnostics, generatedSources, outputCompilation);
+    }
+
+    private static LoadedGeneratorAssembly LoadGeneratedAssembly(string openApi)
+    {
+        var result = RunGenerator(openApi);
+
+        using var assemblyStream = new MemoryStream();
+        var emitResult = result.Compilation.Emit(assemblyStream);
+        Assert.True(
+            emitResult.Success,
+            string.Join(Environment.NewLine, emitResult.Diagnostics.Select(static diagnostic => diagnostic.ToString())));
+
+        assemblyStream.Position = 0;
+
+        var loadContext = new AssemblyLoadContext($"OpenApiWeaver.Tests.{Guid.NewGuid():N}", isCollectible: true);
+        var assembly = loadContext.LoadFromStream(assemblyStream);
+        return new LoadedGeneratorAssembly(loadContext, assembly);
     }
 
     private sealed class InMemoryAdditionalText(string path, string content) : AdditionalText
@@ -133,10 +152,23 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
     private sealed class GeneratorTestResult(
         IReadOnlyList<Diagnostic> diagnostics,
-        IReadOnlyList<string> generatedSources)
+        IReadOnlyList<string> generatedSources,
+        Compilation compilation)
     {
         public IReadOnlyList<Diagnostic> Diagnostics { get; } = diagnostics;
 
         public IReadOnlyList<string> GeneratedSources { get; } = generatedSources;
+
+        public Compilation Compilation { get; } = compilation;
+    }
+
+    private sealed class LoadedGeneratorAssembly(AssemblyLoadContext loadContext, Assembly assembly) : IDisposable
+    {
+        public Assembly Assembly { get; } = assembly;
+
+        public void Dispose()
+        {
+            loadContext.Unload();
+        }
     }
 }
