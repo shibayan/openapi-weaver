@@ -63,6 +63,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
     private sealed class SchemaDefinition(
         string typeName,
+        string declaredTypeName,
+        string? parentTypeName,
         string summary,
         string? description,
         string? dictionaryValueType,
@@ -72,6 +74,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
         IReadOnlyList<SchemaEnumMemberDefinition> enumMembers)
     {
         public string TypeName { get; } = typeName;
+        public string DeclaredTypeName { get; } = declaredTypeName;
+        public string? ParentTypeName { get; } = parentTypeName;
         public string Summary { get; } = summary;
         public string? Description { get; } = description;
         public string? DictionaryValueType { get; } = dictionaryValueType;
