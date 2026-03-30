@@ -810,7 +810,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("public required int CompanyId { get; init; }", source);
-        Assert.DoesNotContain("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\r\n    [JsonPropertyName(\"display_name\")]\r\n    public required string? DisplayName { get; init; }", source);
+        Assert.DoesNotContain("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]", source);
         Assert.Contains("public required string? DisplayName { get; init; }", source);
     }
 
