@@ -71,18 +71,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     property.Schema.Description));
             }
 
-            var enumValues = new List<string>();
-            if (IsEnumSchema(schema))
-            {
-                foreach (var item in schema.Enum ?? [])
-                {
-                    var enumValue = item?.ToString();
-                    if (!string.IsNullOrWhiteSpace(enumValue))
-                    {
-                        enumValues.Add(enumValue!);
-                    }
-                }
-            }
+            var enumKind = GetSchemaEnumKind(schema);
+            var enumUnderlyingType = enumKind == SchemaEnumKind.Integer ? GetIntegerEnumUnderlyingType(schema) : null;
+            var enumMembers = enumKind == SchemaEnumKind.None ? [] : CreateEnumMembers(schema, enumKind);
 
             return new SchemaDefinition(
                 typeName,
@@ -90,7 +81,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 schema.Description,
                 TryGetDictionaryValueType(schema, out var dictionaryValueType) ? dictionaryValueType : null,
                 properties,
-                enumValues);
+                enumKind,
+                enumUnderlyingType,
+                enumMembers);
         }
 
         private void RegisterNestedInlineSchemas(string ownerTypeName, IOpenApiSchema? schema, HashSet<string> visited)
@@ -199,7 +192,6 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private bool CanGenerateInlineSchema(IOpenApiSchema schema)
         {
             if (TryResolveSchemaReferenceName(schema) is not null
-                || IsEnumSchema(schema)
                 || TryGetDictionaryValueType(schema, out _)
                 || schema.OneOf is { Count: > 0 }
                 || schema.AnyOf is { Count: > 0 })
@@ -208,7 +200,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             var baseType = schema.Type & ~JsonSchemaType.Null;
-            return baseType == JsonSchemaType.Object || schema.AllOf is { Count: > 0 } || (schema.Properties?.Count ?? 0) > 0;
+            return IsEnumSchema(schema)
+                || baseType == JsonSchemaType.Object
+                || schema.AllOf is { Count: > 0 }
+                || (schema.Properties?.Count ?? 0) > 0;
         }
 
         private string AllocateSchemaTypeName(string suggestedTypeName)
@@ -489,7 +484,72 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private static bool IsEnumSchema(IOpenApiSchema schema)
         {
-            return schema.Enum is { Count: > 0 } && HasSchemaType(schema, JsonSchemaType.String);
+            return GetSchemaEnumKind(schema) != SchemaEnumKind.None;
+        }
+
+        private static SchemaEnumKind GetSchemaEnumKind(IOpenApiSchema schema)
+        {
+            if (schema.Enum is not { Count: > 0 })
+            {
+                return SchemaEnumKind.None;
+            }
+
+            var baseType = schema.Type & ~JsonSchemaType.Null;
+            return baseType switch
+            {
+                JsonSchemaType.String => SchemaEnumKind.String,
+                JsonSchemaType.Integer => SchemaEnumKind.Integer,
+                _ => SchemaEnumKind.None
+            };
+        }
+
+        private static string GetIntegerEnumUnderlyingType(IOpenApiSchema schema)
+        {
+            return string.Equals(schema.Format, "int64", StringComparison.OrdinalIgnoreCase) ? "long" : "int";
+        }
+
+        private static List<SchemaEnumMemberDefinition> CreateEnumMembers(IOpenApiSchema schema, SchemaEnumKind enumKind)
+        {
+            var members = new List<SchemaEnumMemberDefinition>();
+            var usedMemberNames = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach (var item in schema.Enum ?? [])
+            {
+                var enumValue = item?.ToString();
+                if (string.IsNullOrWhiteSpace(enumValue))
+                {
+                    continue;
+                }
+
+                var memberName = enumKind == SchemaEnumKind.String
+                    ? SafeIdentifier(ToPascalCase(enumValue))
+                    : BuildIntegerEnumMemberName(enumValue);
+
+                if (!usedMemberNames.ContainsKey(memberName))
+                {
+                    usedMemberNames[memberName] = 1;
+                }
+                else
+                {
+                    usedMemberNames[memberName]++;
+                    memberName += usedMemberNames[memberName].ToString(CultureInfo.InvariantCulture);
+                }
+
+                members.Add(new SchemaEnumMemberDefinition(memberName, enumValue));
+            }
+
+            return members;
+        }
+
+        private static string BuildIntegerEnumMemberName(string value)
+        {
+            var digits = value.Trim();
+            if (digits.StartsWith("-", StringComparison.Ordinal))
+            {
+                digits = "Minus" + digits.Substring(1);
+            }
+
+            return SafeIdentifier($"Value{digits}");
         }
 
         private sealed class InlineSchemaInfo(string typeName, IOpenApiSchema schema)

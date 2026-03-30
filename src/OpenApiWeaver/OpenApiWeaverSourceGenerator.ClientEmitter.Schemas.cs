@@ -61,6 +61,17 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private static void EmitEnumSchema(StringBuilder builder, SchemaDefinition schema)
         {
+            if (schema.EnumKind == SchemaEnumKind.Integer)
+            {
+                EmitIntegerEnumSchema(builder, schema);
+                return;
+            }
+
+            EmitStringEnumSchema(builder, schema);
+        }
+
+        private static void EmitStringEnumSchema(StringBuilder builder, SchemaDefinition schema)
+        {
             EmitDocComment(
                 builder,
                 "    ",
@@ -70,10 +81,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.Append("public readonly record struct ").Append(schema.TypeName).AppendLine("(string Value)");
             builder.AppendLine("{");
 
-            foreach (var enumValue in schema.EnumValues)
+            foreach (var enumMember in schema.EnumMembers)
             {
-                var memberName = SafeIdentifier(ToPascalCase(enumValue));
-                builder.Append("    public static readonly ").Append(schema.TypeName).Append(' ').Append(memberName).Append(" = new(\"").Append(EscapeStringLiteral(enumValue)).AppendLine("\");");
+                builder.Append("    public static readonly ").Append(schema.TypeName).Append(' ').Append(enumMember.MemberName).Append(" = new(\"").Append(EscapeStringLiteral(enumMember.Value)).AppendLine("\");");
             }
 
             builder.AppendLine();
@@ -91,6 +101,33 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("    {");
             builder.AppendLine("        writer.WriteStringValue(value.Value);");
             builder.AppendLine("    }");
+            builder.AppendLine("}");
+        }
+
+        private static void EmitIntegerEnumSchema(StringBuilder builder, SchemaDefinition schema)
+        {
+            EmitDocComment(
+                builder,
+                "    ",
+                summary: schema.Summary,
+                remarks: schema.Description);
+            builder.Append("public enum ").Append(schema.TypeName);
+
+            if (!string.IsNullOrWhiteSpace(schema.EnumUnderlyingType) && !string.Equals(schema.EnumUnderlyingType, "int", StringComparison.Ordinal))
+            {
+                builder.Append(" : ").Append(schema.EnumUnderlyingType);
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("{");
+
+            for (var i = 0; i < schema.EnumMembers.Count; i++)
+            {
+                var enumMember = schema.EnumMembers[i];
+                builder.Append("    ").Append(enumMember.MemberName).Append(" = ").Append(enumMember.Value);
+                builder.AppendLine(i < schema.EnumMembers.Count - 1 ? "," : string.Empty);
+            }
+
             builder.AppendLine("}");
         }
     }
