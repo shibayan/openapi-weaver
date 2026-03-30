@@ -100,6 +100,8 @@ The root client:
 
 Properties use `[JsonPropertyName]` attributes for correct serialization of snake_case or other non-PascalCase field names.
 
+Inline object / enum schemas are emitted as nested types under the owning generated model so property paths do not expand into excessively long top-level type names.
+
 ## Security Schemes
 
 | Scheme | Location | Behavior |

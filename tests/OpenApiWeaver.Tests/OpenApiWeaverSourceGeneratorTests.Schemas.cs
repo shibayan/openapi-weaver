@@ -117,8 +117,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public required OrderResponseStatus Status { get; init; }", source);
-        Assert.Contains("public readonly record struct OrderResponseStatus(string Value)", source);
+        Assert.Contains("public required OrderResponse.StatusEnum Status { get; init; }", source);
+        Assert.Contains("public readonly record struct StatusEnum(string Value)", source);
     }
 
     [Fact]
@@ -252,10 +252,121 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public required IReadOnlyList<CompanyIndexResponseCompaniesItem> Companies { get; init; }", source);
-        Assert.Contains("public sealed class CompanyIndexResponseCompaniesItem", source);
+        Assert.Contains("public required IReadOnlyList<CompanyIndexResponse.CompaniesItem> Companies { get; init; }", source);
+        Assert.Contains("public sealed class CompaniesItem", source);
         Assert.Contains("public required int Id { get; init; }", source);
         Assert.Contains("public required string Name { get; init; }", source);
+    }
+
+    [Fact]
+    public void InlineObjectProperty_GeneratesNestedModelType()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Inline Property API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                orderResponse:
+                  type: object
+                  required:
+                    - metadata
+                  properties:
+                    metadata:
+                      type: object
+                      required:
+                        - request_id
+                      properties:
+                        request_id:
+                          type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required OrderResponse.MetadataModel Metadata { get; init; }", source);
+        Assert.Contains("public sealed class MetadataModel", source);
+        Assert.Contains("public required string RequestId { get; init; }", source);
+    }
+
+    [Fact]
+    public void NestedInlineArrayObjectItems_GenerateMultiLevelNestedTypeNames()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Nested Inline API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                orderResponse:
+                  type: object
+                  required:
+                    - shipping
+                  properties:
+                    shipping:
+                      type: object
+                      required:
+                        - packages
+                      properties:
+                        packages:
+                          type: array
+                          items:
+                            type: object
+                            required:
+                              - tracking_number
+                            properties:
+                              tracking_number:
+                                type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required OrderResponse.ShippingModel Shipping { get; init; }", source);
+        Assert.Contains("public required IReadOnlyList<OrderResponse.ShippingModel.PackagesItem> Packages { get; init; }", source);
+        Assert.Contains("public sealed class ShippingModel", source);
+        Assert.Contains("public sealed class PackagesItem", source);
+        Assert.Contains("public required string TrackingNumber { get; init; }", source);
+    }
+
+    [Fact]
+    public void InlineSchemaTitle_DoesNotOverrideNestedGeneratedTypeName()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Inline Title API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                companyIndexResponse:
+                  type: object
+                  required:
+                    - companies
+                  properties:
+                    companies:
+                      type: array
+                      items:
+                        title: CompanySummary
+                        type: object
+                        required:
+                          - id
+                          - name
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required IReadOnlyList<CompanyIndexResponse.CompaniesItem> Companies { get; init; }", source);
+        Assert.Contains("public sealed class CompaniesItem", source);
+        Assert.DoesNotContain("public sealed class CompanySummary", source);
     }
 
     [Fact]
@@ -307,10 +418,10 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public required IReadOnlyList<CompanyIndexResponseCompaniesItem> Companies { get; init; }", source);
-        Assert.Contains("public required IReadOnlyList<TagIndexResponseTagsItem> Tags { get; init; }", source);
-        Assert.Equal(1, source.Split("public sealed class CompanyIndexResponseCompaniesItem").Length - 1);
-        Assert.Contains("public sealed class TagIndexResponseTagsItem", source);
+        Assert.Contains("public required IReadOnlyList<CompanyIndexResponse.CompaniesItem> Companies { get; init; }", source);
+        Assert.Contains("public required IReadOnlyList<TagIndexResponse.TagsItem> Tags { get; init; }", source);
+        Assert.Equal(1, source.Split("public sealed class CompaniesItem").Length - 1);
+        Assert.Contains("public sealed class TagsItem", source);
     }
 
     [Fact]

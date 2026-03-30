@@ -32,7 +32,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             foreach (var schema in _document.Components.Schemas)
             {
-                RegisterNestedInlineSchemas(_schemaNames[schema.Key], schema.Value, new HashSet<string>(StringComparer.Ordinal));
+                var schemaName = _schemaNames[schema.Key];
+                RegisterNestedInlineSchemas(schemaName, schema.Value, new HashSet<string>(StringComparer.Ordinal), schemaName, string.Empty);
             }
         }
 
@@ -44,19 +45,20 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 foreach (var schema in _document.Components.Schemas)
                 {
-                    schemas.Add(CreateSchemaDefinition(_schemaNames[schema.Key], schema.Value));
+                    var schemaName = _schemaNames[schema.Key];
+                    schemas.Add(CreateSchemaDefinition(schemaName, schemaName, parentTypeName: null, schema.Value));
                 }
             }
 
             foreach (var inlineSchema in _inlineSchemas)
             {
-                schemas.Add(CreateSchemaDefinition(inlineSchema.TypeName, inlineSchema.Schema));
+                schemas.Add(CreateSchemaDefinition(inlineSchema.TypeName, inlineSchema.DeclaredTypeName, inlineSchema.ParentTypeName, inlineSchema.Schema));
             }
 
             return schemas;
         }
 
-        private SchemaDefinition CreateSchemaDefinition(string typeName, IOpenApiSchema schema)
+        private SchemaDefinition CreateSchemaDefinition(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema)
         {
             var properties = new List<SchemaPropertyDefinition>();
             foreach (var property in GetSchemaProperties(schema))
@@ -77,6 +79,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             return new SchemaDefinition(
                 typeName,
+                declaredTypeName,
+                parentTypeName,
                 schema.Title ?? typeName,
                 schema.Description,
                 TryGetDictionaryValueType(schema, out var dictionaryValueType) ? dictionaryValueType : null,
@@ -86,7 +90,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 enumMembers);
         }
 
-        private void RegisterNestedInlineSchemas(string ownerTypeName, IOpenApiSchema? schema, HashSet<string> visited)
+        private void RegisterNestedInlineSchemas(string ownerTypeName, IOpenApiSchema? schema, HashSet<string> visited, string containingTypeName, string nestedNamePrefix)
         {
             if (schema is null || TryResolveSchemaReferenceName(schema) is not null)
             {
@@ -103,25 +107,25 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 foreach (var property in schema.Properties)
                 {
-                    RegisterInlineSchemaChild(ownerTypeName, property.Key, property.Value, visited);
+                    RegisterInlineSchemaChild(ownerTypeName, containingTypeName, nestedNamePrefix, property.Key, property.Value, visited);
                 }
             }
 
             if (schema.Items is not null)
             {
-                RegisterInlineSchemaChild(ownerTypeName, "item", schema.Items, visited);
+                RegisterInlineSchemaChild(ownerTypeName, containingTypeName, nestedNamePrefix, "item", schema.Items, visited);
             }
 
             if (schema.AdditionalProperties is not null)
             {
-                RegisterInlineSchemaChild(ownerTypeName, "value", schema.AdditionalProperties, visited);
+                RegisterInlineSchemaChild(ownerTypeName, containingTypeName, nestedNamePrefix, "value", schema.AdditionalProperties, visited);
             }
 
             if (schema.PatternProperties is not null)
             {
                 foreach (var patternProperty in schema.PatternProperties)
                 {
-                    RegisterInlineSchemaChild(ownerTypeName, patternProperty.Key, patternProperty.Value, visited);
+                    RegisterInlineSchemaChild(ownerTypeName, containingTypeName, nestedNamePrefix, patternProperty.Key, patternProperty.Value, visited);
                 }
             }
 
@@ -129,7 +133,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 foreach (var child in schema.AllOf)
                 {
-                    RegisterNestedInlineSchemas(ownerTypeName, child, visited);
+                    RegisterNestedInlineSchemas(ownerTypeName, child, visited, containingTypeName, nestedNamePrefix);
                 }
             }
 
@@ -137,7 +141,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 foreach (var child in schema.OneOf)
                 {
-                    RegisterNestedInlineSchemas(ownerTypeName, child, visited);
+                    RegisterNestedInlineSchemas(ownerTypeName, child, visited, containingTypeName, nestedNamePrefix);
                 }
             }
 
@@ -145,47 +149,57 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 foreach (var child in schema.AnyOf)
                 {
-                    RegisterNestedInlineSchemas(ownerTypeName, child, visited);
+                    RegisterNestedInlineSchemas(ownerTypeName, child, visited, containingTypeName, nestedNamePrefix);
                 }
             }
 
             visited.Remove(identity);
         }
 
-        private void RegisterInlineSchemaChild(string ownerTypeName, string childName, IOpenApiSchema? childSchema, HashSet<string> visited)
+        private void RegisterInlineSchemaChild(string ownerTypeName, string containingTypeName, string nestedNamePrefix, string childName, IOpenApiSchema? childSchema, HashSet<string> visited)
         {
             if (childSchema is null)
             {
                 return;
             }
 
-            var suggestedTypeName = BuildInlineSchemaTypeName(ownerTypeName, childName);
-            if (TryRegisterInlineSchema(childSchema, suggestedTypeName, out var inlineTypeName))
+            var suggestedTypeName = BuildInlineSchemaTypeName(nestedNamePrefix, childName, childSchema);
+            if (TryRegisterInlineSchema(childSchema, containingTypeName, suggestedTypeName, out var inlineSchema))
             {
-                RegisterNestedInlineSchemas(inlineTypeName, childSchema, visited);
+                RegisterNestedInlineSchemas(ownerTypeName, childSchema, visited, inlineSchema.TypeName, string.Empty);
                 return;
             }
 
-            RegisterNestedInlineSchemas(suggestedTypeName, childSchema, visited);
+            var nextPrefix = CombineNestedTypeNamePrefix(nestedNamePrefix, childName);
+            RegisterNestedInlineSchemas(ownerTypeName, childSchema, visited, containingTypeName, nextPrefix);
         }
 
-        private bool TryRegisterInlineSchema(IOpenApiSchema schema, string suggestedTypeName, out string inlineTypeName)
+        private bool TryRegisterInlineSchema(IOpenApiSchema schema, string parentTypeName, string suggestedTypeName, out InlineSchemaInfo inlineSchema)
         {
-            inlineTypeName = string.Empty;
+            inlineSchema = default!;
             if (!CanGenerateInlineSchema(schema))
             {
                 return false;
             }
 
             var identity = GetSchemaIdentity(schema);
-            if (_inlineSchemaNames.TryGetValue(identity, out inlineTypeName))
+            if (_inlineSchemaNames.TryGetValue(identity, out var inlineTypeName))
             {
-                return true;
+                foreach (var existingInlineSchema in _inlineSchemas)
+                {
+                    if (existingInlineSchema.TypeName == inlineTypeName)
+                    {
+                        inlineSchema = existingInlineSchema;
+                        return true;
+                    }
+                }
+
+                throw new InvalidOperationException($"Inline schema '{inlineTypeName}' was not registered.");
             }
 
-            inlineTypeName = AllocateSchemaTypeName(suggestedTypeName);
-            _inlineSchemaNames.Add(identity, inlineTypeName);
-            _inlineSchemas.Add(new InlineSchemaInfo(inlineTypeName, schema));
+            inlineSchema = AllocateInlineSchema(parentTypeName, suggestedTypeName, schema);
+            _inlineSchemaNames.Add(identity, inlineSchema.TypeName);
+            _inlineSchemas.Add(inlineSchema);
             return true;
         }
 
@@ -206,7 +220,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 || (schema.Properties?.Count ?? 0) > 0;
         }
 
-        private string AllocateSchemaTypeName(string suggestedTypeName)
+        private InlineSchemaInfo AllocateInlineSchema(string parentTypeName, string suggestedTypeName, IOpenApiSchema schema)
         {
             var baseTypeName = SafeIdentifier(suggestedTypeName);
             if (string.IsNullOrWhiteSpace(baseTypeName))
@@ -216,19 +230,43 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             var candidate = baseTypeName;
             var suffix = 2;
-            while (!_usedSchemaTypeNames.Add(candidate))
+            while (!_usedSchemaTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate)))
             {
                 candidate = baseTypeName + suffix.ToString(CultureInfo.InvariantCulture);
                 suffix++;
             }
 
-            return candidate;
+            var typeName = BuildQualifiedTypeName(parentTypeName, candidate);
+            return new InlineSchemaInfo(typeName, candidate, parentTypeName, schema);
         }
 
-        private static string BuildInlineSchemaTypeName(string ownerTypeName, string childName)
+        private static string BuildInlineSchemaTypeName(string nestedNamePrefix, string childName, IOpenApiSchema schema)
         {
-            return SafeIdentifier(ownerTypeName + ToPascalCase(childName));
+            var suffix = childName switch
+            {
+                "item" => "Item",
+                "value" => "Value",
+                _ when GetSchemaEnumKind(schema) != SchemaEnumKind.None => ToPascalCase(childName) + "Enum",
+                _ => ToPascalCase(childName) + "Model"
+            };
+
+            return SafeIdentifier(nestedNamePrefix + suffix);
         }
+
+        private static string CombineNestedTypeNamePrefix(string nestedNamePrefix, string childName)
+        {
+            var segment = childName switch
+            {
+                "item" => "Item",
+                "value" => "Value",
+                _ => ToPascalCase(childName)
+            };
+
+            return SafeIdentifier(nestedNamePrefix + segment);
+        }
+
+        private static string BuildQualifiedTypeName(string parentTypeName, string declaredTypeName)
+            => $"{parentTypeName}.{declaredTypeName}";
 
         private string ResolveTypeName(IOpenApiSchema? schema, bool required)
         {
@@ -518,7 +556,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             foreach (var item in schema.Enum ?? [])
             {
                 var enumValue = item?.ToString();
-                if (string.IsNullOrWhiteSpace(enumValue))
+                if (enumValue is null || string.IsNullOrWhiteSpace(enumValue))
                 {
                     continue;
                 }
@@ -554,9 +592,11 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return SafeIdentifier($"Value{digits}");
         }
 
-        private sealed class InlineSchemaInfo(string typeName, IOpenApiSchema schema)
+        private sealed class InlineSchemaInfo(string typeName, string declaredTypeName, string parentTypeName, IOpenApiSchema schema)
         {
             public string TypeName { get; } = typeName;
+            public string DeclaredTypeName { get; } = declaredTypeName;
+            public string ParentTypeName { get; } = parentTypeName;
             public IOpenApiSchema Schema { get; } = schema;
         }
 
