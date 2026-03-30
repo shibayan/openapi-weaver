@@ -8,6 +8,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
     {
         private void EmitOperation(StringBuilder builder, OperationGroupItem operation)
         {
+            var route = NormalizeRelativeRoute(operation.Route);
             var parameterDocumentation = new List<KeyValuePair<string, string?>>();
             var pathParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Path).ToList();
             var queryParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Query).ToList();
@@ -75,11 +76,11 @@ public sealed partial class OpenApiWeaverSourceGenerator
             if (usesPathBuilder)
             {
                 builder.AppendLine("        var pathBuilder = new StringBuilder();");
-                EmitRouteTemplate(builder, operation.Route, pathParameters);
+                EmitRouteTemplate(builder, route, pathParameters);
             }
             else
             {
-                builder.Append("        var path = \"").Append(EscapeStringLiteral(operation.Route)).AppendLine("\";");
+                builder.Append("        var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
             }
 
             if (queryParameters.Count > 0 || _querySecuritySchemes.Count > 0)
@@ -214,6 +215,11 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             builder.Append("        pathBuilder.Append(\"").Append(EscapeStringLiteral(segment)).AppendLine("\");");
+        }
+
+        private static string NormalizeRelativeRoute(string route)
+        {
+            return route.TrimStart('/');
         }
     }
 }
