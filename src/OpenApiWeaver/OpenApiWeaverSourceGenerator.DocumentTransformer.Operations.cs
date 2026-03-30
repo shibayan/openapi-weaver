@@ -1,0 +1,329 @@
+﻿using System.Globalization;
+
+using Microsoft.OpenApi;
+
+namespace OpenApiWeaver;
+
+public sealed partial class OpenApiWeaverSourceGenerator
+{
+    private sealed partial class DocumentTransformer
+    {
+        private List<TagGroup> BuildTagGroups()
+        {
+            if (_document.Tags is not null)
+            {
+                foreach (var tag in _document.Tags)
+                {
+                    if (!string.IsNullOrWhiteSpace(tag.Name) && !string.IsNullOrWhiteSpace(tag.Description))
+                    {
+                        _tagDescriptions[tag.Name!] = tag.Description!;
+                    }
+                }
+            }
+
+            var groups = new Dictionary<string, List<OperationGroupItem>>(StringComparer.Ordinal);
+            var classNames = new Dictionary<string, string>(StringComparer.Ordinal);
+            var descriptions = new Dictionary<string, string?>(StringComparer.Ordinal);
+
+            foreach (var path in _document.Paths)
+            {
+                foreach (var operation in path.Value.Operations ?? [])
+                {
+                    var tagName = GetTagName(operation.Value);
+                    var groupName = string.IsNullOrWhiteSpace(tagName) ? "Default" : tagName!;
+                    var propertyName = SafeIdentifier(ToPascalCase(groupName));
+                    var className = propertyName.EndsWith("Client", StringComparison.Ordinal) ? propertyName : propertyName + "Client";
+
+                    if (!groups.ContainsKey(propertyName))
+                    {
+                        groups[propertyName] = [];
+                        classNames[propertyName] = className;
+                        _tagDescriptions.TryGetValue(groupName, out var description);
+                        descriptions[propertyName] = description;
+                    }
+
+                    groups[propertyName].Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value));
+                }
+            }
+
+            return [..
+                groups.OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+                    .Select(pair => new TagGroup(pair.Key, classNames[pair.Key], descriptions[pair.Key], pair.Value))];
+        }
+
+        private OperationGroupItem BuildOperation(string route, string operationType, IOpenApiPathItem pathItem, OpenApiOperation operation)
+        {
+            var tagName = GetTagName(operation);
+            var parameters = CollectParameters(pathItem, operation)
+                .Select(parameter => new ParameterInfo(
+                    parameter.Name ?? string.Empty,
+                    SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty)),
+                    ResolveTypeName(parameter.Schema, parameter.Required),
+                    parameter.Required,
+                    MapParameterLocation(parameter.In ?? Microsoft.OpenApi.ParameterLocation.Query),
+                    parameter.Description))
+                .ToList();
+
+            var requestBody = ResolveRequestBody(operation.RequestBody);
+            var response = ResolveResponse(operation);
+
+            return new OperationGroupItem(
+                route,
+                operationType,
+                BuildOperationMethodName(operation.OperationId, operationType, route, tagName),
+                operation.Summary ?? operation.Description ?? $"{ToPascalCase(operationType.ToLowerInvariant())} {route}.",
+                operation.Summary is not null && !string.IsNullOrWhiteSpace(operation.Description) ? operation.Description : null,
+                parameters,
+                requestBody,
+                response);
+        }
+
+        private ResponseInfo ResolveResponse(OpenApiOperation operation)
+        {
+            var response = SelectSuccessResponse(operation.Responses ?? []);
+            if (response?.Content is null || response.Content.Count == 0)
+            {
+                return new ResponseInfo(ResponseKind.None, string.Empty, null);
+            }
+
+            var selectedContent = SelectPreferredContent(
+                response.Content,
+                static item => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                    HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 1 :
+                    item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 2 :
+                    int.MaxValue);
+
+            var kind = ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
+            var typeName = kind switch
+            {
+                ResponseKind.Binary => "byte[]",
+                ResponseKind.String => "string",
+                ResponseKind.None => string.Empty,
+                _ => ResolveTypeName(selectedContent.Value.Schema, required: selectedContent.Value.Schema is null || !IsNullableSchema(selectedContent.Value.Schema))
+            };
+
+            return new ResponseInfo(kind, typeName, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
+        }
+
+        private static ResponseKind ResolveResponseKind(string contentType, IOpenApiSchema? schema)
+        {
+            if (HasSchemaType(schema, JsonSchemaType.String) && string.Equals(schema?.Format, "binary", StringComparison.OrdinalIgnoreCase))
+            {
+                return ResponseKind.Binary;
+            }
+
+            if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+            {
+                return ResponseKind.Json;
+            }
+
+            return ResponseKind.String;
+        }
+
+        private static IOpenApiResponse? SelectSuccessResponse(OpenApiResponses responses)
+        {
+            IOpenApiResponse? selectedResponse = null;
+            var bestStatusCode = int.MaxValue;
+            var selectedHasUsableContent = false;
+
+            foreach (var item in responses)
+            {
+                if (!item.Key.StartsWith("2", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var statusCode = ParseResponseStatusCode(item.Key);
+                var hasUsableContent = HasUsableResponseContent(item.Value);
+
+                if (selectedResponse is null
+                    || (hasUsableContent && !selectedHasUsableContent)
+                    || (hasUsableContent == selectedHasUsableContent && statusCode < bestStatusCode))
+                {
+                    selectedResponse = item.Value;
+                    bestStatusCode = statusCode;
+                    selectedHasUsableContent = hasUsableContent;
+                }
+            }
+
+            return selectedResponse;
+        }
+
+        private static int ParseResponseStatusCode(string statusCode)
+        {
+            return int.TryParse(statusCode, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : int.MaxValue;
+        }
+
+        private static bool HasUsableResponseContent(IOpenApiResponse response)
+        {
+            if (response.Content is null || response.Content.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var mediaType in response.Content)
+            {
+                if (mediaType.Value.Schema is not null || mediaType.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private List<SecuritySchemeBinding> BuildSecuritySchemes()
+        {
+            var bindings = new List<SecuritySchemeBinding>();
+            if (_document.Components?.SecuritySchemes is null)
+            {
+                return bindings;
+            }
+
+            foreach (var scheme in _document.Components.SecuritySchemes)
+            {
+                var binding = CreateSecuritySchemeBinding(scheme.Key, scheme.Value);
+                if (binding is not null)
+                {
+                    bindings.Add(binding);
+                }
+            }
+
+            return bindings;
+        }
+
+        private static SecuritySchemeBinding? CreateSecuritySchemeBinding(string schemeKey, IOpenApiSecurityScheme scheme)
+        {
+            if (scheme.Type == SecuritySchemeType.OAuth2
+                || (scheme.Type == SecuritySchemeType.Http && string.Equals(scheme.Scheme, "bearer", StringComparison.OrdinalIgnoreCase)))
+            {
+                var parameterName = SafeIdentifier(ToCamelCase(schemeKey == "oauth2" ? "access_token" : $"{schemeKey}_token"));
+                return new SecuritySchemeBinding(
+                    parameterName,
+                    $"string? {parameterName} = default",
+                    "Authorization",
+                    SecuritySchemeLocation.Header,
+                    isBearerToken: true);
+            }
+
+            if (scheme.Type == SecuritySchemeType.ApiKey)
+            {
+                var parameterName = SafeIdentifier(ToCamelCase($"{schemeKey}_api_key"));
+                return new SecuritySchemeBinding(
+                    parameterName,
+                    $"string? {parameterName} = default",
+                    scheme.Name ?? parameterName,
+                    MapLocation(scheme.In ?? Microsoft.OpenApi.ParameterLocation.Header),
+                    isBearerToken: false);
+            }
+
+            return null;
+        }
+
+        private static SecuritySchemeLocation MapLocation(Microsoft.OpenApi.ParameterLocation location)
+        {
+            return location switch
+            {
+                Microsoft.OpenApi.ParameterLocation.Query => SecuritySchemeLocation.Query,
+                Microsoft.OpenApi.ParameterLocation.Cookie => SecuritySchemeLocation.Cookie,
+                _ => SecuritySchemeLocation.Header,
+            };
+        }
+
+        private static List<IOpenApiParameter> CollectParameters(IOpenApiPathItem pathItem, OpenApiOperation operation)
+        {
+            var pathParameters = pathItem.Parameters;
+            var operationParameters = operation.Parameters;
+
+            if ((pathParameters is null || pathParameters.Count == 0)
+                && (operationParameters is null || operationParameters.Count == 0))
+            {
+                return [];
+            }
+
+            var parameters = new List<IOpenApiParameter>((pathParameters?.Count ?? 0) + (operationParameters?.Count ?? 0));
+            var indices = new Dictionary<(Microsoft.OpenApi.ParameterLocation Location, string Name), int>();
+            if (pathParameters is not null)
+            {
+                foreach (var parameter in pathParameters)
+                {
+                    AddOrReplaceParameter(parameters, indices, parameter);
+                }
+            }
+
+            if (operationParameters is not null)
+            {
+                foreach (var parameter in operationParameters)
+                {
+                    AddOrReplaceParameter(parameters, indices, parameter);
+                }
+            }
+
+            return parameters;
+        }
+
+        private static void AddOrReplaceParameter(
+            List<IOpenApiParameter> parameters,
+            Dictionary<(Microsoft.OpenApi.ParameterLocation Location, string Name), int> indices,
+            IOpenApiParameter parameter)
+        {
+            var location = parameter.In ?? Microsoft.OpenApi.ParameterLocation.Query;
+            var key = (
+                location,
+                location == Microsoft.OpenApi.ParameterLocation.Header
+                    ? (parameter.Name ?? string.Empty).ToUpperInvariant()
+                    : parameter.Name ?? string.Empty);
+            if (indices.TryGetValue(key, out var index))
+            {
+                parameters[index] = parameter;
+                return;
+            }
+
+            indices.Add(key, parameters.Count);
+            parameters.Add(parameter);
+        }
+
+        private static KeyValuePair<string, T> SelectPreferredContent<T>(IEnumerable<KeyValuePair<string, T>> content, Func<KeyValuePair<string, T>, int> getPriority)
+        {
+            using var enumerator = content.GetEnumerator();
+            if (!enumerator.MoveNext())
+            {
+                throw new InvalidOperationException("The content collection must not be empty.");
+            }
+
+            var selected = enumerator.Current;
+            var bestPriority = getPriority(selected);
+
+            while (enumerator.MoveNext())
+            {
+                var candidate = enumerator.Current;
+                var priority = getPriority(candidate);
+                if (priority < bestPriority)
+                {
+                    selected = candidate;
+                    bestPriority = priority;
+                }
+            }
+
+            return selected;
+        }
+
+        private static string? GetTagName(OpenApiOperation operation)
+        {
+            return operation.Tags?.FirstOrDefault()?.Name;
+        }
+
+        private static ParameterLocation MapParameterLocation(Microsoft.OpenApi.ParameterLocation location)
+        {
+            return location switch
+            {
+                Microsoft.OpenApi.ParameterLocation.Path => ParameterLocation.Path,
+                Microsoft.OpenApi.ParameterLocation.Header => ParameterLocation.Header,
+                Microsoft.OpenApi.ParameterLocation.Cookie => ParameterLocation.Cookie,
+                _ => ParameterLocation.Query,
+            };
+        }
+    }
+}

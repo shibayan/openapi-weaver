@@ -1,56 +1,20 @@
 ﻿using System.Text;
 
-using Microsoft.OpenApi;
-
 namespace OpenApiWeaver;
 
 public sealed partial class OpenApiWeaverSourceGenerator
 {
-    private sealed partial class ClientEmitter
+    private sealed partial class ClientEmitter(ClientModel model)
     {
-        private static readonly HashSet<string> s_reservedIdentifiers = new(StringComparer.Ordinal)
-        {
-            "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class",
-            "const", "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event",
-            "explicit", "extern", "false", "finally", "fixed", "float", "for", "foreach", "goto", "if",
-            "implicit", "in", "int", "interface", "internal", "is", "lock", "long", "namespace", "new",
-            "null", "object", "operator", "out", "override", "params", "private", "protected", "public",
-            "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static",
-            "string", "struct", "switch", "this", "throw", "true", "try", "typeof", "uint", "ulong",
-            "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"
-        };
-
-        private readonly string _rootNamespace;
-        private readonly OpenApiDocument _document;
-        private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, string> _inlineSchemaNames = new(StringComparer.Ordinal);
-        private readonly HashSet<string> _usedSchemaTypeNames = new(StringComparer.Ordinal);
-        private readonly List<InlineSchemaInfo> _inlineSchemas = [];
-        private readonly string _clientName;
-        private readonly List<TagGroup> _tagGroups = [];
-        private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);
-        private readonly List<SecuritySchemeBinding> _securitySchemes = [];
         private List<SecuritySchemeBinding> _querySecuritySchemes = null!;
 
         private bool _needsFormUrlEncoded;
         private bool _needsMultipartFormData;
         private bool _needsFormatParameter;
 
-        public ClientEmitter(string documentPath, string rootNamespace, string? namespaceOverride, string? clientNameOverride, OpenApiDocument document)
-        {
-            var effectiveNamespace = string.IsNullOrWhiteSpace(namespaceOverride) ? rootNamespace : namespaceOverride!;
-            _rootNamespace = effectiveNamespace ?? string.Empty;
-            _document = document;
-            _clientName = BuildClientName(documentPath, document, clientNameOverride);
-        }
-
         public string Emit()
         {
-            RegisterSchemaNames();
-            RegisterTagGroups();
-            RegisterInlineSchemaNames();
-            RegisterSecuritySchemes();
-            _querySecuritySchemes = _securitySchemes.Where(static scheme => scheme.Location == SecuritySchemeLocation.Query).ToList();
+            _querySecuritySchemes = model.SecuritySchemes.Where(static scheme => scheme.Location == SecuritySchemeLocation.Query).ToList();
             AnalyzeRequiredHelpers();
 
             var builder = new StringBuilder();
@@ -74,15 +38,15 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("using System.Threading.Tasks;");
             builder.AppendLine();
 
-            if (!string.IsNullOrWhiteSpace(_rootNamespace))
+            if (!string.IsNullOrWhiteSpace(model.RootNamespace))
             {
-                builder.Append("namespace ").Append(_rootNamespace).AppendLine(";");
+                builder.Append("namespace ").Append(model.RootNamespace).AppendLine(";");
                 builder.AppendLine();
             }
 
             EmitSchemas(builder);
 
-            if (_tagGroups.Count > 0)
+            if (model.TagGroups.Count > 0)
             {
                 EmitHelperClass(builder);
                 builder.AppendLine();
@@ -100,7 +64,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 _needsFormatParameter = true;
             }
 
-            foreach (var tagGroup in _tagGroups)
+            foreach (var tagGroup in model.TagGroups)
             {
                 if (_needsFormUrlEncoded && _needsMultipartFormData && _needsFormatParameter)
                 {
@@ -114,7 +78,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                         break;
                     }
 
-                    var requestBody = ResolveRequestBody(operation.Operation.RequestBody);
+                    var requestBody = operation.RequestBody;
                     if (requestBody is not null)
                     {
                         switch (requestBody.Kind)
@@ -134,77 +98,6 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     {
                         _needsFormatParameter = true;
                     }
-                }
-            }
-        }
-
-        private void RegisterSchemaNames()
-        {
-            if (_document.Components?.Schemas is null)
-            {
-                return;
-            }
-
-            foreach (var schema in _document.Components.Schemas)
-            {
-                var schemaName = SafeIdentifier(ToPascalCase(schema.Key));
-                _schemaNames[schema.Key] = schemaName;
-                _usedSchemaTypeNames.Add(schemaName);
-            }
-        }
-
-        private void RegisterTagGroups()
-        {
-            if (_document.Tags is not null)
-            {
-                foreach (var tag in _document.Tags)
-                {
-                    var tagName = tag.Name;
-                    if (!string.IsNullOrWhiteSpace(tagName) && !string.IsNullOrWhiteSpace(tag.Description))
-                    {
-                        _tagDescriptions[tagName!] = tag.Description!;
-                    }
-                }
-            }
-
-            var groups = new Dictionary<string, TagGroup>(StringComparer.Ordinal);
-
-            foreach (var path in _document.Paths)
-            {
-                foreach (var operation in path.Value.Operations ?? [])
-                {
-                    var tagName = GetTagName(operation.Value);
-                    var groupName = string.IsNullOrWhiteSpace(tagName) ? "Default" : tagName!;
-                    var propertyName = SafeIdentifier(ToPascalCase(groupName));
-                    var className = propertyName.EndsWith("Client", StringComparison.Ordinal) ? propertyName : propertyName + "Client";
-
-                    if (!groups.TryGetValue(propertyName, out var group))
-                    {
-                        _tagDescriptions.TryGetValue(groupName, out var tagDescription);
-                        group = new TagGroup(propertyName, className, tagDescription);
-                        groups.Add(propertyName, group);
-                    }
-
-                    group.Operations.Add(new OperationGroupItem(path.Key, operation.Key.ToString(), operation.Value, CollectParameters(path.Value, operation.Value)));
-                }
-            }
-
-            _tagGroups.AddRange(groups.Values.OrderBy(static group => group.PropertyName, StringComparer.Ordinal));
-        }
-
-        private void RegisterSecuritySchemes()
-        {
-            if (_document.Components?.SecuritySchemes is null)
-            {
-                return;
-            }
-
-            foreach (var scheme in _document.Components.SecuritySchemes)
-            {
-                var binding = CreateSecuritySchemeBinding(scheme.Key, scheme.Value);
-                if (binding is not null)
-                {
-                    _securitySchemes.Add(binding);
                 }
             }
         }
@@ -258,7 +151,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private void EmitTagClients(StringBuilder builder)
         {
-            foreach (var tagGroup in _tagGroups)
+            foreach (var tagGroup in model.TagGroups)
             {
                 EmitTagClient(builder, tagGroup);
                 builder.AppendLine();
@@ -296,7 +189,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             foreach (var operation in tagGroup.Operations)
             {
                 builder.AppendLine();
-                EmitOperation(builder, operation.Route, operation.OperationType, operation.Operation, operation.Parameters);
+                EmitOperation(builder, operation);
             }
 
             builder.AppendLine("}");
@@ -304,15 +197,14 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private void EmitClient(StringBuilder builder)
         {
-            var serverUrl = _document.Servers?.FirstOrDefault()?.Url;
-            var constructorParameters = string.Join(", ", _securitySchemes.Select(static scheme => scheme.ParameterDeclaration));
+            var constructorParameters = string.Join(", ", model.SecuritySchemes.Select(static scheme => scheme.ParameterDeclaration));
 
             EmitDocComment(
                 builder,
                 "    ",
-                summary: !string.IsNullOrWhiteSpace(_document.Info.Title) ? _document.Info.Title : _clientName,
-                remarks: _document.Info.Description);
-            builder.Append("public partial class ").Append(_clientName).AppendLine(" : IDisposable");
+                summary: model.Summary,
+                remarks: model.Description);
+            builder.Append("public partial class ").Append(model.ClientName).AppendLine(" : IDisposable");
             builder.AppendLine("{");
             builder.AppendLine("    private readonly HttpClient _httpClient;");
             foreach (var securityScheme in _querySecuritySchemes)
@@ -320,15 +212,15 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 builder.Append("    private readonly string? ").Append(securityScheme.FieldName).AppendLine(";");
             }
             builder.AppendLine();
-            builder.Append("    public ").Append(_clientName).Append('(').Append(constructorParameters).AppendLine(")");
+            builder.Append("    public ").Append(model.ClientName).Append('(').Append(constructorParameters).AppendLine(")");
             builder.AppendLine("    {");
             builder.AppendLine("        _httpClient = new HttpClient();");
-            if (Uri.TryCreate(serverUrl, UriKind.Absolute, out _))
+            if (Uri.TryCreate(model.ServerUrl, UriKind.Absolute, out _))
             {
-                builder.Append("        _httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(serverUrl!)).AppendLine("\", UriKind.Absolute);");
+                builder.Append("        _httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(model.ServerUrl!)).AppendLine("\", UriKind.Absolute);");
             }
 
-            foreach (var securityScheme in _securitySchemes)
+            foreach (var securityScheme in model.SecuritySchemes)
             {
                 EmitSecuritySchemeInitialization(builder, securityScheme);
             }
@@ -336,7 +228,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             var constructorArguments = string.Join(", ",
                 new[] { "_httpClient" }.Concat(
                     _querySecuritySchemes.Select(static scheme => scheme.FieldName)));
-            foreach (var tagGroup in _tagGroups)
+            foreach (var tagGroup in model.TagGroups)
             {
                 builder.Append("        ").Append(tagGroup.PropertyName).Append(" = new ").Append(tagGroup.ClassName).Append('(').Append(constructorArguments).AppendLine(");");
             }
@@ -344,7 +236,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("    }");
             builder.AppendLine();
 
-            foreach (var tagGroup in _tagGroups)
+            foreach (var tagGroup in model.TagGroups)
             {
                 EmitDocComment(
                     builder,
@@ -354,7 +246,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 builder.Append("    public ").Append(tagGroup.ClassName).Append(' ').Append(tagGroup.PropertyName).AppendLine(" { get; }");
             }
 
-            if (_tagGroups.Count > 0)
+            if (model.TagGroups.Count > 0)
             {
                 builder.AppendLine();
             }
@@ -364,99 +256,6 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("        _httpClient.Dispose();");
             builder.AppendLine("    }");
             builder.AppendLine("}");
-        }
-
-        private sealed class TagGroup(string propertyName, string className, string? description)
-        {
-            public string PropertyName { get; } = propertyName;
-            public string ClassName { get; } = className;
-            public string? Description { get; } = description;
-            public List<OperationGroupItem> Operations { get; } = [];
-        }
-
-        private sealed class InlineSchemaInfo(string typeName, IOpenApiSchema schema)
-        {
-            public string TypeName { get; } = typeName;
-            public IOpenApiSchema Schema { get; } = schema;
-        }
-
-        private sealed class OperationGroupItem(string route, string operationType, OpenApiOperation operation, List<IOpenApiParameter> parameters)
-        {
-            public string Route { get; } = route;
-            public string OperationType { get; } = operationType;
-            public OpenApiOperation Operation { get; } = operation;
-            public List<IOpenApiParameter> Parameters { get; } = parameters;
-            public bool HasParameters { get; } = parameters.Count > 0;
-        }
-
-        private sealed class SecuritySchemeBinding(string parameterName, string parameterDeclaration, string headerOrParameterName, SecuritySchemeLocation location, bool isBearerToken)
-        {
-            public string ParameterName { get; } = parameterName;
-            public string ParameterDeclaration { get; } = parameterDeclaration;
-            public string HeaderOrParameterName { get; } = headerOrParameterName;
-            public SecuritySchemeLocation Location { get; } = location;
-            public bool IsBearerToken { get; } = isBearerToken;
-            public string FieldName { get; } = $"_{parameterName}";
-        }
-
-        private enum SecuritySchemeLocation
-        {
-            Header,
-            Query,
-            Cookie
-        }
-
-        private sealed class RequestBodyInfo(RequestBodyKind kind, string typeName, bool isRequired, IOpenApiSchema? schema)
-        {
-            public RequestBodyKind Kind { get; } = kind;
-            public string TypeName { get; } = typeName;
-            public bool IsRequired { get; } = isRequired;
-            public IOpenApiSchema? Schema { get; } = schema;
-        }
-
-        private sealed class ResponseInfo(ResponseKind kind, string typeName)
-        {
-            public ResponseKind Kind { get; } = kind;
-            public string TypeName { get; } = typeName;
-        }
-
-        private enum RequestBodyKind
-        {
-            Json,
-            FormUrlEncoded,
-            MultipartFormData
-        }
-
-        private enum ResponseKind
-        {
-            None,
-            Json,
-            String,
-            Binary
-        }
-
-        private sealed class SchemaPropertyInfo(string name, IOpenApiSchema schema, bool required)
-        {
-            public string Name { get; } = name;
-            public IOpenApiSchema Schema { get; } = schema;
-            public bool Required { get; } = required;
-        }
-
-        private enum RequestBodyValueKind
-        {
-            Scalar,
-            Binary,
-            Collection
-        }
-
-        private sealed class RequestBodyPropertyInfo(string serializedName, string propertyName, RequestBodyValueKind kind, bool nullable, RequestBodyValueKind? elementKind = null, bool elementNullable = false)
-        {
-            public string SerializedName { get; } = serializedName;
-            public string PropertyName { get; } = propertyName;
-            public RequestBodyValueKind Kind { get; } = kind;
-            public bool Nullable { get; } = nullable;
-            public RequestBodyValueKind? ElementKind { get; } = elementKind;
-            public bool ElementNullable { get; } = elementNullable;
         }
     }
 }
