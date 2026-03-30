@@ -672,7 +672,9 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("public required int CompanyId { get; init; }", source);
+        Assert.Contains("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]" + System.Environment.NewLine + "    [JsonPropertyName(\"display_name\")]", source);
         Assert.Contains("public string? DisplayName { get; init; }", source);
+        Assert.Contains("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]" + System.Environment.NewLine + "    [JsonPropertyName(\"note\")]", source);
         Assert.Contains("public string? Note { get; init; }", source);
     }
 
@@ -808,6 +810,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var source = GenerateSource(openApi);
 
         Assert.Contains("public required int CompanyId { get; init; }", source);
+        Assert.DoesNotContain("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]", source);
         Assert.Contains("public required string? DisplayName { get; init; }", source);
     }
 
