@@ -66,6 +66,62 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
     }
 
     [Fact]
+    public void IntegerEnumSchema_GeneratesCSharpEnumType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Enum API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                orderState:
+                  type: integer
+                  enum:
+                    - 0
+                    - 1
+                    - 2
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public enum OrderState", source);
+        Assert.Contains("Value0 = 0,", source);
+        Assert.Contains("Value1 = 1,", source);
+        Assert.Contains("Value2 = 2", source);
+    }
+
+    [Fact]
+    public void InlineEnumProperty_GeneratesNamedSchemaType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Inline Enum API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                orderResponse:
+                  type: object
+                  required:
+                    - status
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                        - pending
+                        - completed
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required OrderResponseStatus Status { get; init; }", source);
+        Assert.Contains("public readonly record struct OrderResponseStatus(string Value)", source);
+    }
+
+    [Fact]
     public void ArrayJsonResponse_GeneratesReadOnlyListReturnType_AndNonNullGuard()
     {
         const string openApi = """
@@ -253,7 +309,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("public required IReadOnlyList<CompanyIndexResponseCompaniesItem> Companies { get; init; }", source);
         Assert.Contains("public required IReadOnlyList<TagIndexResponseTagsItem> Tags { get; init; }", source);
-        Assert.Equal(1, source.Split("public sealed class CompanyIndexResponseCompaniesItem", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, source.Split("public sealed class CompanyIndexResponseCompaniesItem").Length - 1);
         Assert.Contains("public sealed class TagIndexResponseTagsItem", source);
     }
 

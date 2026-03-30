@@ -67,15 +67,32 @@ public sealed partial class OpenApiWeaverSourceGenerator
         string? description,
         string? dictionaryValueType,
         IReadOnlyList<SchemaPropertyDefinition> properties,
-        IReadOnlyList<string> enumValues)
+        SchemaEnumKind enumKind,
+        string? enumUnderlyingType,
+        IReadOnlyList<SchemaEnumMemberDefinition> enumMembers)
     {
         public string TypeName { get; } = typeName;
         public string Summary { get; } = summary;
         public string? Description { get; } = description;
         public string? DictionaryValueType { get; } = dictionaryValueType;
         public IReadOnlyList<SchemaPropertyDefinition> Properties { get; } = properties;
-        public IReadOnlyList<string> EnumValues { get; } = enumValues;
-        public bool IsEnum { get; } = enumValues.Count > 0;
+        public SchemaEnumKind EnumKind { get; } = enumKind;
+        public string? EnumUnderlyingType { get; } = enumUnderlyingType;
+        public IReadOnlyList<SchemaEnumMemberDefinition> EnumMembers { get; } = enumMembers;
+        public bool IsEnum { get; } = enumKind != SchemaEnumKind.None;
+    }
+
+    private enum SchemaEnumKind
+    {
+        None,
+        String,
+        Integer
+    }
+
+    private sealed class SchemaEnumMemberDefinition(string memberName, string value)
+    {
+        public string MemberName { get; } = memberName;
+        public string Value { get; } = value;
     }
 
     private sealed class SchemaPropertyDefinition(
