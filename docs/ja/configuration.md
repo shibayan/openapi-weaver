@@ -35,18 +35,6 @@ OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild �
 </ItemGroup>
 ```
 
-## `AdditionalFiles` アイテム
-
-単純なシナリオでは `AdditionalFiles` を直接使うこともできます。
-
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="openapi\petstore.yaml" />
-</ItemGroup>
-```
-
-`AdditionalFiles` を使う場合、クライアント名は常にファイル名から導出され、名前空間は `RootNamespace` が既定になります。
-
 ## クライアント名の導出
 
 `ClientName` を指定しない場合、ジェネレーターはファイル名を PascalCase に変換して `Client` を末尾に付与した名前を導出します。
@@ -67,4 +55,4 @@ OpenApiWeaver は次の形式の OpenAPI 3.x ドキュメントを読み込み�
 | `.yaml` | OpenAPI 3.x YAML |
 | `.yml` | OpenAPI 3.x YAML |
 
-`AdditionalFiles` または `OpenApiWeaverDocument` に含まれていても、その他の拡張子のファイルはジェネレーターに無視されます。
+`OpenApiWeaverDocument` に含まれていても、その他の拡張子のファイルはジェネレーターに無視されます。

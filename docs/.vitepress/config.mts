@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   lang: 'en-US',
   title: 'OpenApiWeaver',
-  description: 'An incremental Roslyn source generator that turns OpenAPI documents into strongly typed C# HTTP clients at build time.',
+  description: 'An incremental Roslyn source generator that turns OpenAPI 3.x documents into strongly typed C# HTTP clients at build time.',
 
   base: '/openapi-weaver/',
 
@@ -51,7 +51,7 @@ export default defineConfig({
       lang: 'ja-JP',
       link: '/ja/',
       title: 'OpenApiWeaver',
-      description: 'OpenAPI ドキュメントをビルド時に型安全な C# HTTP クライアントへ変換する、インクリメンタル Roslyn ソースジェネレーター。',
+      description: 'OpenAPI 3.x ドキュメントをビルド時に型安全な C# HTTP クライアントへ変換する、インクリメンタル Roslyn ソースジェネレーター。',
       themeConfig: {
         nav: [
           { text: 'ガイド', link: '/ja/getting-started' },

@@ -51,18 +51,6 @@ Install-Package OpenApiWeaver -Version x.y.z
 
 詳しくは [設定](./configuration) を参照してください。
 
-### 代替: `AdditionalFiles`
-
-既定の命名で十分な単純なケースでは、`AdditionalFiles` も利用できます。
-
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="openapi\petstore.yaml" />
-</ItemGroup>
-```
-
-`AdditionalFiles` を使う場合、クライアント名は常にファイル名から導出され、名前空間は `RootNamespace` が使われます。
-
 ## 3. 生成されたクライアントを使う
 
 プロジェクトがビルドされると、生成された型はすべて IntelliSense 付きで利用可能になります。
@@ -79,7 +67,7 @@ var pet = await client.Pets.GetAsync(petId: 1);
 
 ## 仕組み
 
-`OpenApiWeaverDocument` または `AdditionalFiles` として含まれた各 OpenAPI ドキュメントに対し、ジェネレーターは次の処理を行います。
+`OpenApiWeaverDocument` として含まれた各 OpenAPI ドキュメントに対し、ジェネレーターは次の処理を行います。
 
 1. **Parse** - [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET) を使ってドキュメントを読み込み、JSON と YAML の両方をサポート
 2. **Transform** - クラス名とメソッド名を導出し、命名規則 (例: `snake_case` → `PascalCase`) を変換し、`$ref` を解決し、スキーマを分類
