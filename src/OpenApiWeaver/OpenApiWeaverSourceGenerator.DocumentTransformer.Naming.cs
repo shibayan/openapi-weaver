@@ -103,7 +103,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             for (var i = 0; i < segmentTokens.Count; i++)
             {
-                if (!string.Equals(NormalizeToken(segmentTokens[i]), NormalizeToken(tagTokens[i]), StringComparison.OrdinalIgnoreCase))
+                if (NormalizeToken(segmentTokens[i]) != NormalizeToken(tagTokens[i]))
                 {
                     return false;
                 }
@@ -164,39 +164,41 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private static string NormalizeToken(string value)
         {
-            var normalized = value.Trim();
+            var normalized = value.Trim().ToLowerInvariant();
             if (normalized.Length == 0)
             {
                 return normalized;
             }
 
             // Invariant words (same in singular and plural)
-            if (string.Equals(normalized, "series", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "species", StringComparison.OrdinalIgnoreCase))
+            if (normalized is "series" or "species")
             {
                 return normalized;
             }
 
             // consonant + "ies" → consonant + "y" (e.g., "companies" → "company")
-            // Vowel + "ies" falls through to simple "s" removal (e.g., "movies" → "movie")
-            if (normalized.Length > 3
-                && normalized.EndsWith("ies", StringComparison.OrdinalIgnoreCase)
-                && IsConsonant(normalized[normalized.Length - 4]))
+            // Guards against common "ie + s" plurals:
+            //   - Length <= 4 (e.g., "ties", length 4): too short to be a consonant+y plural
+            //   - Double-vowel pattern (e.g., "cookies", "rookies"): excluded by HasRepeatedVowelBeforeConsonantIes
+            if (normalized.Length > 4
+                && normalized.EndsWith("ies")
+                && IsConsonant(normalized[normalized.Length - 4])
+                && !HasRepeatedVowelBeforeConsonantIes(normalized))
             {
                 return normalized.Substring(0, normalized.Length - 3) + "y";
             }
 
             if (normalized.Length > 2
-                && normalized.EndsWith("s", StringComparison.OrdinalIgnoreCase)
-                && !normalized.EndsWith("ss", StringComparison.OrdinalIgnoreCase)
-                && !normalized.EndsWith("us", StringComparison.OrdinalIgnoreCase)
-                && !normalized.EndsWith("is", StringComparison.OrdinalIgnoreCase))
+                && normalized.EndsWith("s")
+                && !normalized.EndsWith("ss")
+                && !normalized.EndsWith("us")
+                && !normalized.EndsWith("is"))
             {
-                if (normalized.EndsWith("ses", StringComparison.OrdinalIgnoreCase)
-                    || normalized.EndsWith("xes", StringComparison.OrdinalIgnoreCase)
-                    || normalized.EndsWith("zes", StringComparison.OrdinalIgnoreCase)
-                    || normalized.EndsWith("ches", StringComparison.OrdinalIgnoreCase)
-                    || normalized.EndsWith("shes", StringComparison.OrdinalIgnoreCase))
+                if (normalized.EndsWith("ses")
+                    || normalized.EndsWith("xes")
+                    || normalized.EndsWith("zes")
+                    || normalized.EndsWith("ches")
+                    || normalized.EndsWith("shes"))
                 {
                     normalized = normalized.Substring(0, normalized.Length - 2);
                 }
@@ -213,6 +215,24 @@ public sealed partial class OpenApiWeaverSourceGenerator
         {
             var lower = char.ToLowerInvariant(ch);
             return char.IsLetter(lower) && lower is not 'a' and not 'e' and not 'i' and not 'o' and not 'u';
+        }
+
+        // Returns true when the word ends in a repeated-vowel + consonant + "ies" pattern
+        // (e.g., "cookies" = "oo" + "k" + "ies", "rookies" = "oo" + "k" + "ies"), which
+        // indicates the plural is formed by adding "s" to an "-ie" root rather than changing
+        // a trailing "y" to "ies". Requires length >= 7 to ensure enough characters exist.
+        private static bool HasRepeatedVowelBeforeConsonantIes(string value)
+        {
+            if (value.Length < 7)
+            {
+                return false;
+            }
+
+            var beforeConsonant = value[value.Length - 5];
+            var twoBeforeConsonant = value[value.Length - 6];
+            return !IsConsonant(beforeConsonant)
+                && !IsConsonant(twoBeforeConsonant)
+                && beforeConsonant == twoBeforeConsonant;
         }
     }
 }
