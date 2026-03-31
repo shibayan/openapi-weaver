@@ -12,8 +12,9 @@
 
   <PropertyGroup>
     <PackageId>OpenApiWeaver</PackageId>
-    <Description>OpenAPI source generator for strongly typed C# HTTP clients.</Description>
+    <Description>Incremental Roslyn source generator that turns OpenAPI 3.x documents into strongly typed C# HTTP clients at build time.</Description>
     <Authors>shibayan</Authors>
+    <Copyright>Copyright (c) Tatsuro Shibamura 2026</Copyright>
     <RepositoryUrl>https://github.com/shibayan/openapi-weaver</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
