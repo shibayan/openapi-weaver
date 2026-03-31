@@ -1,8 +1,13 @@
 # Getting Started
 
+## Prerequisites
+
+- .NET SDK 8.0 or later
+- An OpenAPI 3.x document in JSON or YAML format
+
 ## 1. Install the package
 
-Add the NuGet package to your project. The `PrivateAssets="all"` attribute ensures the source generator is only used at build time and is not included as a transitive dependency.
+Add the NuGet package to your project:
 
 ```xml
 <ItemGroup>
@@ -10,23 +15,32 @@ Add the NuGet package to your project. The `PrivateAssets="all"` attribute ensur
 </ItemGroup>
 ```
 
+`PrivateAssets="all"` ensures the source generator is used only at build time and is not exposed as a transitive dependency of your project.
+
 ## 2. Add your OpenAPI document
 
 ### Recommended: `OpenApiWeaverDocument`
 
+Use the `OpenApiWeaverDocument` item to include your OpenAPI document with optional metadata:
+
 ```xml
 <ItemGroup>
   <OpenApiWeaverDocument Include="openapi\petstore.yaml"
-                         ClientName="PetstoreSdk"
+                         ClientName="PetstoreClient"
                          Namespace="Contoso.Generated" />
 </ItemGroup>
 ```
 
-`ClientName` and `Namespace` are optional metadata. If omitted, the generator falls back to the file name and the project's `RootNamespace`.
+| Metadata | Required | Default |
+|---|---|---|
+| `ClientName` | No | Derived from file name (`petstore.yaml` → `PetstoreClient`) |
+| `Namespace` | No | Project's `RootNamespace` |
+
+See the [Configuration](./configuration) page for full details.
 
 ### Alternative: `AdditionalFiles`
 
-`AdditionalFiles` is still supported for simple scenarios:
+For simple scenarios where default naming is sufficient, `AdditionalFiles` works too:
 
 ```xml
 <ItemGroup>
@@ -34,30 +48,38 @@ Add the NuGet package to your project. The `PrivateAssets="all"` attribute ensur
 </ItemGroup>
 ```
 
+When using `AdditionalFiles`, the client name is always derived from the file name and the namespace defaults to `RootNamespace`.
+
 ## 3. Use the generated client
 
+Once the project builds, all generated types are available with full IntelliSense:
+
 ```csharp
+// Constructor parameters are generated based on security schemes
 var client = new PetstoreClient(accessToken: "your-token");
 
-var pets = await client.Pets.ListAsync();
+// Operations are grouped by OpenAPI tag
+var pet = await client.Pets.GetAsync(petId: 1);
 ```
 
-The client name is derived from the file name (e.g. `petstore.yaml` → `PetstoreClient`).
-
-The package bundles the source generator and all required analyzer dependencies — no extra references needed.
+The generated client creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry. All methods are async and accept an optional `CancellationToken`.
 
 ## How It Works
 
-For each OpenAPI document included as an `OpenApiWeaverDocument` or `AdditionalFiles` item, the generator:
+For each OpenAPI document included as an `OpenApiWeaverDocument` or `AdditionalFiles` item, the generator performs the following steps:
 
-1. Parses the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET)
-2. Derives a client class name from the file name (e.g. `api-schema.json` → `ApiSchemaClient`)
-3. Groups operations by OpenAPI tags into sub-client classes
-4. Emits request / response DTOs from component schemas
-5. Generates async methods for each operation, using `operationId` as the method name when available
+1. **Parse** — reads the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET), supporting both JSON and YAML formats
+2. **Transform** — derives class and method names, converts naming conventions (e.g. `snake_case` → `PascalCase`), resolves `$ref` references, and classifies schemas
+3. **Group** — organizes operations by their OpenAPI tags into sub-client classes
+4. **Emit schemas** — generates sealed classes for object schemas, `readonly record struct` for enums, and maps primitive / collection types
+5. **Emit clients** — generates async methods for each operation, with the correct request body serialization and response deserialization
 
-The root client:
+### Generated client structure
+
+The root client class:
 
 - Creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry
 - Accepts optional security credentials (bearer tokens, API keys) via constructor parameters
-- Exposes one property per tag group
+- Exposes one property per tag group (e.g. `client.Pets`, `client.Users`)
+
+Each tag sub-client contains the async operation methods, with parameters mapped from path, query, header, and cookie parameters defined in the OpenAPI document.
