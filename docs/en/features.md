@@ -8,8 +8,8 @@ OpenApiWeaver leverages the Roslyn incremental generator pipeline for fast, cach
 
 Reads OpenAPI 3.x documents in the following formats:
 
-- `.json` — OpenAPI 3.x JSON
-- `.yaml` / `.yml` — OpenAPI 3.x YAML
+- `.json` - OpenAPI 3.x JSON
+- `.yaml` / `.yml` - OpenAPI 3.x YAML
 
 ## Tag-based sub-clients
 
@@ -18,10 +18,10 @@ Operations are grouped by their OpenAPI tags and exposed as properties on the ro
 ```csharp
 var client = new PetstoreClient(accessToken: "token");
 
-// "Pets" tag → client.Pets property
+// "Pets" tag -> client.Pets property
 var pet = await client.Pets.GetAsync(petId: 1);
 
-// "Users" tag → client.Users property
+// "Users" tag -> client.Users property
 var user = await client.Users.GetAsync(userId: "me");
 ```
 
@@ -31,10 +31,10 @@ Method names are derived from `operationId` when available, with an `Async` suff
 
 Generates sealed classes for object schemas and maps them to strongly typed method parameters and return values:
 
-- **Object schemas** → `sealed class` with `[JsonPropertyName]` attributes
-- **Enums** → `readonly record struct` with static members (see [Schema Type Mapping](./schema-types))
-- **Arrays** → `IReadOnlyList<T>`
-- **Dictionaries** (`additionalProperties`) → `IReadOnlyDictionary<string, T>`
+- **Object schemas** -> `sealed class` with `[JsonPropertyName]` attributes
+- **Enums** -> `readonly record struct` with static members (see [Schema Type Mapping](./schema-types))
+- **Arrays** -> `IReadOnlyList<T>`
+- **Dictionaries** (`additionalProperties`) -> `IReadOnlyDictionary<string, T>`
 
 Naming conventions are automatically converted from `snake_case` to `PascalCase` for C# idiomatic use, while preserving the original JSON names via `[JsonPropertyName]`.
 
@@ -76,10 +76,10 @@ Constructor parameters are automatically generated based on the security schemes
 
 | Scheme | Generated Parameter |
 |---|---|
-| OAuth2 / Bearer token | `string accessToken` — sent as `Authorization: Bearer {token}` |
-| API key (header) | `string apiKey` — sent as a custom request header |
-| API key (query) | `string apiKey` — appended to the query string |
-| API key (cookie) | `string apiKey` — sent in the `Cookie` header |
+| OAuth2 / Bearer token | `string accessToken` - sent as `Authorization: Bearer {token}` |
+| API key (header) | `string apiKey` - sent as a custom request header |
+| API key (query) | `string apiKey` - appended to the query string |
+| API key (cookie) | `string apiKey` - sent in the `Cookie` header |
 
 Multiple security schemes can be combined. For example, if an API requires both an OAuth2 token and an API key, the constructor will accept both parameters.
 

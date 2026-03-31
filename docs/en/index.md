@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: Zero Runtime Overhead
-    details: All code is generated at compile time via Roslyn source generators — no runtime code generation, no reflection, no additional runtime dependencies.
+    details: All code is generated at compile time via Roslyn source generators - no runtime code generation, no reflection, no additional runtime dependencies.
   - title: Incremental & Fast
     details: Leverages the Roslyn incremental generator pipeline so only changed documents are re-processed, keeping rebuilds fast even in large solutions.
   - title: Just Add the NuGet Package

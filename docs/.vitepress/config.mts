@@ -1,29 +1,17 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  lang: 'en-US',
   title: 'OpenApiWeaver',
   description: 'An incremental Roslyn source generator that turns OpenAPI documents into strongly typed C# HTTP clients at build time.',
 
   base: '/openapi-weaver/',
 
+  rewrites: {
+    'en/:rest*': ':rest*'
+  },
+
   themeConfig: {
-    nav: [
-      { text: 'Guide', link: '/getting-started' },
-      { text: 'NuGet', link: 'https://www.nuget.org/packages/OpenApiWeaver' }
-    ],
-
-    sidebar: [
-      {
-        text: 'Guide',
-        items: [
-          { text: 'Getting Started', link: '/getting-started' },
-          { text: 'Configuration', link: '/configuration' },
-          { text: 'Features', link: '/features' },
-          { text: 'Schema Type Mapping', link: '/schema-types' }
-        ]
-      }
-    ],
-
     socialLinks: [
       { icon: 'github', link: 'https://github.com/shibayan/openapi-weaver' }
     ],
@@ -31,6 +19,57 @@ export default defineConfig({
     footer: {
       message: 'Released under the MIT License.',
       copyright: 'Copyright © shibayan'
+    }
+  },
+
+  locales: {
+    root: {
+      label: 'English',
+      lang: 'en-US',
+      themeConfig: {
+        nav: [
+          { text: 'Guide', link: '/getting-started' },
+          { text: 'NuGet', link: 'https://www.nuget.org/packages/OpenApiWeaver' }
+        ],
+
+        sidebar: [
+          {
+            text: 'Guide',
+            items: [
+              { text: 'Getting Started', link: '/getting-started' },
+              { text: 'Configuration', link: '/configuration' },
+              { text: 'Features', link: '/features' },
+              { text: 'Schema Type Mapping', link: '/schema-types' }
+            ]
+          }
+        ]
+      }
+    },
+
+    ja: {
+      label: '日本語',
+      lang: 'ja-JP',
+      link: '/ja/',
+      title: 'OpenApiWeaver',
+      description: 'OpenAPI ドキュメントをビルド時に型安全な C# HTTP クライアントへ変換する、インクリメンタル Roslyn ソースジェネレーター。',
+      themeConfig: {
+        nav: [
+          { text: 'ガイド', link: '/ja/getting-started' },
+          { text: 'NuGet', link: 'https://www.nuget.org/packages/OpenApiWeaver' }
+        ],
+
+        sidebar: [
+          {
+            text: 'ガイド',
+            items: [
+              { text: 'はじめに', link: '/ja/getting-started' },
+              { text: '設定', link: '/ja/configuration' },
+              { text: '機能', link: '/ja/features' },
+              { text: 'スキーマ型マッピング', link: '/ja/schema-types' }
+            ]
+          }
+        ]
+      }
     }
   }
 })

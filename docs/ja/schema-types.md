@@ -1,34 +1,34 @@
-# Schema Type Mapping
+# スキーマ型マッピング
 
-OpenApiWeaver maps OpenAPI schema types to C# types as follows.
+OpenApiWeaver は OpenAPI のスキーマ型を次のように C# 型へマッピングします。
 
-## Primitive types
+## プリミティブ型
 
 | OpenAPI Type | OpenAPI Format | C# Type |
 |---|---|---|
-| `integer` | — | `int` |
+| `integer` | - | `int` |
 | `integer` | `int64` | `long` |
-| `number` | — | `decimal` |
+| `number` | - | `decimal` |
 | `number` | `float` | `float` |
 | `number` | `double` | `double` |
 | `number` | `decimal` | `decimal` |
-| `boolean` | — | `bool` |
-| `string` | — | `string` |
+| `boolean` | - | `bool` |
+| `string` | - | `string` |
 | `string` | `date` | `DateOnly` |
 | `string` | `date-time` | `DateTimeOffset` |
 | `string` | `uuid` | `Guid` |
 | `string` | `binary` | `byte[]` |
 
-## Collection types
+## コレクション型
 
 | OpenAPI Schema | C# Type |
 |---|---|
 | `array` with `items` | `IReadOnlyList<T>` |
 | `object` with `additionalProperties` | `IReadOnlyDictionary<string, T>` |
 
-## Object schemas
+## オブジェクトスキーマ
 
-Object schemas defined in `components/schemas` are generated as `sealed class` types. Each property gets a `[JsonPropertyName]` attribute preserving the original JSON name, while the C# property name is converted to PascalCase:
+`components/schemas` に定義されたオブジェクトスキーマは `sealed class` として生成されます。各プロパティには元の JSON 名を保持する `[JsonPropertyName]` 属性が付与され、C# 側のプロパティ名は PascalCase に変換されます。
 
 ```yaml
 # OpenAPI schema
@@ -55,18 +55,18 @@ public sealed class Pet
 }
 ```
 
-## Composition keywords
+## 合成キーワード
 
 | OpenAPI Keyword | C# Mapping |
 |---|---|
-| `allOf` | Flattened into a single class containing all properties |
-| `oneOf` / `anyOf` | Union-style nullable properties |
+| `allOf` | すべてのプロパティを含む 1 つのクラスへフラット化 |
+| `oneOf` / `anyOf` | union 風の nullable プロパティ |
 
-## Enums
+## 列挙型
 
-### String enums
+### 文字列 enum
 
-OpenAPI string `enum` values are generated as `readonly record struct` types with static members. This approach provides type safety and IntelliSense without the limitations of C# `enum` (which only supports numeric values):
+OpenAPI の文字列 `enum` 値は、static メンバー付きの `readonly record struct` として生成されます。この方式により、数値しか扱えない C# `enum` の制約を受けずに、型安全性と IntelliSense を両立できます。
 
 ```yaml
 # OpenAPI schema
@@ -85,9 +85,9 @@ public readonly record struct Status(string Value)
 }
 ```
 
-### Integer enums
+### 整数 enum
 
-When the OpenAPI schema specifies `type: integer` with `enum`, a standard C# `enum` is generated instead:
+OpenAPI スキーマで `type: integer` と `enum` が指定されている場合は、通常の C# `enum` が生成されます。
 
 ```yaml
 # OpenAPI schema
@@ -106,9 +106,9 @@ public enum Priority
 }
 ```
 
-## Naming conventions
+## 命名規則
 
-All schema names are converted from their original casing to C# idiomatic conventions:
+すべてのスキーマ名は、元の表記から C# で一般的な命名規則へ変換されます。
 
 | Source Convention | C# Convention | Example |
 |---|---|---|
@@ -116,4 +116,4 @@ All schema names are converted from their original casing to C# idiomatic conven
 | `kebab-case` | `PascalCase` | `pet-name` → `PetName` |
 | `camelCase` | `PascalCase` | `petName` → `PetName` |
 
-The original names are always preserved in `[JsonPropertyName]` attributes to ensure correct serialization.
+シリアライズの正確性を保つため、元の名前は常に `[JsonPropertyName]` 属性に保持されます。
