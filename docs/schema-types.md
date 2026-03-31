@@ -48,10 +48,10 @@ Pet:
 public sealed class Pet
 {
     [JsonPropertyName("id")]
-    public long Id { get; set; }
+    public required long Id { get; init; }
 
     [JsonPropertyName("pet_name")]
-    public string PetName { get; set; }
+    public required string PetName { get; init; }
 }
 ```
 

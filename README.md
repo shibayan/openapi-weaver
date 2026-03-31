@@ -58,7 +58,7 @@ No extra dependencies are required — the package bundles the source generator 
 - **Incremental source generation** — leverages the Roslyn incremental generator pipeline for fast, cached rebuilds
 - **JSON & YAML support** — reads `.json`, `.yaml`, and `.yml` OpenAPI 3.x documents
 - **Tag-based sub-clients** — operations are grouped by OpenAPI tags and exposed as properties on the root client
-- **Typed request / response models** — generates sealed classes, enums (as `readonly record struct`), and collection types from `components/schemas`
+- **Typed request / response models** — generates sealed classes, enums (C# `enum` for integer-valued schemas, or `readonly record struct` wrappers for others), and collection types from `components/schemas`
 - **Multiple request body formats** — `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
 - **Security scheme support** — constructor parameters for OAuth2 / Bearer tokens, API keys (header, query, cookie)
 - **All HTTP methods** — GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, TRACE
