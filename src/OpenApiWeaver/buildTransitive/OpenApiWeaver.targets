@@ -1,6 +1,9 @@
 <Project>
   <ItemGroup>
-    <AdditionalFiles Include="@(OpenApiWeaverDocument)" />
+    <AdditionalFiles Include="@(OpenApiWeaverDocument)">
+      <OpenApiWeaverItemKind>Document</OpenApiWeaverItemKind>
+    </AdditionalFiles>
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="OpenApiWeaverItemKind" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ClientName" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="Namespace" />
   </ItemGroup>

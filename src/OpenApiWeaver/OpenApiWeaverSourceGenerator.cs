@@ -14,13 +14,13 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var openApiFiles = context.AdditionalTextsProvider
-            .Where(static file => IsOpenApiDocument(file.Path))
             .Combine(context.AnalyzerConfigOptionsProvider)
-            .Select(static (pair, _) => CreateInput(pair.Left, pair.Right));
+            .Select(static (pair, _) => TryCreateInput(pair.Left, pair.Right))
+            .Where(static input => input is not null);
 
         context.RegisterSourceOutput(openApiFiles, static (productionContext, input) =>
         {
-            var file = input.File;
+            var file = input!.File;
             var sourceText = file.GetText(productionContext.CancellationToken);
             var content = sourceText?.ToString();
             if (string.IsNullOrWhiteSpace(content))
@@ -99,13 +99,24 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static GeneratorInput CreateInput(AdditionalText file, AnalyzerConfigOptionsProvider optionsProvider)
+    private static GeneratorInput? TryCreateInput(AdditionalText file, AnalyzerConfigOptionsProvider optionsProvider)
     {
-        optionsProvider.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
+        if (!IsOpenApiDocument(file.Path))
+        {
+            return null;
+        }
+
+        optionsProvider.GlobalOptions.TryGetValue(BuildPropertyRootNamespace, out var rootNamespace);
 
         var fileOptions = optionsProvider.GetOptions(file);
-        fileOptions.TryGetValue("build_metadata.AdditionalFiles.Namespace", out var configuredNamespace);
-        fileOptions.TryGetValue("build_metadata.AdditionalFiles.ClientName", out var clientName);
+        if (!fileOptions.TryGetValue(BuildMetadataAdditionalFilesItemKind, out var itemKind)
+            || !string.Equals(itemKind, OpenApiWeaverDocumentItemKind, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        fileOptions.TryGetValue(BuildMetadataAdditionalFilesNamespace, out var configuredNamespace);
+        fileOptions.TryGetValue(BuildMetadataAdditionalFilesClientName, out var clientName);
 
         return new GeneratorInput(
             file,
@@ -148,6 +159,12 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
 
     private static string SanitizeHintName(string value)
         => value.Replace('<', '_').Replace('>', '_').Replace('.', '_').Replace('\\', '_').Replace('/', '_').Replace(':', '_');
+
+    private const string BuildPropertyRootNamespace = "build_property.RootNamespace";
+    private const string BuildMetadataAdditionalFilesClientName = "build_metadata.AdditionalFiles.ClientName";
+    private const string BuildMetadataAdditionalFilesNamespace = "build_metadata.AdditionalFiles.Namespace";
+    private const string BuildMetadataAdditionalFilesItemKind = "build_metadata.AdditionalFiles.OpenApiWeaverItemKind";
+    private const string OpenApiWeaverDocumentItemKind = "Document";
 
     private static class Diagnostics
     {

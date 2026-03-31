@@ -38,18 +38,6 @@ Use the `OpenApiWeaverDocument` item to include your OpenAPI document with optio
 
 See the [Configuration](./configuration) page for full details.
 
-### Alternative: `AdditionalFiles`
-
-For simple scenarios where default naming is sufficient, `AdditionalFiles` works too:
-
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="openapi\petstore.yaml" />
-</ItemGroup>
-```
-
-When using `AdditionalFiles`, the client name is always derived from the file name and the namespace defaults to `RootNamespace`.
-
 ## 3. Use the generated client
 
 Once the project builds, all generated types are available with full IntelliSense:
@@ -66,7 +54,7 @@ The generated client creates an internal `HttpClient` with `BaseAddress` set fro
 
 ## How It Works
 
-For each OpenAPI document included as an `OpenApiWeaverDocument` or `AdditionalFiles` item, the generator performs the following steps:
+For each OpenAPI document included as an `OpenApiWeaverDocument` item, the generator performs the following steps:
 
 1. **Parse** — reads the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET), supporting both JSON and YAML formats
 2. **Transform** — derives class and method names, converts naming conventions (e.g. `snake_case` → `PascalCase`), resolves `$ref` references, and classifies schemas

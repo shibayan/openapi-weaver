@@ -34,14 +34,6 @@
 | `ClientName` | No | Derived from file name (`petstore.yaml` → `PetstoreClient`) |
 | `Namespace` | No | Project's `RootNamespace` |
 
-`AdditionalFiles` is also supported for simple scenarios where custom metadata is not needed:
-
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="openapi\petstore.yaml" />
-</ItemGroup>
-```
-
 ### 3. Use the generated client
 
 ```csharp
@@ -66,7 +58,7 @@ No extra dependencies are required — the package bundles the source generator 
 
 ## How It Works
 
-For each OpenAPI document included as an `OpenApiWeaverDocument` or `AdditionalFiles` item, the generator:
+For each OpenAPI document included as an `OpenApiWeaverDocument` item, the generator:
 
 1. **Parses** the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET)
 2. **Transforms** the parsed model — derives class names, normalizes naming conventions (snake_case → PascalCase), and resolves schemas
