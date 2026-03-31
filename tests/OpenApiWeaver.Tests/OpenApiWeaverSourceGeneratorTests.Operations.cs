@@ -1147,7 +1147,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v2/\", UriKind.Absolute);", source);
+        Assert.Contains("_httpClient = new HttpClient()", source);
+        Assert.Contains("BaseAddress = new Uri(\"https://api.example.com/v2/\", UriKind.Absolute)", source);
     }
 
     [Fact]
