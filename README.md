@@ -39,6 +39,8 @@
 ```csharp
 var client = new PetstoreClient(accessToken: "your-token");
 
+var customizedClient = new PetstoreClient(new HttpClient(), accessToken: "your-token");
+
 // Operations are grouped by OpenAPI tag
 var pet = await client.Pets.GetAsync(petId: 1);
 ```
@@ -68,7 +70,8 @@ For each OpenAPI document included as an `OpenApiWeaverDocument` item, the gener
 
 The generated root client:
 
-- Creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry
+- Creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry by default
+- Can optionally accept an externally provided `HttpClient` for customization or factory-based management
 - Accepts optional security credentials (bearer tokens, API keys) via constructor parameters
 - Exposes one property per tag group (e.g. `client.Pets`, `client.Users`)
 

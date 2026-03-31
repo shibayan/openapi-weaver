@@ -59,6 +59,9 @@ Once the project builds, all generated types are available with full IntelliSens
 // Constructor parameters are generated based on security schemes
 var client = new PetstoreClient(accessToken: "your-token");
 
+// Optionally provide your own HttpClient when you need custom configuration
+var customizedClient = new PetstoreClient(new HttpClient(), accessToken: "your-token");
+
 // Operations are grouped by OpenAPI tag
 var pet = await client.Pets.GetAsync(petId: 1);
 ```

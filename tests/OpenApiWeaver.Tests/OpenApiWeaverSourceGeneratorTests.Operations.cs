@@ -578,9 +578,47 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("_httpClient.BaseAddress = new Uri(\"https://api.example.com/v1/\", UriKind.Absolute);", source);
+        Assert.Contains("_httpClient = new HttpClient()", source);
+        Assert.Contains("BaseAddress = new Uri(\"https://api.example.com/v1/\", UriKind.Absolute)", source);
         Assert.Contains("var path = \"reports\";", source);
         Assert.DoesNotContain("CreateRequestUri", source);
+    }
+
+    [Fact]
+    public void Client_Constructors_SupportOptionalHttpClientInjection()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Injected HttpClient API
+              version: v1
+            servers:
+              - url: https://api.example.com/v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                partner:
+                  type: http
+                  scheme: bearer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public TestClient(string? partnerToken = default)", source);
+        Assert.Contains("public TestClient(HttpClient httpClient, string? partnerToken = default)", source);
+        Assert.Contains("_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));", source);
+        Assert.Contains("_disposeHttpClient = false;", source);
+        Assert.Contains("if (_disposeHttpClient)", source);
     }
 
     [Fact]

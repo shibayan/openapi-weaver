@@ -59,6 +59,9 @@ Install-Package OpenApiWeaver -Version x.y.z
 // コンストラクター引数は security scheme から生成されます
 var client = new PetstoreClient(accessToken: "your-token");
 
+// 必要な場合だけ、独自に構成した HttpClient を渡せます
+var customizedClient = new PetstoreClient(new HttpClient(), accessToken: "your-token");
+
 // 操作は OpenAPI tag ごとにグループ化されます
 var pet = await client.Pets.GetAsync(petId: 1);
 ```

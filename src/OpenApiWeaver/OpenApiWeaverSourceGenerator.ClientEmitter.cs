@@ -222,6 +222,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.Append("public partial class ").Append(model.ClientName).AppendLine(" : IDisposable");
             builder.AppendLine("{");
             builder.AppendLine("    private readonly HttpClient _httpClient;");
+            builder.AppendLine("    private readonly bool _disposeHttpClient;");
             foreach (var securityScheme in _querySecuritySchemes)
             {
                 builder.Append("    private readonly string? ").Append(securityScheme.FieldName).AppendLine(";");
@@ -229,11 +230,21 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine();
             builder.Append("    public ").Append(model.ClientName).Append('(').Append(constructorParameters).AppendLine(")");
             builder.AppendLine("    {");
-            builder.AppendLine("        _httpClient = new HttpClient();");
+            builder.Append("        _httpClient = new HttpClient()");
             if (Uri.TryCreate(model.ServerUrl, UriKind.Absolute, out _))
             {
-                builder.Append("        _httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute);");
+                builder.AppendLine();
+                builder.AppendLine("        {");
+                builder.Append("            BaseAddress = new Uri(\"").Append(EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute)");
+                builder.AppendLine("        };");
             }
+            else
+            {
+                builder.AppendLine(";");
+            }
+
+            builder.Append("        _disposeHttpClient = true;");
+            builder.AppendLine();
 
             foreach (var securityScheme in model.SecuritySchemes)
             {
@@ -243,6 +254,29 @@ public sealed partial class OpenApiWeaverSourceGenerator
             var constructorArguments = string.Join(", ",
                 new[] { "_httpClient" }.Concat(
                     _querySecuritySchemes.Select(static scheme => scheme.FieldName)));
+            foreach (var tagGroup in model.TagGroups)
+            {
+                builder.Append("        ").Append(tagGroup.PropertyName).Append(" = new ").Append(tagGroup.ClassName).Append('(').Append(constructorArguments).AppendLine(");");
+            }
+
+            builder.AppendLine("    }");
+            builder.AppendLine();
+            builder.Append("    public ").Append(model.ClientName).Append("(HttpClient httpClient");
+            if (constructorParameters.Length > 0)
+            {
+                builder.Append(", ").Append(constructorParameters);
+            }
+
+            builder.AppendLine(")");
+            builder.AppendLine("    {");
+            builder.AppendLine("        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));");
+            builder.AppendLine("        _disposeHttpClient = false;");
+
+            foreach (var securityScheme in model.SecuritySchemes)
+            {
+                EmitSecuritySchemeInitialization(builder, securityScheme);
+            }
+
             foreach (var tagGroup in model.TagGroups)
             {
                 builder.Append("        ").Append(tagGroup.PropertyName).Append(" = new ").Append(tagGroup.ClassName).Append('(').Append(constructorArguments).AppendLine(");");
@@ -268,7 +302,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             builder.AppendLine("    public void Dispose()");
             builder.AppendLine("    {");
-            builder.AppendLine("        _httpClient.Dispose();");
+            builder.AppendLine("        if (_disposeHttpClient)");
+            builder.AppendLine("        {");
+            builder.AppendLine("            _httpClient.Dispose();");
+            builder.AppendLine("        }");
             builder.AppendLine("    }");
             builder.AppendLine("}");
         }
