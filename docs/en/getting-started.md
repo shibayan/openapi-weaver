@@ -7,15 +7,28 @@
 
 ## 1. Install the package
 
-Add the NuGet package to your project:
+Add the NuGet package to your project using one of the following methods:
 
-```xml
+::: code-group
+
+```bash [.NET CLI]
+dotnet add package OpenApiWeaver --version x.y.z
+```
+
+```powershell [Package Manager Console]
+Install-Package OpenApiWeaver -Version x.y.z
+```
+
+```xml [PackageReference]
 <ItemGroup>
   <PackageReference Include="OpenApiWeaver" Version="x.y.z" PrivateAssets="all" />
 </ItemGroup>
 ```
 
-`PrivateAssets="all"` ensures the source generator is used only at build time and is not exposed as a transitive dependency of your project.
+:::
+
+> [!NOTE]
+> `PrivateAssets="all"` ensures the source generator is used only at build time and is not exposed as a transitive dependency of your project. When installing via the CLI or Package Manager Console, add `PrivateAssets="all"` manually to the generated `PackageReference` entry.
 
 ## 2. Add your OpenAPI document
 
@@ -33,7 +46,7 @@ Use the `OpenApiWeaverDocument` item to include your OpenAPI document with optio
 
 | Metadata | Required | Default |
 |---|---|---|
-| `ClientName` | No | Derived from file name (`petstore.yaml` → `PetstoreClient`) |
+| `ClientName` | No | Derived from file name (`petstore.yaml` -> `PetstoreClient`) |
 | `Namespace` | No | Project's `RootNamespace` |
 
 See the [Configuration](./configuration) page for full details.
@@ -56,11 +69,11 @@ The generated client creates an internal `HttpClient` with `BaseAddress` set fro
 
 For each OpenAPI document included as an `OpenApiWeaverDocument` item, the generator performs the following steps:
 
-1. **Parse** — reads the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET), supporting both JSON and YAML formats
-2. **Transform** — derives class and method names, converts naming conventions (e.g. `snake_case` → `PascalCase`), resolves `$ref` references, and classifies schemas
-3. **Group** — organizes operations by their OpenAPI tags into sub-client classes
-4. **Emit schemas** — generates sealed classes for object schemas, `readonly record struct` for enums, and maps primitive / collection types
-5. **Emit clients** — generates async methods for each operation, with the correct request body serialization and response deserialization
+1. **Parse** - reads the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET), supporting both JSON and YAML formats
+2. **Transform** - derives class and method names, converts naming conventions (e.g. `snake_case` -> `PascalCase`), resolves `$ref` references, and classifies schemas
+3. **Group** - organizes operations by their OpenAPI tags into sub-client classes
+4. **Emit schemas** - generates sealed classes for object schemas, `readonly record struct` for enums, and maps primitive / collection types
+5. **Emit clients** - generates async methods for each operation, with the correct request body serialization and response deserialization
 
 ### Generated client structure
 

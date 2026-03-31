@@ -6,8 +6,8 @@ The recommended way to configure OpenApiWeaver is with the `OpenApiWeaverDocumen
 
 | Metadata | Required | Description | Default |
 |---|---|---|---|
-| `Include` | Yes | Path to the OpenAPI document (`.json`, `.yaml`, or `.yml`) | — |
-| `ClientName` | No | Name of the generated root client class | File name → PascalCase + `Client` |
+| `Include` | Yes | Path to the OpenAPI document (`.json`, `.yaml`, or `.yml`) | - |
+| `ClientName` | No | Name of the generated root client class | File name -> PascalCase + `Client` |
 | `Namespace` | No | Namespace for all generated types | Project's `RootNamespace` |
 
 ### Example
