@@ -65,22 +65,6 @@ var pet = await client.Pets.GetAsync(petId: 1);
 
 生成されたクライアントは、最初の OpenAPI `servers` エントリをもとに `BaseAddress` を設定した内部 `HttpClient` を作成します。すべてのメソッドは async で、任意の `CancellationToken` を受け取れます。
 
-## 仕組み
+ルートクライアントクラスは `IDisposable` を実装しており、使用後に `Dispose()` を呼び出すことで内部の `HttpClient` を解放できます。また `partial class` として生成されるため、別ファイルで追加のメソッドを定義して拡張できます。
 
-`OpenApiWeaverDocument` として含まれた各 OpenAPI ドキュメントに対し、ジェネレーターは次の処理を行います。
-
-1. **Parse** - [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET) を使ってドキュメントを読み込み、JSON と YAML の両方をサポート
-2. **Transform** - クラス名とメソッド名を導出し、命名規則 (例: `snake_case` → `PascalCase`) を変換し、`$ref` を解決し、スキーマを分類
-3. **Group** - OpenAPI tag ごとに操作をサブクライアントへ整理
-4. **Emit schemas** - オブジェクトスキーマを sealed class、列挙を `readonly record struct` として生成し、プリミティブ型とコレクション型をマッピング
-5. **Emit clients** - 各操作について、適切なリクエストボディのシリアライズとレスポンスのデシリアライズを行う async メソッドを生成
-
-### 生成されるクライアント構造
-
-ルートクライアントクラスは次を担います。
-
-- 最初の OpenAPI `servers` エントリから `BaseAddress` を設定した内部 `HttpClient` を作成する
-- 任意のセキュリティ資格情報 (Bearer トークンや API キー) をコンストラクター引数として受け取る
-- tag グループごとに 1 つのプロパティを公開する (例: `client.Pets`, `client.Users`)
-
-各 tag サブクライアントには、OpenAPI ドキュメントで定義された path、query、header、cookie パラメーターに対応する async 操作メソッドが含まれます。
+生成パイプラインや内部構造の詳細は [仕組み](./how-it-works) を参照してください。

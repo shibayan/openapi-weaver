@@ -37,6 +37,7 @@ export default defineConfig({
             text: 'Guide',
             items: [
               { text: 'Getting Started', link: '/getting-started' },
+              { text: 'How It Works', link: '/how-it-works' },
               { text: 'Configuration', link: '/configuration' },
               { text: 'Features', link: '/features' },
               { text: 'Schema Type Mapping', link: '/schema-types' }
@@ -63,6 +64,7 @@ export default defineConfig({
             text: 'ガイド',
             items: [
               { text: 'はじめに', link: '/ja/getting-started' },
+              { text: '仕組み', link: '/ja/how-it-works' },
               { text: '設定', link: '/ja/configuration' },
               { text: '機能', link: '/ja/features' },
               { text: 'スキーマ型マッピング', link: '/ja/schema-types' }

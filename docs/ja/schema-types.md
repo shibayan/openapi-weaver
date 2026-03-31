@@ -25,6 +25,27 @@ OpenApiWeaver は OpenAPI のスキーマ型を次のように C# 型へマッ�
 |---|---|
 | `array` with `items` | `IReadOnlyList<T>` |
 | `object` with `additionalProperties` | `IReadOnlyDictionary<string, T>` |
+| `object` with `patternProperties` | `IReadOnlyDictionary<string, T>` |
+
+トップレベルのコンポーネントスキーマで `additionalProperties` または `patternProperties` が定義されている場合、生成クラスは `Dictionary<string, T>` を **継承** し、宣言されたプロパティと任意のキーバリューペアの両方を保持できます。
+
+```yaml
+Metadata:
+  type: object
+  additionalProperties:
+    type: string
+  properties:
+    version:
+      type: string
+```
+
+```csharp
+public sealed class Metadata : Dictionary<string, string>
+{
+    [JsonPropertyName("version")]
+    public string? Version { get; init; }
+}
+```
 
 ## オブジェクトスキーマ
 
@@ -55,6 +76,43 @@ public sealed class Pet
 }
 ```
 
+必須プロパティには `required` 修飾子が付与され、任意かつ nullable なプロパティには `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` が付与されます。
+
+```csharp
+public sealed class Pet
+{
+    [JsonPropertyName("id")]
+    public required long Id { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("tag")]
+    public string? Tag { get; init; }
+}
+```
+
+## インラインスキーマ
+
+プロパティ定義や配列の `items`、`additionalProperties` 内に定義されたインラインのオブジェクト / enum スキーマは、親モデルクラスの **ネスト型** として生成され、型階層がコンパクトに保たれます。
+
+```yaml
+Order:
+  type: object
+  properties:
+    status:
+      type: string
+      enum: [placed, approved, delivered]
+```
+
+```csharp
+public sealed class Order
+{
+    [JsonPropertyName("status")]
+    public Order.StatusEnum? Status { get; init; }
+
+    public readonly record struct StatusEnum(string Value) { ... }
+}
+```
+
 ## 合成キーワード
 
 | OpenAPI Keyword | C# Mapping |
@@ -77,13 +135,31 @@ Status:
 
 ```csharp
 // Generated C#
+[JsonConverter(typeof(StatusJsonConverter))]
 public readonly record struct Status(string Value)
 {
     public static readonly Status Active = new("active");
     public static readonly Status Inactive = new("inactive");
     public static readonly Status Pending = new("pending");
+
+    public override string ToString() => Value;
+}
+
+public sealed class StatusJsonConverter : JsonConverter<Status>
+{
+    public override Status Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return new Status(reader.GetString()!);
+    }
+
+    public override void Write(Utf8JsonWriter writer, Status value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.Value);
+    }
 }
 ```
+
+各文字列 enum に対して、シリアライズとデシリアライズを正しく処理するための専用 `JsonConverter` が生成されます。
 
 ### 整数 enum
 
@@ -102,7 +178,18 @@ public enum Priority
 {
     Value0 = 0,
     Value1 = 1,
-    Value2 = 2,
+    Value2 = 2
+}
+```
+
+スキーマで `format: int64` が指定されている場合、生成される enum は基底型として `long` を使用します。
+
+```csharp
+public enum Priority : long
+{
+    Value0 = 0,
+    Value1 = 1,
+    Value2 = 2
 }
 ```
 

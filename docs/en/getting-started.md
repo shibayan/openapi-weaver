@@ -65,22 +65,6 @@ var pet = await client.Pets.GetAsync(petId: 1);
 
 The generated client creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry. All methods are async and accept an optional `CancellationToken`.
 
-## How It Works
+The root client class implements `IDisposable` — call `Dispose()` when you are done using it to release the underlying `HttpClient`. It is also generated as a `partial class`, so you can extend it with additional methods in a separate file.
 
-For each OpenAPI document included as an `OpenApiWeaverDocument` item, the generator performs the following steps:
-
-1. **Parse** - reads the document with [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET), supporting both JSON and YAML formats
-2. **Transform** - derives class and method names, converts naming conventions (e.g. `snake_case` -> `PascalCase`), resolves `$ref` references, and classifies schemas
-3. **Group** - organizes operations by their OpenAPI tags into sub-client classes
-4. **Emit schemas** - generates sealed classes for object schemas, `readonly record struct` for enums, and maps primitive / collection types
-5. **Emit clients** - generates async methods for each operation, with the correct request body serialization and response deserialization
-
-### Generated client structure
-
-The root client class:
-
-- Creates an internal `HttpClient` with `BaseAddress` set from the first OpenAPI `servers` entry
-- Accepts optional security credentials (bearer tokens, API keys) via constructor parameters
-- Exposes one property per tag group (e.g. `client.Pets`, `client.Users`)
-
-Each tag sub-client contains the async operation methods, with parameters mapped from path, query, header, and cookie parameters defined in the OpenAPI document.
+For details on the generation pipeline and internal structure, see [How It Works](./how-it-works).
