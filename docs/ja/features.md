@@ -32,11 +32,33 @@ var user = await client.Users.GetAsync(userId: "me");
 オブジェクトスキーマに対して sealed class を生成し、メソッド引数や戻り値へ強く型付けしてマッピングします。
 
 - **Object schemas** -> `[JsonPropertyName]` 属性付きの `sealed class`
-- **Enums** -> static メンバー付きの `readonly record struct` ([スキーマ型マッピング](./schema-types) を参照)
+- **Enums** -> 専用 `JsonConverter` 付きの `readonly record struct` (文字列 enum)、または標準 `enum` (整数 enum) — [スキーマ型マッピング](./schema-types) を参照
 - **Arrays** -> `IReadOnlyList<T>`
-- **Dictionaries** (`additionalProperties`) -> `IReadOnlyDictionary<string, T>`
+- **Dictionaries** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
+- **Inline object / enum schemas** -> 親モデルクラス配下のネスト型
 
 `snake_case` から `PascalCase` へのような命名規則の変換は C# らしい形へ自動変換され、元の JSON 名は `[JsonPropertyName]` で保持されます。
+
+任意 (required でない) かつ nullable なプロパティには `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` が付与され、`null` の場合は JSON ペイロードから省略されます。
+
+## インラインスキーマ / ネスト型
+
+プロパティ定義や配列の `items`、`additionalProperties` 内に出現するインラインのオブジェクト / enum スキーマは、親モデルクラスの **ネスト型** として生成されます。これにより型階層がコンパクトに保たれ、過度に長いトップレベル型名を避けられます。
+
+```csharp
+public sealed class Order
+{
+    [JsonPropertyName("status")]
+    public Order.StatusEnum? Status { get; init; }
+
+    // インライン enum スキーマがネスト型として生成される
+    public readonly record struct StatusEnum(string Value)
+    {
+        public static readonly StatusEnum Placed = new("placed");
+        public static readonly StatusEnum Approved = new("approved");
+    }
+}
+```
 
 ## レスポンス型
 
@@ -58,6 +80,22 @@ var user = await client.Users.GetAsync(userId: "me");
 | `application/json` | `JsonSerializerDefaults.Web` を使う `JsonSerializer` |
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (バイナリファイルアップロード対応) |
+
+### フォーム / マルチパートのコンパイル時専用ポリシー
+
+`application/x-www-form-urlencoded` および `multipart/form-data` のリクエストボディは、すべてのコードがコンパイル時に生成可能でなければなりません。生成できない場合は `OAW004` でエラーになります。
+
+サポートされるフォーム / マルチパートリクエストボディの要件：
+
+- `components/schemas` への参照であること
+- 生成時にプロパティが既知なオブジェクト構造であること
+- CLR 型に直接マッピングされるプロパティ型 (スカラー、`byte[]`、サポートされるコレクション)
+
+以下はフォーム / マルチパートリクエストボディでは **意図的に非対応** です：
+
+- インラインのリクエストボディスキーマ
+- `oneOf` / `anyOf`
+- `additionalProperties` / `patternProperties`
 
 ## パラメーターの場所
 
@@ -99,3 +137,13 @@ GET、POST、PUT、DELETE、PATCH、HEAD、OPTIONS、TRACE のすべての標準
 | OAW004 | Error | OpenAPI ドキュメントで未対応機能が使われています |
 
 これらの診断は、Visual Studio の Error List、`dotnet build` の出力、CI ログに他のコンパイラ診断と同様に表示されます。
+
+## 生成クライアントの拡張性
+
+ルートクライアントクラスは `partial class` として生成されるため、生成コードを変更せずに別ファイルで追加のメソッドやプロパティを定義できます。
+
+ルートクライアントは `IDisposable` も実装しており、`Dispose()` を呼び出すと内部の `HttpClient` を破棄します。
+
+## XML ドキュメントコメント
+
+生成コードには、OpenAPI ドキュメントの `summary`、`description`、パラメーターの説明から導出された `<summary>`、`<remarks>`、`<param>`、`<returns>` の XML ドキュメントコメントが含まれます。これにより、IntelliSense やドキュメントツールで生成 API を完全に把握できます。

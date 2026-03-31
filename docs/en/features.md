@@ -32,11 +32,33 @@ Method names are derived from `operationId` when available, with an `Async` suff
 Generates sealed classes for object schemas and maps them to strongly typed method parameters and return values:
 
 - **Object schemas** -> `sealed class` with `[JsonPropertyName]` attributes
-- **Enums** -> `readonly record struct` with static members (see [Schema Type Mapping](./schema-types))
+- **Enums** -> `readonly record struct` with a dedicated `JsonConverter` (string enums), or standard `enum` (integer enums) — see [Schema Type Mapping](./schema-types)
 - **Arrays** -> `IReadOnlyList<T>`
-- **Dictionaries** (`additionalProperties`) -> `IReadOnlyDictionary<string, T>`
+- **Dictionaries** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
+- **Inline object / enum schemas** -> nested types under the owning model class
 
 Naming conventions are automatically converted from `snake_case` to `PascalCase` for C# idiomatic use, while preserving the original JSON names via `[JsonPropertyName]`.
+
+Optional (non-required) nullable properties are annotated with `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` so they are omitted from the JSON payload when `null`.
+
+## Inline / nested schemas
+
+Inline object or enum schemas that appear inside property definitions, array `items`, or `additionalProperties` are emitted as **nested types** under the owning generated model class. This keeps the type hierarchy compact and avoids excessively long top-level type names.
+
+```csharp
+public sealed class Order
+{
+    [JsonPropertyName("status")]
+    public Order.StatusEnum? Status { get; init; }
+
+    // Inline enum schema generated as a nested type
+    public readonly record struct StatusEnum(string Value)
+    {
+        public static readonly StatusEnum Placed = new("placed");
+        public static readonly StatusEnum Approved = new("approved");
+    }
+}
+```
 
 ## Response types
 
@@ -58,6 +80,22 @@ Supports the following content types for request bodies:
 | `application/json` | `JsonSerializer` with `JsonSerializerDefaults.Web` |
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (supports binary file uploads) |
+
+### Compile-time-only policy for form / multipart
+
+For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all code must be emittable entirely at compile time. If this is not possible, generation fails with `OAW004`.
+
+Supported form and multipart request bodies require:
+
+- A schema reference to `components/schemas`
+- An object shape whose properties are known at generation time
+- Property types that map directly to CLR types (scalars, `byte[]`, supported collections)
+
+The following are **intentionally unsupported** for form / multipart request bodies:
+
+- Inline request body schemas
+- `oneOf` / `anyOf`
+- `additionalProperties` / `patternProperties`
 
 ## Parameter locations
 
@@ -99,3 +137,13 @@ Reports errors and warnings as standard compiler diagnostics during compilation:
 | OAW004 | Error | OpenAPI document uses an unsupported feature |
 
 These diagnostics appear in the Visual Studio Error List, `dotnet build` output, and CI logs, just like any other compiler diagnostic.
+
+## Generated client extensibility
+
+The root client class is generated as a `partial class`, so you can extend it with additional methods or properties in a separate file without modifying the generated code.
+
+The root client also implements `IDisposable` and disposes the internal `HttpClient` when `Dispose()` is called.
+
+## XML documentation comments
+
+The generated code includes `<summary>`, `<remarks>`, `<param>`, and `<returns>` XML doc comments derived from the `summary`, `description`, and parameter descriptions in the OpenAPI document. This makes the generated API fully discoverable via IntelliSense and documentation tools.

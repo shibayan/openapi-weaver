@@ -25,6 +25,27 @@ OpenApiWeaver maps OpenAPI schema types to C# types as follows.
 |---|---|
 | `array` with `items` | `IReadOnlyList<T>` |
 | `object` with `additionalProperties` | `IReadOnlyDictionary<string, T>` |
+| `object` with `patternProperties` | `IReadOnlyDictionary<string, T>` |
+
+When a top-level component schema defines `additionalProperties` or `patternProperties`, the generated class **extends** `Dictionary<string, T>` so that it can hold both declared properties and arbitrary key-value pairs:
+
+```yaml
+Metadata:
+  type: object
+  additionalProperties:
+    type: string
+  properties:
+    version:
+      type: string
+```
+
+```csharp
+public sealed class Metadata : Dictionary<string, string>
+{
+    [JsonPropertyName("version")]
+    public string? Version { get; init; }
+}
+```
 
 ## Object schemas
 
@@ -55,6 +76,43 @@ public sealed class Pet
 }
 ```
 
+Required properties use the `required` modifier, while optional nullable properties are annotated with `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]`:
+
+```csharp
+public sealed class Pet
+{
+    [JsonPropertyName("id")]
+    public required long Id { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("tag")]
+    public string? Tag { get; init; }
+}
+```
+
+## Inline schemas
+
+Inline object or enum schemas defined inside property definitions, array `items`, or `additionalProperties` are generated as **nested types** under the owning model class, keeping the type hierarchy compact:
+
+```yaml
+Order:
+  type: object
+  properties:
+    status:
+      type: string
+      enum: [placed, approved, delivered]
+```
+
+```csharp
+public sealed class Order
+{
+    [JsonPropertyName("status")]
+    public Order.StatusEnum? Status { get; init; }
+
+    public readonly record struct StatusEnum(string Value) { ... }
+}
+```
+
 ## Composition keywords
 
 | OpenAPI Keyword | C# Mapping |
@@ -77,13 +135,31 @@ Status:
 
 ```csharp
 // Generated C#
+[JsonConverter(typeof(StatusJsonConverter))]
 public readonly record struct Status(string Value)
 {
     public static readonly Status Active = new("active");
     public static readonly Status Inactive = new("inactive");
     public static readonly Status Pending = new("pending");
+
+    public override string ToString() => Value;
+}
+
+public sealed class StatusJsonConverter : JsonConverter<Status>
+{
+    public override Status Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return new Status(reader.GetString()!);
+    }
+
+    public override void Write(Utf8JsonWriter writer, Status value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.Value);
+    }
 }
 ```
+
+A dedicated `JsonConverter` is generated for each string enum to handle serialization and deserialization correctly.
 
 ### Integer enums
 
@@ -102,7 +178,18 @@ public enum Priority
 {
     Value0 = 0,
     Value1 = 1,
-    Value2 = 2,
+    Value2 = 2
+}
+```
+
+When the schema specifies `format: int64`, the generated enum uses `long` as the underlying type:
+
+```csharp
+public enum Priority : long
+{
+    Value0 = 0,
+    Value1 = 1,
+    Value2 = 2
 }
 ```
 
