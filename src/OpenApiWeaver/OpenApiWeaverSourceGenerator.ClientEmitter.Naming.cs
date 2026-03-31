@@ -10,7 +10,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
         {
             return typeName is "string"
                 || typeName.StartsWith("IReadOnlyList<", StringComparison.Ordinal)
-                || (!typeName.EndsWith("?", StringComparison.Ordinal) && typeName is not "int" and not "long" and not "float" and not "double" and not "bool" and not "DateOnly" and not "DateTimeOffset" and not "Guid" and not "JsonElement");
+                || (!typeName.EndsWith("?", StringComparison.Ordinal) && typeName is not "int" and not "long" and not "float" and not "double" and not "decimal" and not "bool" and not "DateOnly" and not "DateTimeOffset" and not "Guid" and not "JsonElement");
         }
 
         private static bool RequiresNonNullJsonResponse(string typeName)
@@ -20,7 +20,13 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private static string EscapeStringLiteral(string value)
         {
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return value
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\n", "\\n")
+                .Replace("\r", "\\r")
+                .Replace("\t", "\\t")
+                .Replace("\0", "\\0");
         }
 
         private static void EmitSecuritySchemeInitialization(StringBuilder builder, SecuritySchemeBinding securityScheme)

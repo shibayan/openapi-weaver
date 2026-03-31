@@ -152,9 +152,21 @@ public sealed partial class OpenApiWeaverSourceGenerator
             if (normalized.Length > 2
                 && normalized.EndsWith("s", StringComparison.OrdinalIgnoreCase)
                 && !normalized.EndsWith("ss", StringComparison.OrdinalIgnoreCase)
-                && !normalized.EndsWith("us", StringComparison.OrdinalIgnoreCase))
+                && !normalized.EndsWith("us", StringComparison.OrdinalIgnoreCase)
+                && !normalized.EndsWith("is", StringComparison.OrdinalIgnoreCase))
             {
-                normalized = normalized.Substring(0, normalized.Length - 1);
+                if (normalized.EndsWith("ses", StringComparison.OrdinalIgnoreCase)
+                    || normalized.EndsWith("xes", StringComparison.OrdinalIgnoreCase)
+                    || normalized.EndsWith("zes", StringComparison.OrdinalIgnoreCase)
+                    || normalized.EndsWith("ches", StringComparison.OrdinalIgnoreCase)
+                    || normalized.EndsWith("shes", StringComparison.OrdinalIgnoreCase))
+                {
+                    normalized = normalized.Substring(0, normalized.Length - 2);
+                }
+                else
+                {
+                    normalized = normalized.Substring(0, normalized.Length - 1);
+                }
             }
 
             return normalized;
