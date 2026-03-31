@@ -153,18 +153,6 @@ samples/SampleApp/          # Minimal sample project
 
 The generator itself targets **netstandard2.0** and works with any compatible SDK.
 
-## Contributing
-
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test, and pull request guidance.
-
-## Code of Conduct
-
-Please review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating in issues or pull requests.
-
-## Security
-
-To report a vulnerability, follow [SECURITY.md](SECURITY.md). Do not open public issues for security reports.
-
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
