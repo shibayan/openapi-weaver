@@ -76,19 +76,40 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             var lastSegment = segments[segments.Length - 1];
             if (!IsPathParameterSegment(lastSegment)
-                && NormalizeToken(lastSegment) == normalizedTag)
+                && SegmentMatchesTag(lastSegment, tagName!))
             {
                 return "List";
             }
 
             if (segments.Length >= 2
                 && IsPathParameterSegment(lastSegment)
-                && NormalizeToken(segments[segments.Length - 2]) == normalizedTag)
+                && SegmentMatchesTag(segments[segments.Length - 2], tagName!))
             {
                 return "Get";
             }
 
             return null;
+        }
+
+        private static bool SegmentMatchesTag(string segment, string tagName)
+        {
+            var segmentTokens = TokenizeWords(segment);
+            var tagTokens = TokenizeWords(tagName);
+
+            if (segmentTokens.Count != tagTokens.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < segmentTokens.Count; i++)
+            {
+                if (!string.Equals(NormalizeToken(segmentTokens[i]), NormalizeToken(tagTokens[i]), StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool IsSelfReferentialGetName(IReadOnlyList<string> filteredTokens, string normalizedTag)
@@ -144,7 +165,23 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private static string NormalizeToken(string value)
         {
             var normalized = value.Trim();
-            if (normalized.Length > 3 && normalized.EndsWith("ies", StringComparison.OrdinalIgnoreCase))
+            if (normalized.Length == 0)
+            {
+                return normalized;
+            }
+
+            // Invariant words (same in singular and plural)
+            if (string.Equals(normalized, "series", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "species", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized;
+            }
+
+            // consonant + "ies" → consonant + "y" (e.g., "companies" → "company")
+            // Vowel + "ies" falls through to simple "s" removal (e.g., "movies" → "movie")
+            if (normalized.Length > 3
+                && normalized.EndsWith("ies", StringComparison.OrdinalIgnoreCase)
+                && IsConsonant(normalized[normalized.Length - 4]))
             {
                 return normalized.Substring(0, normalized.Length - 3) + "y";
             }
@@ -170,6 +207,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             return normalized;
+        }
+
+        private static bool IsConsonant(char ch)
+        {
+            var lower = char.ToLowerInvariant(ch);
+            return char.IsLetter(lower) && lower is not 'a' and not 'e' and not 'i' and not 'o' and not 'u';
         }
     }
 }

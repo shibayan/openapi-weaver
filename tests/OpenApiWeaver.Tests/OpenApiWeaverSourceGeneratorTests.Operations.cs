@@ -1217,6 +1217,104 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
     }
 
     [Fact]
+    public void CollectionAndSingleResourceGet_WithCapitalizedTag_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Partners API
+              version: v1
+            paths:
+              /partners:
+                get:
+                  operationId: get_partners
+                  tags:
+                    - Partners
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /partners/{id}:
+                get:
+                  operationId: get_partner
+                  tags:
+                    - Partners
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.DoesNotContain("GetPartnerAsync", source);
+        Assert.DoesNotContain("GetPartnersAsync", source);
+    }
+
+    [Fact]
+    public void CollectionAndSingleResourceGet_WithMultiWordTag_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Account Items API
+              version: v1
+            paths:
+              /account_items:
+                get:
+                  operationId: get_account_items
+                  tags:
+                    - Account items
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /account_items/{id}:
+                get:
+                  operationId: get_account_item
+                  tags:
+                    - Account items
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.DoesNotContain("GetAccountItemAsync", source);
+        Assert.DoesNotContain("GetAccountItemsAsync", source);
+    }
+
+    [Fact]
     public void EmptyOperationId_DerivesMethodNameFromHttpVerb()
     {
         const string openApi = """
