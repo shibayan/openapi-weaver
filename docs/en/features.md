@@ -49,13 +49,13 @@ Inline object or enum schemas that appear inside property definitions, array `it
 public sealed class Order
 {
     [JsonPropertyName("status")]
-    public OrderStatusEnum? Status { get; init; }
+    public Order.StatusEnum? Status { get; init; }
 
     // Inline enum schema generated as a nested type
-    public readonly record struct OrderStatusEnum(string Value)
+    public readonly record struct StatusEnum(string Value)
     {
-        public static readonly OrderStatusEnum Placed = new("placed");
-        public static readonly OrderStatusEnum Approved = new("approved");
+        public static readonly StatusEnum Placed = new("placed");
+        public static readonly StatusEnum Approved = new("approved");
     }
 }
 ```
