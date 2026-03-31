@@ -1213,7 +1213,203 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("GetAsync(", source);
+        Assert.Contains("ListAsync(", source);
+    }
+
+    [Fact]
+    public void CollectionAndSingleResourceGet_WithCapitalizedTag_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Partners API
+              version: v1
+            paths:
+              /partners:
+                get:
+                  operationId: get_partners
+                  tags:
+                    - Partners
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /partners/{id}:
+                get:
+                  operationId: get_partner
+                  tags:
+                    - Partners
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.DoesNotContain("GetPartnerAsync", source);
+        Assert.DoesNotContain("GetPartnersAsync", source);
+    }
+
+    [Fact]
+    public void CollectionAndSingleResourceGet_WithMultiWordTag_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Account Items API
+              version: v1
+            paths:
+              /account_items:
+                get:
+                  operationId: get_account_items
+                  tags:
+                    - Account items
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /account_items/{id}:
+                get:
+                  operationId: get_account_item
+                  tags:
+                    - Account items
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.DoesNotContain("GetAccountItemAsync", source);
+        Assert.DoesNotContain("GetAccountItemsAsync", source);
+    }
+
+    [Fact]
+    public void CollectionAndSingleResourceGet_WithIePluralTag_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Cookies API
+              version: v1
+            paths:
+              /cookies:
+                get:
+                  operationId: get_cookies
+                  tags:
+                    - Cookies
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /cookies/{id}:
+                get:
+                  operationId: get_cookie
+                  tags:
+                    - Cookies
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.DoesNotContain("GetCookieAsync", source);
+        Assert.DoesNotContain("GetCookiesAsync", source);
+    }
+
+    [Fact]
+    public void CollectionAndSingleResourceGet_WithShortIePluralTag_UseListAndGetMethodNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Ties API
+              version: v1
+            paths:
+              /ties:
+                get:
+                  operationId: get_ties
+                  tags:
+                    - Ties
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /ties/{id}:
+                get:
+                  operationId: get_tie
+                  tags:
+                    - Ties
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.DoesNotContain("GetTieAsync", source);
+        Assert.DoesNotContain("GetTiesAsync", source);
     }
 
     [Fact]
