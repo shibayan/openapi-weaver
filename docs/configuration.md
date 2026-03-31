@@ -35,18 +35,6 @@ You can include multiple OpenAPI documents in a single project. Each document ge
 </ItemGroup>
 ```
 
-## `AdditionalFiles` item
-
-For simple scenarios you can use `AdditionalFiles` directly:
-
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="openapi\petstore.yaml" />
-</ItemGroup>
-```
-
-When using `AdditionalFiles`, the client name is always derived from the file name and the namespace defaults to `RootNamespace`.
-
 ## Client name derivation
 
 When `ClientName` is not specified, the generator derives a name from the file name by converting it to PascalCase and appending `Client`:
@@ -67,4 +55,4 @@ OpenApiWeaver reads OpenAPI 3.x documents in the following formats:
 | `.yaml` | OpenAPI 3.x YAML |
 | `.yml` | OpenAPI 3.x YAML |
 
-Other file extensions included via `AdditionalFiles` or `OpenApiWeaverDocument` are ignored by the generator.
+Other file extensions included via `OpenApiWeaverDocument` are ignored by the generator.

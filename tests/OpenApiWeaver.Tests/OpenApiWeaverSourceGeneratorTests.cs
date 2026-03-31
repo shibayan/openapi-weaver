@@ -13,6 +13,11 @@ namespace OpenApiWeaver.Tests;
 
 public sealed partial class OpenApiWeaverSourceGeneratorTests
 {
+    private const string BuildMetadataAdditionalFilesClientName = "build_metadata.AdditionalFiles.ClientName";
+    private const string BuildMetadataAdditionalFilesNamespace = "build_metadata.AdditionalFiles.Namespace";
+    private const string BuildMetadataAdditionalFilesItemKind = "build_metadata.AdditionalFiles.OpenApiWeaverItemKind";
+    private const string OpenApiWeaverDocumentItemKind = "Document";
+
     private static string GenerateSource(string openApi)
     {
         var result = RunGenerator(openApi);
@@ -33,7 +38,10 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
             .Distinct()
             .Select(static path => (MetadataReference)MetadataReference.CreateFromFile(path))];
 
-    private static GeneratorTestResult RunGenerator(string openApi, IReadOnlyDictionary<string, string>? additionalFileOptions = null)
+    private static GeneratorTestResult RunGenerator(
+        string openApi,
+        IReadOnlyDictionary<string, string>? additionalFileOptions = null,
+        bool isOpenApiWeaverDocument = true)
     {
         var generator = new OpenApiWeaverSourceGenerator();
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
@@ -46,16 +54,17 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var additionalText = new InMemoryAdditionalText("test.yaml", openApi);
+        var effectiveAdditionalFileOptions = CreateAdditionalFileOptions(additionalFileOptions, isOpenApiWeaverDocument);
         var optionsProvider = new TestAnalyzerConfigOptionsProvider(
             globalOptions: new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["build_property.RootNamespace"] = "GeneratorTests"
             },
-            additionalFileOptions is null
+            effectiveAdditionalFileOptions.Count == 0
                 ? null
                 : new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
                 {
-                    [additionalText.Path] = additionalFileOptions
+                    [additionalText.Path] = effectiveAdditionalFileOptions
                 });
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
@@ -88,6 +97,28 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
             .ToArray();
 
         return new GeneratorTestResult(generatorDiagnostics, generatedSources, outputCompilation);
+    }
+
+    private static IReadOnlyDictionary<string, string> CreateAdditionalFileOptions(
+        IReadOnlyDictionary<string, string>? additionalFileOptions,
+        bool isOpenApiWeaverDocument)
+    {
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (isOpenApiWeaverDocument)
+        {
+            options[BuildMetadataAdditionalFilesItemKind] = OpenApiWeaverDocumentItemKind;
+        }
+
+        if (additionalFileOptions is not null)
+        {
+            foreach (var pair in additionalFileOptions)
+            {
+                options[pair.Key] = pair.Value;
+            }
+        }
+
+        return options;
     }
 
     private static LoadedGeneratorAssembly LoadGeneratedAssembly(string openApi)

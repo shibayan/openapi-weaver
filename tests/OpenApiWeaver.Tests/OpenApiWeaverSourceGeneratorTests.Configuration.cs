@@ -5,7 +5,7 @@ namespace OpenApiWeaver.Tests;
 public sealed partial class OpenApiWeaverSourceGeneratorTests
 {
     [Fact]
-    public void AdditionalFileClientNameMetadata_OverridesGeneratedClientName()
+    public void OpenApiWeaverDocumentClientNameMetadata_OverridesGeneratedClientName()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -17,7 +17,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi, new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["build_metadata.AdditionalFiles.ClientName"] = "ContosoSdk"
+            [BuildMetadataAdditionalFilesClientName] = "ContosoSdk"
         });
 
         Assert.Contains("public partial class ContosoSdkClient : IDisposable", source);
@@ -25,7 +25,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
     }
 
     [Fact]
-    public void AdditionalFileNamespaceMetadata_OverridesRootNamespace()
+    public void OpenApiWeaverDocumentNamespaceMetadata_OverridesRootNamespace()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -37,10 +37,27 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi, new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["build_metadata.AdditionalFiles.Namespace"] = "Contoso.Generated"
+            [BuildMetadataAdditionalFilesNamespace] = "Contoso.Generated"
         });
 
         Assert.Contains("namespace Contoso.Generated;", source);
         Assert.DoesNotContain("namespace GeneratorTests;", source);
+    }
+
+    [Fact]
+    public void AdditionalFiles_AreIgnored()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Petstore API
+              version: 1.0.0
+            paths: {}
+            """;
+
+        var result = RunGenerator(openApi, isOpenApiWeaverDocument: false);
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Empty(result.GeneratedSources);
     }
 }

@@ -1,4 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\src\OpenApiWeaver\buildTransitive\OpenApiWeaver.props" />
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -14,6 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="openapi\api-schema.json" />
+    <OpenApiWeaverDocument Include="openapi\api-schema.json" />
   </ItemGroup>
+
+  <Import Project="..\..\src\OpenApiWeaver\buildTransitive\OpenApiWeaver.targets" />
 </Project>
