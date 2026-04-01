@@ -6,7 +6,7 @@ OpenApiWeaver は Roslyn の incremental generator パイプラインを活用�
 
 ## JSON と YAML のサポート
 
-次の形式の OpenAPI 3.x ドキュメントを読み取れます。
+次の形式の OpenAPI 3.0-3.2 ドキュメントを読み取れます。
 
 - `.json` - OpenAPI 3.x JSON
 - `.yaml` / `.yml` - OpenAPI 3.x YAML
@@ -27,6 +27,8 @@ var user = await client.Users.GetAsync(userId: "me");
 
 メソッド名は、利用可能な場合は `operationId` から導出され、自動的に `Async` サフィックスが付与されます。
 
+tag に説明がある場合、その内容は生成される tag プロパティとサブクライアントクラスの XML ドキュメントとして出力されます。
+
 ## 型付きのリクエスト / レスポンスモデル
 
 オブジェクトスキーマに対して sealed class を生成し、メソッド引数や戻り値へ強く型付けしてマッピングします。
@@ -40,6 +42,8 @@ var user = await client.Users.GetAsync(userId: "me");
 `snake_case` から `PascalCase` へのような命名規則の変換は C# らしい形へ自動変換され、元の JSON 名は `[JsonPropertyName]` で保持されます。
 
 任意 (required でない) かつ nullable なプロパティには `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` が付与され、`null` の場合は JSON ペイロードから省略されます。
+
+OpenAPI 3.2 の nullable type array である `type: ["string", "null"]` のような表現は、`string?` のような nullable CLR 型へマッピングされます。
 
 ## インラインスキーマ / ネスト型
 
@@ -71,6 +75,40 @@ public sealed class Order
 | バイナリコンテンツ | `Task<byte[]>` |
 | コンテンツなし (例: 204) | `Task` |
 
+成功レスポンスが複数ある場合は、より低いステータスの no-content レスポンスよりも、本文を持つレスポンスが優先されます。レスポンスの複数メディアタイプでは、JSON、バイナリ、テキストの順に優先します。
+
+## ランタイムのエラーハンドリング
+
+生成されるクライアントは `EnsureSuccessStatusCode()` を呼びません。代わりに、非成功レスポンス用の明示的なエラーハンドリングコードを生成し、OpenAPI に定義されたエラー情報を保持します。
+
+- 非 2xx レスポンスでは `OpenApiException` を送出します
+- 例外には `StatusCode`、`ReasonPhrase`、`ContentType`、生の `ResponseContent` が含まれます
+- OpenAPI operation に一致するエラーレスポンススキーマがある場合、デシリアライズ済みの `Error` を持つ `OpenApiException<TError>` を送出します
+- マッチング順は、厳密なステータスコード、`4XX` のようなワイルドカード、`default` の順です
+
+JSON のエラーレスポンスでは、`Content-Type` が JSON 互換のときだけデシリアライズを試みます。デシリアライズに失敗した場合は、非ジェネリックの `OpenApiException` へフォールバックし、生のレスポンス本文を保持します。
+
+成功レスポンスで JSON 本文が必須のケースでは、本文が空だと `InvalidOperationException("The response body was empty.")` が送出されます。
+
+使用例:
+
+```csharp
+try
+{
+    await client.Partners.CreatePartnerAsync(body, cancellationToken);
+}
+catch (OpenApiException<ValidationProblem> exception) when (exception.StatusCode == 400)
+{
+    Console.WriteLine($"Validation failed: {exception.Error?.Message}");
+}
+catch (OpenApiException exception)
+{
+    Console.WriteLine($"Request failed: {exception.StatusCode} {exception.ReasonPhrase}");
+    Console.WriteLine($"Content-Type: {exception.ContentType}");
+    Console.WriteLine(exception.ResponseContent);
+}
+```
+
 ## 複数のリクエストボディ形式
 
 リクエストボディでは次のコンテンツタイプをサポートします。
@@ -80,6 +118,8 @@ public sealed class Order
 | `application/json` | `JsonSerializerDefaults.Web` を使う `JsonSerializer` |
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (バイナリファイルアップロード対応) |
+
+1 つのリクエストボディに複数のサポート済みメディアタイプが定義されている場合、利用可能なら JSON が優先されます。
 
 ### フォーム / マルチパートのコンパイル時専用ポリシー
 
@@ -146,4 +186,4 @@ GET、POST、PUT、DELETE、PATCH、HEAD、OPTIONS、TRACE のすべての標準
 
 ## XML ドキュメントコメント
 
-生成コードには、OpenAPI ドキュメントの `summary`、`description`、パラメーターの説明から導出された `<summary>`、`<remarks>`、`<param>`、`<returns>` の XML ドキュメントコメントが含まれます。これにより、IntelliSense やドキュメントツールで生成 API を完全に把握できます。
+生成コードには、`info`、tag の説明、operation の `summary` / `description`、パラメーター説明、response の `summary` / `description`、schema の `title` / `description` から導出された `<summary>`、`<remarks>`、`<param>`、`<returns>` の XML ドキュメントコメントが含まれます。HTML マークアップは自動的に除去されるため、IntelliSense をそのまま読みやすく保てます。

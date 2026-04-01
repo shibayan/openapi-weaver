@@ -20,6 +20,8 @@ OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild �
 </ItemGroup>
 ```
 
+ビルド時には、パッケージに含まれる `buildTransitive` ターゲットが各 `OpenApiWeaverDocument` をコンパイラ可視の `AdditionalFiles` へ投影し、`ClientName` と `Namespace` のメタデータもソースジェネレーターへ受け渡します。
+
 ### 複数ドキュメント
 
 1 つのプロジェクトに複数の OpenAPI ドキュメントを含めることができます。各ドキュメントは独立したクライアントを生成します。
@@ -47,7 +49,7 @@ OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild �
 
 ## 対応ドキュメント形式
 
-OpenApiWeaver は次の形式の OpenAPI 3.x ドキュメントを読み込みます。
+OpenApiWeaver は次の形式の OpenAPI 3.0-3.2 ドキュメントを読み込みます。
 
 | Extension | Format |
 |---|---|
@@ -56,3 +58,10 @@ OpenApiWeaver は次の形式の OpenAPI 3.x ドキュメントを読み込み�
 | `.yml` | OpenAPI 3.x YAML |
 
 `OpenApiWeaverDocument` に含まれていても、その他の拡張子のファイルはジェネレーターに無視されます。
+
+## ドキュメント検出
+
+ジェネレーターが処理するのは `OpenApiWeaverDocument` アイテムだけです。
+
+- `AdditionalFiles` に直接追加したファイルは無視されます
+- `ClientName` と `Namespace` のメタデータは `OpenApiWeaverDocument` 経由で指定した場合にのみ利用されます

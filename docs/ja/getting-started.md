@@ -3,7 +3,7 @@
 ## 前提条件
 
 - .NET SDK 8.0 以降
-- JSON または YAML 形式の OpenAPI 3.x ドキュメント
+- JSON または YAML 形式の OpenAPI 3.0-3.2 ドキュメント
 
 ## 1. パッケージをインストールする
 
@@ -48,6 +48,8 @@ Install-Package OpenApiWeaver -Version x.y.z
 |---|---|---|
 | `ClientName` | No | ファイル名から導出 (`petstore.yaml` → `PetstoreClient`) |
 | `Namespace` | No | プロジェクトの `RootNamespace` |
+
+`AdditionalFiles` に直接追加しただけのファイルは処理されません。付属の MSBuild ターゲットがドキュメントとメタデータをジェネレーターへ受け渡せるよう、`OpenApiWeaverDocument` を使用してください。
 
 詳しくは [設定](./configuration) を参照してください。
 

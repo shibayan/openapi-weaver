@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - .NET SDK 8.0 or later
-- An OpenAPI 3.x document in JSON or YAML format
+- An OpenAPI 3.0-3.2 document in JSON or YAML format
 
 ## 1. Install the package
 
@@ -48,6 +48,8 @@ Use the `OpenApiWeaverDocument` item to include your OpenAPI document with optio
 |---|---|---|
 | `ClientName` | No | Derived from file name (`petstore.yaml` -> `PetstoreClient`) |
 | `Namespace` | No | Project's `RootNamespace` |
+
+Files added only as `AdditionalFiles` are ignored. Use `OpenApiWeaverDocument` so the bundled MSBuild targets can project the document and its metadata into the generator.
 
 See the [Configuration](./configuration) page for full details.
 

@@ -5,7 +5,7 @@
 [![NuGet](https://img.shields.io/nuget/v/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver)
 [![License](https://img.shields.io/github/license/shibayan/openapi-weaver)](LICENSE)
 
-**OpenApiWeaver** is an incremental Roslyn source generator that turns OpenAPI 3.x documents into strongly typed C# HTTP clients at build time. No runtime code generation, no reflection — just plain C# emitted during compilation.
+**OpenApiWeaver** is an incremental Roslyn source generator that turns OpenAPI 3.x documents, including OpenAPI 3.2, into strongly typed C# HTTP clients at build time. No runtime code generation, no reflection - just plain C# emitted during compilation.
 
 ## Quick Start
 
@@ -27,6 +27,8 @@
 </ItemGroup>
 ```
 
+Use `OpenApiWeaverDocument` rather than `AdditionalFiles`; the package's MSBuild targets project these items into compiler inputs automatically.
+
 **3. Use the generated client**
 
 ```csharp
@@ -41,11 +43,13 @@ No extra dependencies are required — the package bundles the source generator 
 ## Features
 
 - **Incremental source generation** — fast, cached rebuilds via the Roslyn incremental generator pipeline
-- **JSON & YAML support** — reads `.json`, `.yaml`, and `.yml` OpenAPI 3.x documents
+- **OpenAPI 3.0-3.2 support** — reads `.json`, `.yaml`, and `.yml` documents, including OpenAPI 3.2 features such as response summaries and nullable type arrays
 - **Tag-based sub-clients** — operations grouped by OpenAPI tags, exposed as properties on the root client
-- **Typed request / response models** — sealed classes, enums, and collection types from `components/schemas`
+- **Typed request / response models** — sealed classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`
 - **Multiple request body formats** — `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
 - **Security scheme support** — OAuth2 / Bearer tokens, API keys (header, query, cookie)
+- **Runtime error handling** — non-success responses throw `OpenApiException`, with typed `OpenApiException<TError>` when error schemas are available
+- **OpenAPI-driven XML docs** — IntelliSense comments generated from document, tag, operation, response, and schema metadata with HTML stripped automatically
 - **Build-time diagnostics** — errors and warnings reported as standard compiler diagnostics
 
 ## Requirements

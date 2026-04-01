@@ -1,6 +1,6 @@
 # Schema Type Mapping
 
-OpenApiWeaver maps OpenAPI schema types to C# types as follows.
+OpenApiWeaver maps OpenAPI 3.0-3.2 schema types to C# types as follows.
 
 ## Primitive types
 
@@ -46,6 +46,8 @@ public sealed class Metadata : Dictionary<string, string>
     public string? Version { get; init; }
 }
 ```
+
+If `additionalProperties` and `patternProperties` produce incompatible value types, the generated type falls back to `Dictionary<string, JsonElement>`.
 
 ## Object schemas
 
@@ -118,7 +120,34 @@ public sealed class Order
 | OpenAPI Keyword | C# Mapping |
 |---|---|
 | `allOf` | Flattened into a single class containing all properties |
-| `oneOf` / `anyOf` | Union-style nullable properties |
+| `oneOf` / `anyOf` | Union-style nullable properties or nullable CLR primitives when the union is a primitive plus `null` |
+
+## Nullable type arrays (OpenAPI 3.2)
+
+OpenAPI 3.2 allows `type` to be expressed as an array. When one of the entries is `null`, OpenApiWeaver maps the schema to a nullable CLR type.
+
+```yaml
+partnerResponse:
+  type: object
+  properties:
+    display_name:
+      type: [string, 'null']
+    company_id:
+      type: [integer, 'null']
+```
+
+```csharp
+public sealed class PartnerResponse
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("display_name")]
+    public string? DisplayName { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("company_id")]
+    public int? CompanyId { get; init; }
+}
+```
 
 ## Enums
 

@@ -6,7 +6,7 @@ OpenApiWeaver leverages the Roslyn incremental generator pipeline for fast, cach
 
 ## JSON & YAML support
 
-Reads OpenAPI 3.x documents in the following formats:
+Reads OpenAPI 3.0-3.2 documents in the following formats:
 
 - `.json` - OpenAPI 3.x JSON
 - `.yaml` / `.yml` - OpenAPI 3.x YAML
@@ -27,6 +27,8 @@ var user = await client.Users.GetAsync(userId: "me");
 
 Method names are derived from `operationId` when available, with an `Async` suffix appended automatically.
 
+When a tag has a description, it is emitted as XML documentation on the generated tag property and sub-client class.
+
 ## Typed request / response models
 
 Generates sealed classes for object schemas and maps them to strongly typed method parameters and return values:
@@ -40,6 +42,8 @@ Generates sealed classes for object schemas and maps them to strongly typed meth
 Naming conventions are automatically converted from `snake_case` to `PascalCase` for C# idiomatic use, while preserving the original JSON names via `[JsonPropertyName]`.
 
 Optional (non-required) nullable properties are annotated with `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` so they are omitted from the JSON payload when `null`.
+
+OpenAPI 3.2 nullable type arrays such as `type: ["string", "null"]` are mapped to nullable CLR types like `string?`.
 
 ## Inline / nested schemas
 
@@ -71,6 +75,40 @@ The generated methods return different types based on the response content:
 | Binary content | `Task<byte[]>` |
 | No content (e.g. 204) | `Task` |
 
+When multiple successful responses are available, OpenApiWeaver prefers a response with a body over a lower-status no-content response. For multiple response media types, JSON is preferred first, then binary, then text.
+
+## Runtime error handling
+
+Generated clients do not call `EnsureSuccessStatusCode()`. Instead, they emit explicit error handling code for non-success responses so OpenAPI error definitions can be preserved.
+
+- Non-2xx responses throw `OpenApiException`
+- The exception includes `StatusCode`, `ReasonPhrase`, `ContentType`, and the raw `ResponseContent`
+- If the OpenAPI operation defines a matching error response schema, the generated code throws `OpenApiException<TError>` with the deserialized error payload in `Error`
+- Matching prefers exact status codes first, then wildcard patterns such as `4XX`, then `default`
+
+For JSON error responses, deserialization is attempted only when the response content type is JSON-compatible. If deserialization fails, the client falls back to the non-generic `OpenApiException` and preserves the raw response body for troubleshooting.
+
+For successful JSON responses that are expected to have a body, an empty response body results in `InvalidOperationException("The response body was empty.")`.
+
+Example:
+
+```csharp
+try
+{
+    await client.Partners.CreatePartnerAsync(body, cancellationToken);
+}
+catch (OpenApiException<ValidationProblem> exception) when (exception.StatusCode == 400)
+{
+    Console.WriteLine($"Validation failed: {exception.Error?.Message}");
+}
+catch (OpenApiException exception)
+{
+    Console.WriteLine($"Request failed: {exception.StatusCode} {exception.ReasonPhrase}");
+    Console.WriteLine($"Content-Type: {exception.ContentType}");
+    Console.WriteLine(exception.ResponseContent);
+}
+```
+
 ## Multiple request body formats
 
 Supports the following content types for request bodies:
@@ -80,6 +118,8 @@ Supports the following content types for request bodies:
 | `application/json` | `JsonSerializer` with `JsonSerializerDefaults.Web` |
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (supports binary file uploads) |
+
+If a request body declares multiple supported media types, JSON is preferred when available.
 
 ### Compile-time-only policy for form / multipart
 
@@ -146,4 +186,4 @@ The root client also implements `IDisposable` and disposes the internal `HttpCli
 
 ## XML documentation comments
 
-The generated code includes `<summary>`, `<remarks>`, `<param>`, and `<returns>` XML doc comments derived from the `summary`, `description`, and parameter descriptions in the OpenAPI document. This makes the generated API fully discoverable via IntelliSense and documentation tools.
+The generated code includes `<summary>`, `<remarks>`, `<param>`, and `<returns>` XML doc comments derived from `info`, tag descriptions, operation `summary` / `description`, parameter descriptions, response `summary` / `description`, and schema `title` / `description`. HTML markup is stripped automatically so the generated IntelliSense stays clean.

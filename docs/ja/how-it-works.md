@@ -4,11 +4,14 @@
 
 `OpenApiWeaverDocument` として含まれた各 OpenAPI ドキュメントに対し、ジェネレーターは次の処理を行います。
 
-1. **Parse** - [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET) を使ってドキュメントを読み込み、JSON と YAML の両方をサポート
-2. **Transform** - クラス名とメソッド名を導出し、命名規則 (例: `snake_case` → `PascalCase`) を変換し、`$ref` を解決し、スキーマを分類
-3. **Group** - OpenAPI tag ごとに操作をサブクライアントへ整理
-4. **Emit schemas** - オブジェクトスキーマを sealed class、文字列列挙を `JsonConverter` 付きの `readonly record struct`、整数列挙を標準 `enum` として生成し、プリミティブ型とコレクション型をマッピング。インラインスキーマはネスト型になります。
-5. **Emit clients** - 各操作について、適切なリクエストボディのシリアライズとレスポンスのデシリアライズを行う async メソッドを生成
+1. **Project inputs** - 付属の `buildTransitive` ターゲットが `OpenApiWeaverDocument` をコンパイラ可視の追加ファイルへ投影し、`ClientName` や `Namespace` などのメタデータも渡します
+2. **Parse** - [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET) を使ってドキュメントを読み込み、OpenAPI 3.0-3.2 の JSON / YAML をサポートします
+3. **Transform** - クラス名とメソッド名を導出し、命名規則 (例: `snake_case` → `PascalCase`) を変換し、`$ref` を解決し、スキーマを分類し、XML ドキュメント用に HTML を除去します
+4. **Group** - OpenAPI tag ごとに操作をサブクライアントへ整理し、tag の説明も生成される XML docs へ引き継ぎます
+5. **Emit schemas** - オブジェクトスキーマを sealed class、文字列列挙を `JsonConverter` 付きの `readonly record struct`、整数列挙を標準 `enum` として生成し、プリミティブ型とコレクション型をマッピング。インラインスキーマはネスト型になります。
+6. **Emit clients** - 各操作について、適切なリクエストボディのシリアライズ、レスポンスのデシリアライズ、OpenAPI メタデータ由来の XML ドキュメントコメントを含む async メソッドを生成します
+
+クライアント生成時には、ランタイムのエラーハンドリング経路も同時に出力されます。非成功レスポンスではステータス、ヘッダー、本文を保持し、一致する型付きエラースキーマが定義されていれば `OpenApiException` または `OpenApiException<TError>` を送出します。
 
 ## 生成されるクライアント構造
 
@@ -17,10 +20,13 @@
 - 最初の OpenAPI `servers` エントリから `BaseAddress` を設定した内部 `HttpClient` を作成する
 - 任意のセキュリティ資格情報 (Bearer トークンや API キー) をコンストラクター引数として受け取る
 - tag グループごとに 1 つのプロパティを公開する (例: `client.Pets`, `client.Users`)
+- `info`、tag、operation、response のメタデータからクライアント本体と各 tag プロパティの XML ドキュメントを生成する
 - `partial class` として生成されるため、別ファイルで拡張可能
 - `IDisposable` を実装し、内部の `HttpClient` を解放する
 
 各 tag サブクライアントには、OpenAPI ドキュメントで定義された path、query、header、cookie パラメーターに対応する async 操作メソッドが含まれます。
+
+各操作メソッドは `HttpResponseMessage.EnsureSuccessStatusCode()` に依存せず、非成功レスポンスを明示的に処理するため、OpenAPI の型付きエラーペイロードを例外経由で扱えます。
 
 ## 命名規則
 

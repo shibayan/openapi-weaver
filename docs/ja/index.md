@@ -4,7 +4,7 @@ layout: home
 hero:
   name: OpenApiWeaver
   text: OpenAPI から C# クライアントを生成
-  tagline: OpenAPI 3.x ドキュメントをビルド時に型安全な C# HTTP クライアントへ変換する、インクリメンタル Roslyn ソースジェネレーター。
+  tagline: OpenAPI 3.x ドキュメントを、OpenAPI 3.2 を含めてビルド時に型安全な C# HTTP クライアントへ変換する、インクリメンタル Roslyn ソースジェネレーター。
   actions:
     - theme: brand
       text: はじめる
@@ -23,7 +23,7 @@ features:
   - title: 強い型付けと IntelliSense
     details: 生成されたクライアント、操作、DTO のすべてで完全な IntelliSense、コンパイル時型安全性、移動サポートを利用できます。
   - title: JSON と YAML をサポート
-    details: OpenAPI 3.x ドキュメントを JSON (.json) と YAML (.yaml, .yml) 形式で読み取れます。
+    details: OpenAPI 3.0-3.2 ドキュメントを JSON (.json) と YAML (.yaml, .yml) 形式で読み取れます。
   - title: ビルド時診断
     details: 無効または未対応の OpenAPI ドキュメントに対して、標準のコンパイラ診断としてエラーや警告を報告します。
 ---
