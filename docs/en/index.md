@@ -4,7 +4,7 @@ layout: home
 hero:
   name: OpenApiWeaver
   text: OpenAPI to C# Client Generator
-  tagline: An incremental Roslyn source generator that turns OpenAPI 3.x documents into strongly typed C# HTTP clients at build time.
+  tagline: An incremental Roslyn source generator that turns OpenAPI 3.x documents, including OpenAPI 3.2, into strongly typed C# HTTP clients at build time.
   actions:
     - theme: brand
       text: Get Started
@@ -23,7 +23,7 @@ features:
   - title: Strongly Typed with IntelliSense
     details: Full IntelliSense, compile-time type safety, and navigation support for all generated clients, operations, and DTOs.
   - title: JSON & YAML
-    details: Reads OpenAPI 3.x documents in JSON (.json) and YAML (.yaml, .yml) formats.
+    details: Reads OpenAPI 3.0-3.2 documents in JSON (.json) and YAML (.yaml, .yml) formats.
   - title: Build-Time Diagnostics
     details: Reports errors and warnings for invalid or unsupported OpenAPI documents as standard compiler diagnostics.
 ---

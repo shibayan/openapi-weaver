@@ -1,6 +1,6 @@
 # スキーマ型マッピング
 
-OpenApiWeaver は OpenAPI のスキーマ型を次のように C# 型へマッピングします。
+OpenApiWeaver は OpenAPI 3.0-3.2 のスキーマ型を次のように C# 型へマッピングします。
 
 ## プリミティブ型
 
@@ -46,6 +46,8 @@ public sealed class Metadata : Dictionary<string, string>
     public string? Version { get; init; }
 }
 ```
+
+`additionalProperties` と `patternProperties` から導かれる値型が両立しない場合、生成型は `Dictionary<string, JsonElement>` へフォールバックします。
 
 ## オブジェクトスキーマ
 
@@ -118,7 +120,34 @@ public sealed class Order
 | OpenAPI Keyword | C# Mapping |
 |---|---|
 | `allOf` | すべてのプロパティを含む 1 つのクラスへフラット化 |
-| `oneOf` / `anyOf` | union 風の nullable プロパティ |
+| `oneOf` / `anyOf` | union 風の nullable プロパティ、または primitive と `null` の組み合わせなら nullable CLR プリミティブ |
+
+## Nullable type array (OpenAPI 3.2)
+
+OpenAPI 3.2 では `type` を配列で表現できます。要素の 1 つに `null` が含まれる場合、OpenApiWeaver は nullable CLR 型へマッピングします。
+
+```yaml
+partnerResponse:
+  type: object
+  properties:
+    display_name:
+      type: [string, 'null']
+    company_id:
+      type: [integer, 'null']
+```
+
+```csharp
+public sealed class PartnerResponse
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("display_name")]
+    public string? DisplayName { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("company_id")]
+    public int? CompanyId { get; init; }
+}
+```
 
 ## 列挙型
 
