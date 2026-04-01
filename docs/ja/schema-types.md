@@ -122,7 +122,7 @@ public sealed class Order
 | `allOf` | すべてのプロパティを含む 1 つのクラスへフラット化 |
 | `oneOf` / `anyOf` | union 風の nullable プロパティ、または primitive と `null` の組み合わせなら nullable CLR プリミティブ |
 
-## Nullable type array (OpenAPI 3.2)
+## Nullable 型配列（OpenAPI 3.2）
 
 OpenAPI 3.2 では `type` を配列で表現できます。要素の 1 つに `null` が含まれる場合、OpenApiWeaver は nullable CLR 型へマッピングします。
 
