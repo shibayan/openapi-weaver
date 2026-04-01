@@ -133,7 +133,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("public async Task ", source);
         Assert.DoesNotContain("Task<string>", source);
-        Assert.Contains("response.EnsureSuccessStatusCode();", source);
+        Assert.Contains("if (!response.IsSuccessStatusCode)", source);
+        Assert.Contains("throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent);", source);
         Assert.Contains("return;", source);
     }
 
@@ -619,10 +620,10 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var operationClient = operationProperty.GetValue(client);
         Assert.NotNull(operationClient);
 
-        var operationMethod = operationClient!.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        var operationMethod = operationClient.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
         Assert.NotNull(operationMethod);
 
-        var invocation = Assert.IsAssignableFrom<Task>(operationMethod!.Invoke(operationClient, [CancellationToken.None]));
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, [CancellationToken.None]));
         await invocation;
 
         var requestTarget = await server.GetRequestTargetAsync();
@@ -1443,9 +1444,105 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("Async(", source);
     }
+
+    [Fact]
+    public void ErrorResponse_GeneratesTypedOpenApiException()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Error API
+              version: v1
+            paths:
+              /partners:
+                post:
+                  operationId: create_partner
+                  responses:
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                    '400':
+                      description: validation failed
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/validationProblem'
+                    default:
+                      description: unexpected error
+                      content:
+                        text/plain:
+                          schema:
+                            type: string
+            components:
+              schemas:
+                validationProblem:
+                  type: object
+                  properties:
+                    message:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public class OpenApiException : Exception", source);
+        Assert.Contains("public class OpenApiException<TError> : OpenApiException", source);
+        Assert.Contains("if (!response.IsSuccessStatusCode)", source);
+        Assert.Contains("if (OpenApiClientHelpers.ResponseMatchesStatusCode(statusCode, \"400\"))", source);
+        Assert.Contains("var error = OpenApiClientHelpers.DeserializeResponseContent<ValidationProblem>(responseContent);", source);
+        Assert.Contains("throw new OpenApiException<ValidationProblem>(statusCode, response.ReasonPhrase, contentType, responseContent, error);", source);
+        Assert.Contains("throw new OpenApiException<string>(statusCode, response.ReasonPhrase, contentType, responseContent, responseContent);", source);
+        Assert.DoesNotContain("response.EnsureSuccessStatusCode();", source);
+    }
+
+    [Fact]
+    public void ProblemJsonErrorResponse_UsesDeclaredOpenApiSchema()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Problem API
+              version: v1
+            paths:
+              /partners:
+                get:
+                  operationId: list_partners
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                    '422':
+                      description: invalid request
+                      content:
+                        application/problem+json:
+                          schema:
+                            $ref: '#/components/schemas/problemDetails'
+            components:
+              schemas:
+                problemDetails:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                    detail:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class ProblemDetails", source);
+        Assert.DoesNotContain("public sealed class OpenApiProblemDetails", source);
+        Assert.Contains("var error = OpenApiClientHelpers.DeserializeResponseContent<ProblemDetails>(responseContent);", source);
+        Assert.Contains("throw new OpenApiException<ProblemDetails>(statusCode, response.ReasonPhrase, contentType, responseContent, error);", source);
+    }
 }
 
-file sealed class TestHttpServer : IAsyncDisposable
+sealed file class TestHttpServer : IAsyncDisposable
 {
     private readonly TcpListener _listener;
     private readonly Task<string> _requestTargetTask;
@@ -1499,7 +1596,7 @@ file sealed class TestHttpServer : IAsyncDisposable
         var responseBytes = Encoding.ASCII.GetBytes(response);
         await stream.WriteAsync(responseBytes);
 
-        var parts = requestLine!.Split(' ');
+        var parts = requestLine.Split(' ');
         Assert.True(parts.Length >= 2, $"Unexpected request line: {requestLine}");
         return parts[1];
     }

@@ -48,7 +48,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             if (model.TagGroups.Count > 0)
             {
-                EmitHelperClass(builder);
+                EmitSupportTypes(builder);
                 builder.AppendLine();
             }
 
@@ -117,6 +117,55 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return builder.Uri.AbsoluteUri;
         }
 
+        private void EmitSupportTypes(StringBuilder builder)
+        {
+            EmitExceptionTypes(builder);
+            builder.AppendLine();
+
+            EmitHelperClass(builder);
+        }
+
+        private static void EmitExceptionTypes(StringBuilder builder)
+        {
+            builder.AppendLine("public class OpenApiException : Exception");
+            builder.AppendLine("{");
+            builder.AppendLine("    public OpenApiException(int statusCode, string? reasonPhrase, string? contentType, string? responseContent, Exception? innerException = null)");
+            builder.AppendLine("        : base(CreateMessage(statusCode, reasonPhrase), innerException)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        StatusCode = statusCode;");
+            builder.AppendLine("        ReasonPhrase = reasonPhrase;");
+            builder.AppendLine("        ContentType = contentType;");
+            builder.AppendLine("        ResponseContent = responseContent;");
+            builder.AppendLine("    }");
+            builder.AppendLine();
+            builder.AppendLine("    public int StatusCode { get; }");
+            builder.AppendLine();
+            builder.AppendLine("    public string? ReasonPhrase { get; }");
+            builder.AppendLine();
+            builder.AppendLine("    public string? ContentType { get; }");
+            builder.AppendLine();
+            builder.AppendLine("    public string? ResponseContent { get; }");
+            builder.AppendLine();
+            builder.AppendLine("    private static string CreateMessage(int statusCode, string? reasonPhrase)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        return string.IsNullOrWhiteSpace(reasonPhrase)");
+            builder.AppendLine("            ? $\"The HTTP request failed with status code {statusCode}.\"");
+            builder.AppendLine("            : $\"The HTTP request failed with status code {statusCode} ({reasonPhrase}).\";");
+            builder.AppendLine("    }");
+            builder.AppendLine("}");
+            builder.AppendLine();
+            builder.AppendLine("public class OpenApiException<TError> : OpenApiException");
+            builder.AppendLine("{");
+            builder.AppendLine("    public OpenApiException(int statusCode, string? reasonPhrase, string? contentType, string? responseContent, TError? error, Exception? innerException = null)");
+            builder.AppendLine("        : base(statusCode, reasonPhrase, contentType, responseContent, innerException)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        Error = error;");
+            builder.AppendLine("    }");
+            builder.AppendLine();
+            builder.AppendLine("    public TError? Error { get; }");
+            builder.AppendLine("}");
+        }
+
         private void EmitHelperClass(StringBuilder builder)
         {
             builder.AppendLine("internal static class OpenApiClientHelpers");
@@ -159,6 +208,37 @@ public sealed partial class OpenApiWeaverSourceGenerator
             builder.AppendLine("        builder.Append(name);");
             builder.AppendLine("        builder.Append('=');");
             builder.AppendLine("        builder.Append(Uri.EscapeDataString(value));");
+            builder.AppendLine("    }");
+            builder.AppendLine();
+            builder.AppendLine("    internal static bool HasJsonContentType(string? contentType)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        return !string.IsNullOrWhiteSpace(contentType) && contentType.Contains(\"json\", StringComparison.OrdinalIgnoreCase);");
+            builder.AppendLine("    }");
+            builder.AppendLine();
+            builder.AppendLine("    internal static bool ResponseMatchesStatusCode(int statusCode, string statusCodePattern)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        if (string.Equals(statusCodePattern, \"default\", StringComparison.OrdinalIgnoreCase))");
+            builder.AppendLine("        {");
+            builder.AppendLine("            return true;");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+            builder.AppendLine("        if (statusCodePattern.Length == 3");
+            builder.AppendLine("            && char.IsDigit(statusCodePattern[0])");
+            builder.AppendLine("            && statusCodePattern[1] is 'X' or 'x'");
+            builder.AppendLine("            && statusCodePattern[2] is 'X' or 'x')");
+            builder.AppendLine("        {");
+            builder.AppendLine("            var prefix = statusCodePattern[0] - '0';");
+            builder.AppendLine("            return statusCode >= prefix * 100 && statusCode < (prefix + 1) * 100;");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+            builder.AppendLine("        return int.TryParse(statusCodePattern, out var expectedStatusCode) && statusCode == expectedStatusCode;");
+            builder.AppendLine("    }");
+            builder.AppendLine();
+            builder.AppendLine("    internal static T? DeserializeResponseContent<T>(string? responseContent)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        return string.IsNullOrWhiteSpace(responseContent)");
+            builder.AppendLine("            ? default");
+            builder.AppendLine("            : JsonSerializer.Deserialize<T>(responseContent, SerializerOptions);");
             builder.AppendLine("    }");
 
             builder.AppendLine("}");
