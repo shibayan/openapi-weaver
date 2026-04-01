@@ -38,7 +38,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
         string? remarks,
         IReadOnlyList<ParameterInfo> parameters,
         RequestBodyInfo? requestBody,
-        ResponseInfo response)
+        ResponseInfo response,
+        IReadOnlyList<ErrorResponseInfo> errorResponses)
     {
         public string Route { get; } = route;
         public string OperationType { get; } = operationType;
@@ -48,7 +49,14 @@ public sealed partial class OpenApiWeaverSourceGenerator
         public IReadOnlyList<ParameterInfo> Parameters { get; } = parameters;
         public RequestBodyInfo? RequestBody { get; } = requestBody;
         public ResponseInfo Response { get; } = response;
+        public IReadOnlyList<ErrorResponseInfo> ErrorResponses { get; } = errorResponses;
         public bool HasParameters { get; } = parameters.Count > 0;
+    }
+
+    private sealed class ErrorResponseInfo(string statusCodePattern, ResponseInfo response)
+    {
+        public string StatusCodePattern { get; } = statusCodePattern;
+        public ResponseInfo Response { get; } = response;
     }
 
     private sealed class ParameterInfo(string serializedName, string parameterName, string typeName, bool required, ParameterLocation location, string? description)

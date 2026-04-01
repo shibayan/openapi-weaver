@@ -38,18 +38,18 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             if (TryResolveSchemaReferenceName(schema) is not { } schemaName)
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request bodies must reference a component schema so code can be generated at compile time.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request bodies must reference a named component schema for compile-time code generation.");
             }
 
             var resolvedSchema = ResolveSchemaReference(schema);
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses oneOf/anyOf, which cannot be generated at compile time.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses oneOf/anyOf, which is not supported for compile-time code generation.");
             }
 
             if (TryGetDictionaryValueType(resolvedSchema, out _))
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses additionalProperties or patternProperties, which are unsupported for compile-time generation.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
 
             var properties = GetSchemaProperties(resolvedSchema);
@@ -87,12 +87,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses oneOf/anyOf, which cannot be generated at compile time.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses oneOf/anyOf, which is not supported for compile-time code generation.");
             }
 
             if (TryGetDictionaryValueType(resolvedSchema, out _))
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses additionalProperties or patternProperties, which are unsupported for compile-time generation.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
 
             if (IsEnumSchema(resolvedSchema))
@@ -120,20 +120,20 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 case JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase):
                     if (requestBodyKind == RequestBodyKind.FormUrlEncoded)
                     {
-                        throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses binary content, which cannot be generated for application/x-www-form-urlencoded.");
+                        throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses binary format, which is not supported for application/x-www-form-urlencoded request bodies.");
                     }
 
                     return RequestBodyValueKind.Binary;
                 case JsonSchemaType.Array:
                     if (resolvedSchema.Items is null)
                     {
-                        throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' defines an array without items.");
+                        throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' defines an array without an items schema.");
                     }
 
                     elementKind = ClassifyCollectionElementKind(schemaName, propertyName, requestBodyKind, resolvedSchema.Items);
                     return RequestBodyValueKind.Collection;
                 default:
-                    throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses an unsupported schema type for compile-time generation.");
+                    throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses a schema type that is not supported for compile-time code generation.");
             }
         }
 
@@ -142,12 +142,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
             var resolvedSchema = ResolveSchemaReference(schema);
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' contains collection elements using oneOf/anyOf, which cannot be generated at compile time.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' has array items using oneOf/anyOf, which is not supported for compile-time code generation.");
             }
 
             if (TryGetDictionaryValueType(resolvedSchema, out _))
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' contains collection elements using additionalProperties or patternProperties, which are unsupported for compile-time generation.");
+                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' has array items using additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
 
             if (IsEnumSchema(resolvedSchema))
@@ -170,7 +170,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean => RequestBodyValueKind.Scalar,
                 JsonSchemaType.String when !string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) => RequestBodyValueKind.Scalar,
                 JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) && requestBodyKind == RequestBodyKind.MultipartFormData => RequestBodyValueKind.Binary,
-                _ => throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' contains collection elements with an unsupported schema type for compile-time generation.")
+                _ => throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' has array items with a schema type that is not supported for compile-time code generation.")
             };
         }
 

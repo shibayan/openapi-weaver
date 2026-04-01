@@ -53,7 +53,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
                     Diagnostics.DocumentInvalid,
                     Location.None,
                     file.Path,
-                    "The document could not be loaded."));
+                    "The document does not contain valid paths or could not be loaded."));
                 return;
             }
 
@@ -171,7 +171,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
         public static readonly DiagnosticDescriptor DocumentEmpty = new(
             "OAW001",
             "OpenAPI document is empty",
-            "The OpenAPI document '{0}' is empty",
+            "The OpenAPI document '{0}' is empty or contains only whitespace",
             "OpenApiWeaver",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
@@ -179,7 +179,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
         public static readonly DiagnosticDescriptor DocumentHasWarnings = new(
             "OAW002",
             "OpenAPI document has validation warnings",
-            "The OpenAPI document '{0}' was loaded with validation warnings: {1}",
+            "The OpenAPI document '{0}' contains validation warnings: {1}",
             "OpenApiWeaver",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
@@ -201,23 +201,15 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             isEnabledByDefault: true);
     }
 
-    private sealed class GeneratorInput
+    private sealed class GeneratorInput(AdditionalText file, string rootNamespace, string? ns, string? clientName)
     {
-        public GeneratorInput(AdditionalText file, string rootNamespace, string? @namespace, string? clientName)
-        {
-            File = file;
-            RootNamespace = rootNamespace;
-            Namespace = @namespace;
-            ClientName = clientName;
-        }
+        public AdditionalText File { get; } = file;
 
-        public AdditionalText File { get; }
+        public string RootNamespace { get; } = rootNamespace;
 
-        public string RootNamespace { get; }
+        public string? Namespace { get; } = ns;
 
-        public string? Namespace { get; }
-
-        public string? ClientName { get; }
+        public string? ClientName { get; } = clientName;
     }
 
     private sealed class UnsupportedGenerationException(string message) : Exception(message);

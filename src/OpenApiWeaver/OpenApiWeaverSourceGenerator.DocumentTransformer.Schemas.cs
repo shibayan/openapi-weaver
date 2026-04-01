@@ -176,7 +176,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private bool TryRegisterInlineSchema(IOpenApiSchema schema, string parentTypeName, string suggestedTypeName, out InlineSchemaInfo inlineSchema)
         {
-            inlineSchema = default!;
+            inlineSchema = null!;
             if (!CanGenerateInlineSchema(schema))
             {
                 return false;

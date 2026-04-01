@@ -66,6 +66,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             var requestBody = ResolveRequestBody(operation.RequestBody);
             var response = ResolveResponse(operation);
+            var errorResponses = ResolveErrorResponses(operation);
 
             return new OperationGroupItem(
                 route,
@@ -75,7 +76,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 operation.Summary is not null && !string.IsNullOrWhiteSpace(operation.Description) ? operation.Description : null,
                 parameters,
                 requestBody,
-                response);
+                response,
+                errorResponses);
         }
 
         private ResponseInfo ResolveResponse(OpenApiOperation operation)
@@ -94,6 +96,68 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     int.MaxValue);
 
             var kind = ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
+            var typeName = kind switch
+            {
+                ResponseKind.Binary => "byte[]",
+                ResponseKind.String => "string",
+                ResponseKind.None => string.Empty,
+                _ => ResolveTypeName(selectedContent.Value.Schema, required: selectedContent.Value.Schema is null || !IsNullableSchema(selectedContent.Value.Schema))
+            };
+
+            return new ResponseInfo(kind, typeName, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
+        }
+
+        private List<ErrorResponseInfo> ResolveErrorResponses(OpenApiOperation operation)
+        {
+            if (operation.Responses is null || operation.Responses.Count == 0)
+            {
+                return [];
+            }
+
+            var errorResponses = new List<ErrorResponseInfo>();
+            foreach (var item in operation.Responses)
+            {
+                if (IsSuccessResponseStatus(item.Key))
+                {
+                    continue;
+                }
+
+                var response = ResolveErrorResponse(item.Value);
+                if (response is null)
+                {
+                    continue;
+                }
+
+                errorResponses.Add(new ErrorResponseInfo(item.Key, response));
+            }
+
+            errorResponses.Sort(static (left, right) => CompareErrorResponseStatus(left.StatusCodePattern, right.StatusCodePattern));
+            return errorResponses;
+        }
+
+        private ResponseInfo? ResolveErrorResponse(IOpenApiResponse response)
+        {
+            if (response.Content is null || response.Content.Count == 0)
+            {
+                return null;
+            }
+
+            var selectedContent = SelectPreferredContent(
+                response.Content,
+                static item => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                    item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 1 :
+                    HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 2 :
+                    int.MaxValue);
+
+            if (selectedContent.Value.Schema is null
+                && !selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var kind = selectedContent.Value.Schema is null && selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+                ? ResponseKind.String
+                : ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
             var typeName = kind switch
             {
                 ResponseKind.Binary => "byte[]",
@@ -128,7 +192,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             foreach (var item in responses)
             {
-                if (!item.Key.StartsWith("2", StringComparison.Ordinal))
+                if (!IsSuccessResponseStatus(item.Key))
                 {
                     continue;
                 }
@@ -154,6 +218,39 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return int.TryParse(statusCode, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
                 ? value
                 : int.MaxValue;
+        }
+
+        private static bool IsSuccessResponseStatus(string statusCode)
+        {
+            return statusCode.StartsWith("2", StringComparison.Ordinal);
+        }
+
+        private static int CompareErrorResponseStatus(string left, string right)
+        {
+            return GetErrorResponseStatusSortKey(left).CompareTo(GetErrorResponseStatusSortKey(right));
+        }
+
+        private static (int Category, int StatusCode, string Pattern) GetErrorResponseStatusSortKey(string statusCode)
+        {
+            if (int.TryParse(statusCode, NumberStyles.None, CultureInfo.InvariantCulture, out var exactStatusCode))
+            {
+                return (0, exactStatusCode, statusCode);
+            }
+
+            if (statusCode.Length == 3
+                && char.IsDigit(statusCode[0])
+                && statusCode[1] is 'X' or 'x'
+                && statusCode[2] is 'X' or 'x')
+            {
+                return (1, (statusCode[0] - '0') * 100, statusCode);
+            }
+
+            if (string.Equals(statusCode, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                return (2, int.MaxValue, statusCode);
+            }
+
+            return (3, int.MaxValue, statusCode);
         }
 
         private static bool HasUsableResponseContent(IOpenApiResponse response)

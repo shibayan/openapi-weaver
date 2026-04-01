@@ -64,7 +64,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("OAW004", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.Contains("multipart/form-data request bodies must reference a component schema", diagnostic.GetMessage());
+        Assert.Contains("multipart/form-data request bodies must reference a named component schema", diagnostic.GetMessage());
         Assert.Empty(result.GeneratedSources);
     }
 

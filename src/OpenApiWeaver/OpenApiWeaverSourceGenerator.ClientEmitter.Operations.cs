@@ -141,7 +141,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             builder.AppendLine("        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);");
-            builder.AppendLine("        response.EnsureSuccessStatusCode();");
+            builder.AppendLine("        if (!response.IsSuccessStatusCode)");
+            builder.AppendLine("        {");
+            EmitErrorResponseHandling(builder, operation);
+            builder.AppendLine("        }");
 
             if (operation.Response.Kind == ResponseKind.None)
             {
@@ -166,6 +169,51 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             builder.AppendLine("    }");
+        }
+
+        private static void EmitErrorResponseHandling(StringBuilder builder, OperationGroupItem operation)
+        {
+            builder.AppendLine("            var statusCode = (int)response.StatusCode;");
+            builder.AppendLine("            var contentType = response.Content?.Headers?.ContentType?.MediaType;");
+            builder.AppendLine("            var responseContent = response.Content is null");
+            builder.AppendLine("                ? null");
+            builder.AppendLine("                : await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
+
+            foreach (var errorResponse in operation.ErrorResponses)
+            {
+                builder.Append("            if (OpenApiClientHelpers.ResponseMatchesStatusCode(statusCode, \"").Append(EscapeStringLiteral(errorResponse.StatusCodePattern)).AppendLine("\"))");
+                builder.AppendLine("            {");
+                EmitTypedErrorResponseHandling(builder, errorResponse.Response);
+                builder.AppendLine("            }");
+            }
+
+            builder.AppendLine("            throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent);");
+        }
+
+        private static void EmitTypedErrorResponseHandling(StringBuilder builder, ResponseInfo response)
+        {
+            var errorTypeName = TrimNullableTypeName(response.TypeName);
+            switch (response.Kind)
+            {
+                case ResponseKind.Json:
+                    builder.AppendLine("                if (string.IsNullOrWhiteSpace(contentType) || OpenApiClientHelpers.HasJsonContentType(contentType))");
+                    builder.AppendLine("                {");
+                    builder.AppendLine("                    try");
+                    builder.AppendLine("                    {");
+                    builder.Append("                        var error = OpenApiClientHelpers.DeserializeResponseContent<").Append(errorTypeName).AppendLine(">(responseContent);");
+                    builder.Append("                        throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, error);");
+                    builder.AppendLine("                    }");
+                    builder.AppendLine("                    catch (JsonException exception)");
+                    builder.AppendLine("                    {");
+                    builder.AppendLine("                        throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent, exception);");
+                    builder.AppendLine("                    }");
+                    builder.AppendLine("                }");
+                    return;
+                case ResponseKind.String:
+                    builder.Append("                throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, responseContent);");
+                    return;
+            }
+
         }
 
         private void EmitRouteTemplate(StringBuilder builder, string route, IReadOnlyList<ParameterInfo> pathParameters)
