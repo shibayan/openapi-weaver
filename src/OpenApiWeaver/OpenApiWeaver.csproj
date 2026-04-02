@@ -15,9 +15,12 @@
     <Description>Incremental Roslyn source generator that turns OpenAPI 3.x documents into strongly typed C# HTTP clients at build time.</Description>
     <Authors>shibayan</Authors>
     <Copyright>Copyright (c) Tatsuro Shibamura 2026</Copyright>
+    <PackageProjectUrl>https://shibayan.github.io/openapi-weaver/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/shibayan/openapi-weaver</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>https://github.com/shibayan/openapi-weaver/releases/tag/v$(Version)</PackageReleaseNotes>
     <PackageTags>openapi;source-generator;roslyn;analyzer</PackageTags>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackAnalyzerAssemblies</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
