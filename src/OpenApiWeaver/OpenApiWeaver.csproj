@@ -12,16 +12,19 @@
 
   <PropertyGroup>
     <PackageId>OpenApiWeaver</PackageId>
-    <Description>Incremental Roslyn source generator that turns OpenAPI 3.x documents into strongly typed C# HTTP clients at build time.</Description>
+    <Title>OpenApiWeaver</Title>
+    <Description>Incremental Roslyn source generator for OpenAPI 3.0-3.2 that emits strongly typed C# HTTP clients at build time with no runtime code generation or reflection.</Description>
     <Authors>shibayan</Authors>
     <Copyright>Copyright (c) Tatsuro Shibamura 2026</Copyright>
     <PackageProjectUrl>https://shibayan.github.io/openapi-weaver/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/shibayan/openapi-weaver</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>https://github.com/shibayan/openapi-weaver/releases/tag/v$(Version)</PackageReleaseNotes>
-    <PackageTags>openapi;source-generator;roslyn;analyzer</PackageTags>
+    <PackageReleaseNotes>Release notes are published on GitHub: https://github.com/shibayan/openapi-weaver/releases/tag/v$(Version)</PackageReleaseNotes>
+    <PackageTags>openapi;openapi3;source-generator;incremental-generator;roslyn;analyzer;csharp;http-client;code-generation</PackageTags>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackAnalyzerAssemblies</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 
