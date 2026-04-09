@@ -10,6 +10,204 @@ namespace OpenApiWeaver.Tests;
 public sealed partial class OpenApiWeaverSourceGeneratorTests
 {
     [Fact]
+    public void QueryParameter_WithInlineEnum_GeneratesEnumType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pet/findByStatus:
+                get:
+                  tags:
+                    - pet
+                  operationId: findPetsByStatus
+                  parameters:
+                    - name: status
+                      in: query
+                      required: true
+                      schema:
+                        type: string
+                        default: available
+                        enum:
+                          - available
+                          - pending
+                          - sold
+                  responses:
+                    '204':
+                      description: ok
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task FindPetsByStatusAsync(FindPetsByStatusStatusEnum status, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public readonly record struct FindPetsByStatusStatusEnum(string Value)", source);
+        Assert.Contains("public static readonly FindPetsByStatusStatusEnum Available = new(\"available\");", source);
+        Assert.Contains("public static readonly FindPetsByStatusStatusEnum Pending = new(\"pending\");", source);
+        Assert.Contains("public static readonly FindPetsByStatusStatusEnum Sold = new(\"sold\");", source);
+    }
+
+    [Fact]
+    public void QueryParameter_WithInlineObject_RemainsJsonElement()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pet/find:
+                get:
+                  operationId: find_pets
+                  parameters:
+                    - name: filter
+                      in: query
+                      required: false
+                      schema:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                  responses:
+                    '204':
+                      description: ok
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task FindPetsAsync(JsonElement? filter = default, CancellationToken cancellationToken = default)", source);
+        Assert.DoesNotContain("FindPetsFilterModel", source);
+    }
+
+    [Fact]
+    public void JsonRequestBody_WithInlineEnum_GeneratesEnumType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pet/status:
+                post:
+                  operationId: create_pet_status
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          type: string
+                          enum:
+                            - available
+                            - pending
+                            - sold
+                  responses:
+                    '204':
+                      description: ok
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task CreatePetStatusAsync(CreatePetStatusBodyEnum body, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public readonly record struct CreatePetStatusBodyEnum(string Value)", source);
+        Assert.Contains("public static readonly CreatePetStatusBodyEnum Available = new(\"available\");", source);
+    }
+
+    [Fact]
+    public void JsonResponse_WithInlineEnum_GeneratesEnumType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pet/status:
+                get:
+                  operationId: get_pet_status
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: string
+                            enum:
+                              - available
+                              - pending
+                              - sold
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<GetPetStatusResponseEnum> GetPetStatusAsync(CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public readonly record struct GetPetStatusResponseEnum(string Value)", source);
+        Assert.Contains("return await response.Content.ReadFromJsonAsync<GetPetStatusResponseEnum>(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)", source);
+    }
+
+    [Fact]
+    public void JsonResponse_WithEmptyInlineObject_GeneratesModelType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pet/status:
+                get:
+                  operationId: get_pet_status
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<GetPetStatusResponseModel> GetPetStatusAsync(CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public sealed class GetPetStatusResponseModel", source);
+        Assert.Contains("return await response.Content.ReadFromJsonAsync<GetPetStatusResponseModel>(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)", source);
+    }
+
+    [Fact]
+    public void ErrorJsonResponse_WithInlineEnum_GeneratesEnumType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Pet API
+              version: v1
+            paths:
+              /pet/status:
+                get:
+                  operationId: get_pet_status
+                  responses:
+                    '204':
+                      description: ok
+                    '400':
+                      description: invalid status
+                      content:
+                        application/json:
+                          schema:
+                            type: string
+                            enum:
+                              - invalid
+                              - missing
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public readonly record struct GetPetStatusError400ResponseEnum(string Value)", source);
+        Assert.Contains("var error = OpenApiClientHelpers.DeserializeResponseContent<GetPetStatusError400ResponseEnum>(responseContent);", source);
+        Assert.Contains("throw new OpenApiException<GetPetStatusError400ResponseEnum>(statusCode, response.ReasonPhrase, contentType, responseContent, error);", source);
+    }
+
+    [Fact]
     public void MultipartRequestBody_UsesMultipartContent_AndBinarySchemaType()
     {
         const string openApi = """
@@ -398,8 +596,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement?> ", source);
-        Assert.Contains("return await response.Content.ReadFromJsonAsync<JsonElement?>", source);
+        Assert.Contains("public async Task<GetPartnerResponseModel?> ", source);
+        Assert.Contains("return await response.Content.ReadFromJsonAsync<GetPartnerResponseModel?>", source);
         Assert.DoesNotContain("The response body was empty.", source);
     }
 
@@ -428,7 +626,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
+        Assert.Contains("public async Task<ReceiptsResponseModel> ListAsync(", source);
+        Assert.Contains("public sealed class ReceiptsResponseModel", source);
         Assert.DoesNotContain("ReceiptsAsync", source);
     }
 
@@ -475,11 +674,65 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<GetCompaniesResponseModel> ListAsync(", source);
+        Assert.Contains("public async Task<GetCompanyResponseModel> GetAsync(", source);
         Assert.Contains("int id", source);
         Assert.DoesNotContain("GetCompanyAsync", source);
         Assert.DoesNotContain("GetCompaniesAsync", source);
+    }
+
+    [Fact]
+    public void CanonicalGetMethodNames_UseStableResponseTypeNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Stable Naming API
+              version: v1
+            paths:
+              /companies/{id}:
+                get:
+                  operationId: get_company
+                  tags:
+                    - companies
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /partners/{id}:
+                get:
+                  operationId: get_partner
+                  tags:
+                    - partners
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class GetCompanyResponseModel", source);
+        Assert.Contains("public sealed class GetPartnerResponseModel", source);
+        Assert.DoesNotContain("public sealed class GetResponseModel2", source);
     }
 
     [Fact]
@@ -672,7 +925,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListReportsAsync(DateOnly reportDate, DateTimeOffset? changedAfter = default, Guid? requestId = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task<ListReportsResponseModel> ListReportsAsync(DateOnly reportDate, DateTimeOffset? changedAfter = default, Guid? requestId = default, CancellationToken cancellationToken = default)", source);
         Assert.Contains("var pathBuilder = new StringBuilder();", source);
         Assert.Contains("var hasQuery = false;", source);
         Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"report_date\", OpenApiClientHelpers.FormatParameter(reportDate));", source);
@@ -717,7 +970,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(int partnerId, int? page = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task<ListPartnerReportsResponseModel> ListPartnerReportsAsync(int partnerId, int? page = default, CancellationToken cancellationToken = default)", source);
         Assert.Contains("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(partnerId)));", source);
         Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"page\", OpenApiClientHelpers.FormatParameter(page));", source);
     }
@@ -767,7 +1020,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListPartnerReportsAsync(string partnerId, string? page = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task<ListPartnerReportsResponseModel> ListPartnerReportsAsync(string partnerId, string? page = default, CancellationToken cancellationToken = default)", source);
         Assert.DoesNotContain("int partnerId", source);
         Assert.DoesNotContain("int? page = default, string? page = default", source);
         Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"page\", OpenApiClientHelpers.FormatParameter(page));", source);
@@ -808,7 +1061,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListReportsAsync(string? xRequestId = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task<ListReportsResponseModel> ListReportsAsync(string? xRequestId = default, CancellationToken cancellationToken = default)", source);
         Assert.DoesNotContain("int? xRequestId = default", source);
         Assert.Equal(1, source.Split("request.Headers.TryAddWithoutValidation(\"x-request-id\"").Length - 1);
     }
@@ -1260,8 +1513,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<GetPartnersResponseModel> ListAsync(", source);
+        Assert.Contains("public async Task<GetPartnerResponseModel> GetAsync(", source);
         Assert.DoesNotContain("GetPartnerAsync", source);
         Assert.DoesNotContain("GetPartnersAsync", source);
     }
@@ -1309,8 +1562,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<GetAccountItemsResponseModel> ListAsync(", source);
+        Assert.Contains("public async Task<GetAccountItemResponseModel> GetAsync(", source);
         Assert.DoesNotContain("GetAccountItemAsync", source);
         Assert.DoesNotContain("GetAccountItemsAsync", source);
     }
@@ -1358,8 +1611,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<GetCookiesResponseModel> ListAsync(", source);
+        Assert.Contains("public async Task<GetCookieResponseModel> GetAsync(", source);
         Assert.DoesNotContain("GetCookieAsync", source);
         Assert.DoesNotContain("GetCookiesAsync", source);
     }
@@ -1407,8 +1660,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement> ListAsync(", source);
-        Assert.Contains("public async Task<JsonElement> GetAsync(", source);
+        Assert.Contains("public async Task<GetTiesResponseModel> ListAsync(", source);
+        Assert.Contains("public async Task<GetTieResponseModel> GetAsync(", source);
         Assert.DoesNotContain("GetTieAsync", source);
         Assert.DoesNotContain("GetTiesAsync", source);
     }

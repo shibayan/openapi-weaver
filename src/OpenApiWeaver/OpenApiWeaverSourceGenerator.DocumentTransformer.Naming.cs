@@ -55,6 +55,24 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return SafeIdentifier(string.Concat(filteredTokens.Select(static token => ToPascalCase(token ?? string.Empty))));
         }
 
+        private static string BuildOperationSchemaTypeName(string? operationId, string operationType, string route)
+        {
+            var source = string.IsNullOrWhiteSpace(operationId) ? $"{operationType}_{route}" : operationId!;
+            var tokens = TokenizeWords(source);
+
+            if (tokens.Count == 0)
+            {
+                tokens = TokenizeWords($"{operationType}_{route}");
+            }
+
+            if (tokens.Count == 0)
+            {
+                tokens.Add("Operation");
+            }
+
+            return SafeIdentifier(string.Concat(tokens.Select(static token => ToPascalCase(token ?? string.Empty))));
+        }
+
         private static string? TryBuildCanonicalGetMethodName(string route, string? tagName, IReadOnlyList<string> filteredTokens)
         {
             if (string.IsNullOrWhiteSpace(tagName))

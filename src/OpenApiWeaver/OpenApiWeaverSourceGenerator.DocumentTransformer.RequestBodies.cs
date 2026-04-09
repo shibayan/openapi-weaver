@@ -13,12 +13,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return null;
             }
 
-            var selectedContent = SelectPreferredContent(
-                requestBody.Content,
-                static item => string.Equals(item.Key, "application/json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                    string.Equals(item.Key, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase) ? 1 :
-                    string.Equals(item.Key, "multipart/form-data", StringComparison.OrdinalIgnoreCase) ? 2 :
-                    int.MaxValue);
+            var selectedContent = SelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority);
 
             var kind = ResolveRequestBodyKind(selectedContent.Key);
             return new RequestBodyInfo(
