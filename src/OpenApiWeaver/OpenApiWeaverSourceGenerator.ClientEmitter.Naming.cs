@@ -13,9 +13,25 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 || (!typeName.EndsWith("?", StringComparison.Ordinal) && typeName is not "int" and not "long" and not "float" and not "double" and not "decimal" and not "bool" and not "DateOnly" and not "DateTimeOffset" and not "Guid" and not "JsonElement");
         }
 
-        private static bool RequiresNonNullJsonResponse(string typeName)
+        private bool RequiresNonNullJsonResponse(string typeName)
         {
-            return !typeName.EndsWith("?", StringComparison.Ordinal) && IsReferenceLikeType(typeName);
+            return !typeName.EndsWith("?", StringComparison.Ordinal)
+                && !IsGeneratedEnumType(typeName)
+                && IsReferenceLikeType(typeName);
+        }
+
+        private bool IsGeneratedEnumType(string typeName)
+        {
+            var trimmedTypeName = TrimNullableTypeName(typeName);
+            foreach (var schema in model.Schemas)
+            {
+                if (schema.IsEnum && string.Equals(schema.TypeName, trimmedTypeName, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string EscapeStringLiteral(string value)

@@ -88,12 +88,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return new ResponseInfo(ResponseKind.None, string.Empty, null);
             }
 
-            var selectedContent = SelectPreferredContent(
-                response.Content,
-                static item => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                    HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 1 :
-                    item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 2 :
-                    int.MaxValue);
+            var selectedContent = SelectPreferredContent(response.Content, GetResponseContentPriority);
 
             var kind = ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
             var typeName = kind switch
@@ -142,12 +137,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return null;
             }
 
-            var selectedContent = SelectPreferredContent(
-                response.Content,
-                static item => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                    item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 1 :
-                    HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 2 :
-                    int.MaxValue);
+            var selectedContent = SelectPreferredContent(response.Content, GetErrorResponseContentPriority);
 
             if (selectedContent.Value.Schema is null
                 && !selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
@@ -381,6 +371,24 @@ public sealed partial class OpenApiWeaverSourceGenerator
             indices.Add(key, parameters.Count);
             parameters.Add(parameter);
         }
+
+        private static int GetRequestBodyContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
+            => string.Equals(item.Key, "application/json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                string.Equals(item.Key, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase) ? 1 :
+                string.Equals(item.Key, "multipart/form-data", StringComparison.OrdinalIgnoreCase) ? 2 :
+                int.MaxValue;
+
+        private static int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
+            => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 1 :
+                item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 2 :
+                int.MaxValue;
+
+        private static int GetErrorResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
+            => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
+                item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 1 :
+                HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 2 :
+                int.MaxValue;
 
         private static KeyValuePair<string, T> SelectPreferredContent<T>(IEnumerable<KeyValuePair<string, T>> content, Func<KeyValuePair<string, T>, int> getPriority)
         {

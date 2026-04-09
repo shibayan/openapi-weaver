@@ -779,8 +779,8 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task<JsonElement?> ", source);
-        Assert.Contains("return await response.Content.ReadFromJsonAsync<JsonElement?>", source);
+        Assert.Contains("public async Task<GetPartnerResponseModel?> ", source);
+        Assert.Contains("return await response.Content.ReadFromJsonAsync<GetPartnerResponseModel?>", source);
         Assert.DoesNotContain("The response body was empty.", source);
     }
 
