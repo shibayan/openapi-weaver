@@ -1,6 +1,5 @@
 <img src="https://raw.githubusercontent.com/shibayan/openapi-weaver/master/docs/public/logo.svg" width="480" alt="OpenApiWeaver logo">
 
-# OpenApiWeaver
 [![CI](https://github.com/shibayan/openapi-weaver/actions/workflows/ci.yml/badge.svg)](https://github.com/shibayan/openapi-weaver/actions/workflows/ci.yml)
 [![Downloads](https://badgen.net/nuget/dt/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver/)
 [![NuGet](https://img.shields.io/nuget/v/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver)
