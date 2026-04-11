@@ -3,7 +3,7 @@
 [![CI](https://github.com/shibayan/openapi-weaver/actions/workflows/ci.yml/badge.svg)](https://github.com/shibayan/openapi-weaver/actions/workflows/ci.yml)
 [![Downloads](https://badgen.net/nuget/dt/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver/)
 [![NuGet](https://img.shields.io/nuget/v/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver)
-[![License](https://img.shields.io/github/license/shibayan/openapi-weaver)](LICENSE)
+[![License](https://img.shields.io/github/license/shibayan/openapi-weaver)](https://github.com/shibayan/openapi-weaver/blob/master/LICENSE)
 
 **OpenApiWeaver** is an incremental Roslyn source generator that turns OpenAPI 3.x documents, including OpenAPI 3.2, into strongly typed C# HTTP clients at build time. No runtime code generation, no reflection - just plain C# emitted during compilation.
 
