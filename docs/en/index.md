@@ -5,6 +5,9 @@ hero:
   name: OpenApiWeaver
   text: OpenAPI to C# Client Generator
   tagline: An incremental Roslyn source generator that turns OpenAPI 3.x documents, including OpenAPI 3.2, into strongly typed C# HTTP clients at build time.
+  image:
+    src: /icon.svg
+    alt: OpenApiWeaver
   actions:
     - theme: brand
       text: Get Started

@@ -12,6 +12,8 @@ export default defineConfig({
   },
 
   themeConfig: {
+    logo: '/icon.svg',
+
     socialLinks: [
       { icon: 'github', link: 'https://github.com/shibayan/openapi-weaver' }
     ],
