@@ -5,6 +5,9 @@ hero:
   name: OpenApiWeaver
   text: OpenAPI から C# クライアントを生成
   tagline: OpenAPI 3.x ドキュメントを、OpenAPI 3.2 を含めてビルド時に型安全な C# HTTP クライアントへ変換する、インクリメンタル Roslyn ソースジェネレーター。
+  image:
+    src: /icon.svg
+    alt: OpenApiWeaver
   actions:
     - theme: brand
       text: はじめる

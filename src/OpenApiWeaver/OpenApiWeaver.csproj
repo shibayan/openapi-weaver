@@ -22,6 +22,7 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>Release notes are published on GitHub: https://github.com/shibayan/openapi-weaver/releases/tag/v$(Version)</PackageReleaseNotes>
     <PackageTags>openapi;openapi3;source-generator;incremental-generator;roslyn;analyzer;csharp;http-client;code-generation</PackageTags>
@@ -30,6 +31,7 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
     <None Include="buildTransitive\OpenApiWeaver.props" Pack="true" PackagePath="buildTransitive\OpenApiWeaver.props" />
     <None Include="buildTransitive\OpenApiWeaver.targets" Pack="true" PackagePath="buildTransitive\OpenApiWeaver.targets" />
   </ItemGroup>
