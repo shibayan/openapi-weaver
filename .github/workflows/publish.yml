@@ -47,7 +47,7 @@ jobs:
           --configuration Release
           --no-build
           --output ./artifacts
-          -p:PackageVersion=${{ steps.package_version.outputs.value }}
+          -p:Version=${{ steps.package_version.outputs.value }}
 
       - name: NuGet login
         id: login
