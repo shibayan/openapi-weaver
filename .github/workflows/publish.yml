@@ -38,14 +38,11 @@ jobs:
       - name: Restore
         run: dotnet restore src/OpenApiWeaver/OpenApiWeaver.csproj
 
-      - name: Build
-        run: dotnet build src/OpenApiWeaver/OpenApiWeaver.csproj --configuration Release --no-restore
-
       - name: Pack
         run: >-
           dotnet pack src/OpenApiWeaver/OpenApiWeaver.csproj
           --configuration Release
-          --no-build
+          --no-restore
           --output ./artifacts
           -p:Version=${{ steps.package_version.outputs.value }}
 
