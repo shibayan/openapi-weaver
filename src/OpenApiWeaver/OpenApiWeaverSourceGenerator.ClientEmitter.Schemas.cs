@@ -1,149 +1,159 @@
-﻿using System.Text;
-
-namespace OpenApiWeaver;
+﻿namespace OpenApiWeaver;
 
 public sealed partial class OpenApiWeaverSourceGenerator
 {
     private sealed partial class ClientEmitter
     {
-        private void EmitSchemas(StringBuilder builder)
+        private void EmitSchemas(IndentedStringBuilder writer)
         {
             foreach (var schema in model.Schemas.Where(static schema => schema.ParentTypeName is null))
             {
-                EmitSchemaDefinition(builder, schema, "");
-                builder.AppendLine();
+                EmitSchemaDefinition(writer, schema);
+                writer.AppendLine();
             }
         }
 
-        private void EmitSchemaDefinition(StringBuilder builder, SchemaDefinition schema, string indent)
+        private void EmitSchemaDefinition(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             if (schema.IsEnum)
             {
-                EmitEnumSchema(builder, schema, indent);
+                EmitEnumSchema(writer, schema);
                 return;
             }
 
-            EmitSchema(builder, schema, indent);
+            EmitSchema(writer, schema);
         }
 
-        private void EmitSchema(StringBuilder builder, SchemaDefinition schema, string indent)
+        private void EmitSchema(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             EmitDocComment(
-                builder,
-                indent,
+                writer,
                 summary: schema.Summary,
                 remarks: schema.Description);
             if (schema.DictionaryValueType is not null)
             {
-                builder.Append(indent).Append("public sealed class ").Append(schema.DeclaredTypeName).Append(" : Dictionary<string, ").Append(schema.DictionaryValueType).AppendLine(">");
-                builder.Append(indent).AppendLine("{");
+                writer.Append("public sealed class ").Append(schema.DeclaredTypeName).Append(" : Dictionary<string, ").Append(schema.DictionaryValueType).AppendLine(">");
             }
             else
             {
-                builder.Append(indent).Append("public sealed class ").Append(schema.DeclaredTypeName).AppendLine();
-                builder.Append(indent).AppendLine("{");
+                writer.Append("public sealed class ").Append(schema.DeclaredTypeName).AppendLine();
             }
 
-            if (schema.Properties.Count > 0)
+            writer.AppendLine("{");
+            using (writer.PushIndent())
             {
                 foreach (var property in schema.Properties)
                 {
                     var requiredModifier = property.Required ? "required " : string.Empty;
                     EmitDocComment(
-                        builder,
-                        indent + "    ",
+                        writer,
                         summary: property.Summary,
                         remarks: property.Description);
                     if (!property.Required && property.TypeName.EndsWith("?", StringComparison.Ordinal))
                     {
-                        builder.Append(indent).AppendLine("    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]");
+                        writer.AppendLine("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]");
                     }
 
-                    builder.Append(indent).Append("    [JsonPropertyName(\"").Append(EscapeStringLiteral(property.JsonName)).AppendLine("\")]");
-                    builder.Append(indent).Append("    public ").Append(requiredModifier).Append(property.TypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
+                    writer.Append("[JsonPropertyName(\"").Append(EscapeStringLiteral(property.JsonName)).AppendLine("\")]");
+                    writer.Append("public ").Append(requiredModifier).Append(property.TypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
+                }
+
+                var nestedSchemas = model.Schemas.Where(child => string.Equals(child.ParentTypeName, schema.TypeName, StringComparison.Ordinal)).ToList();
+                foreach (var nestedSchema in nestedSchemas)
+                {
+                    writer.AppendLine();
+                    EmitSchemaDefinition(writer, nestedSchema);
                 }
             }
 
-            var nestedSchemas = model.Schemas.Where(child => string.Equals(child.ParentTypeName, schema.TypeName, StringComparison.Ordinal)).ToList();
-            foreach (var nestedSchema in nestedSchemas)
-            {
-                builder.AppendLine();
-                EmitSchemaDefinition(builder, nestedSchema, indent + "    ");
-            }
-
-            builder.Append(indent).AppendLine("}");
+            writer.AppendLine("}");
         }
 
-        private static void EmitEnumSchema(StringBuilder builder, SchemaDefinition schema, string indent)
+        private static void EmitEnumSchema(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             if (schema.EnumKind == SchemaEnumKind.Integer)
             {
-                EmitIntegerEnumSchema(builder, schema, indent);
+                EmitIntegerEnumSchema(writer, schema);
                 return;
             }
 
-            EmitStringEnumSchema(builder, schema, indent);
+            EmitStringEnumSchema(writer, schema);
         }
 
-        private static void EmitStringEnumSchema(StringBuilder builder, SchemaDefinition schema, string indent)
+        private static void EmitStringEnumSchema(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             EmitDocComment(
-                builder,
-                indent,
+                writer,
                 summary: schema.Summary,
                 remarks: schema.Description);
-            builder.Append(indent).Append("[JsonConverter(typeof(").Append(schema.DeclaredTypeName).AppendLine("JsonConverter))]");
-            builder.Append(indent).Append("public readonly record struct ").Append(schema.DeclaredTypeName).AppendLine("(string Value)");
-            builder.Append(indent).AppendLine("{");
-
-            foreach (var enumMember in schema.EnumMembers)
+            writer.Append("[JsonConverter(typeof(").Append(schema.DeclaredTypeName).AppendLine("JsonConverter))]");
+            writer.Append("public readonly record struct ").Append(schema.DeclaredTypeName).AppendLine("(string Value)");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
             {
-                builder.Append(indent).Append("    public static readonly ").Append(schema.DeclaredTypeName).Append(' ').Append(enumMember.MemberName).Append(" = new(\"").Append(EscapeStringLiteral(enumMember.Value)).AppendLine("\");");
+                foreach (var enumMember in schema.EnumMembers)
+                {
+                    writer.Append("public static readonly ").Append(schema.DeclaredTypeName).Append(' ').Append(enumMember.MemberName).Append(" = new(\"").Append(EscapeStringLiteral(enumMember.Value)).AppendLine("\");");
+                }
+
+                writer.AppendLine();
+                writer.AppendLine("public override string ToString() => Value;");
             }
 
-            builder.AppendLine();
-            builder.Append(indent).AppendLine("    public override string ToString() => Value;");
-            builder.Append(indent).AppendLine("}");
-            builder.AppendLine();
-            builder.Append(indent).Append("public sealed class ").Append(schema.DeclaredTypeName).Append("JsonConverter : JsonConverter<").Append(schema.DeclaredTypeName).AppendLine(">");
-            builder.Append(indent).AppendLine("{");
-            builder.Append(indent).Append("    public override ").Append(schema.DeclaredTypeName).AppendLine(" Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
-            builder.Append(indent).AppendLine("    {");
-            builder.Append(indent).Append("        return new ").Append(schema.DeclaredTypeName).AppendLine("(reader.GetString()!);");
-            builder.Append(indent).AppendLine("    }");
-            builder.AppendLine();
-            builder.Append(indent).Append("    public override void Write(Utf8JsonWriter writer, ").Append(schema.DeclaredTypeName).AppendLine(" value, JsonSerializerOptions options)");
-            builder.Append(indent).AppendLine("    {");
-            builder.Append(indent).AppendLine("        writer.WriteStringValue(value.Value);");
-            builder.Append(indent).AppendLine("    }");
-            builder.Append(indent).AppendLine("}");
+            writer.AppendLine("}");
+            writer.AppendLine();
+            writer.Append("public sealed class ").Append(schema.DeclaredTypeName).Append("JsonConverter : JsonConverter<").Append(schema.DeclaredTypeName).AppendLine(">");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                writer.Append("public override ").Append(schema.DeclaredTypeName).AppendLine(" Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.Append("return new ").Append(schema.DeclaredTypeName).AppendLine("(reader.GetString()!);");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.Append("public override void Write(Utf8JsonWriter writer, ").Append(schema.DeclaredTypeName).AppendLine(" value, JsonSerializerOptions options)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("writer.WriteStringValue(value.Value);");
+                }
+
+                writer.AppendLine("}");
+            }
+
+            writer.AppendLine("}");
         }
 
-        private static void EmitIntegerEnumSchema(StringBuilder builder, SchemaDefinition schema, string indent)
+        private static void EmitIntegerEnumSchema(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             EmitDocComment(
-                builder,
-                indent,
+                writer,
                 summary: schema.Summary,
                 remarks: schema.Description);
-            builder.Append(indent).Append("public enum ").Append(schema.DeclaredTypeName);
+            writer.Append("public enum ").Append(schema.DeclaredTypeName);
 
             if (!string.IsNullOrWhiteSpace(schema.EnumUnderlyingType) && !string.Equals(schema.EnumUnderlyingType, "int", StringComparison.Ordinal))
             {
-                builder.Append(" : ").Append(schema.EnumUnderlyingType);
+                writer.Append(" : ").Append(schema.EnumUnderlyingType);
             }
 
-            builder.AppendLine();
-            builder.Append(indent).AppendLine("{");
-
-            for (var i = 0; i < schema.EnumMembers.Count; i++)
+            writer.AppendLine();
+            writer.AppendLine("{");
+            using (writer.PushIndent())
             {
-                var enumMember = schema.EnumMembers[i];
-                builder.Append(indent).Append("    ").Append(enumMember.MemberName).Append(" = ").Append(enumMember.Value);
-                builder.AppendLine(i < schema.EnumMembers.Count - 1 ? "," : string.Empty);
+                for (var i = 0; i < schema.EnumMembers.Count; i++)
+                {
+                    var enumMember = schema.EnumMembers[i];
+                    writer.Append(enumMember.MemberName).Append(" = ").Append(enumMember.Value);
+                    writer.AppendLine(i < schema.EnumMembers.Count - 1 ? "," : string.Empty);
+                }
             }
 
-            builder.Append(indent).AppendLine("}");
+            writer.AppendLine("}");
         }
     }
 }

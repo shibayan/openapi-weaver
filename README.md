@@ -54,7 +54,7 @@ No extra dependencies are required — the package bundles the source generator 
 
 ## Requirements
 
-- .NET SDK 8.0 or later
+- .NET SDK 10.0 or later
 
 ## Documentation
 

@@ -45,30 +45,33 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 .Replace("\0", "\\0");
         }
 
-        private static void EmitSecuritySchemeInitialization(StringBuilder builder, SecuritySchemeBinding securityScheme)
+        private static void EmitSecuritySchemeInitialization(IndentedStringBuilder writer, SecuritySchemeBinding securityScheme)
         {
             if (securityScheme.Location == SecuritySchemeLocation.Query)
             {
-                builder.Append("        ").Append(securityScheme.FieldName).Append(" = ").Append(securityScheme.ParameterName).AppendLine(";");
+                writer.Append(securityScheme.FieldName).Append(" = ").Append(securityScheme.ParameterName).AppendLine(";");
                 return;
             }
 
-            builder.Append("        if (").Append(securityScheme.ParameterName).AppendLine(" is not null)");
-            builder.AppendLine("        {");
-            if (securityScheme.IsBearerToken)
+            writer.Append("if (").Append(securityScheme.ParameterName).AppendLine(" is not null)");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
             {
-                builder.Append("            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.ParameterName).AppendLine(");");
-            }
-            else if (securityScheme.Location == SecuritySchemeLocation.Cookie)
-            {
-                builder.Append("            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"Cookie\", \"").Append(securityScheme.HeaderOrParameterName).Append("=\" + ").Append(securityScheme.ParameterName).AppendLine(");");
-            }
-            else
-            {
-                builder.Append("            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.ParameterName).AppendLine(");");
+                if (securityScheme.IsBearerToken)
+                {
+                    writer.Append("_httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.ParameterName).AppendLine(");");
+                }
+                else if (securityScheme.Location == SecuritySchemeLocation.Cookie)
+                {
+                    writer.Append("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"Cookie\", \"").Append(securityScheme.HeaderOrParameterName).Append("=\" + ").Append(securityScheme.ParameterName).AppendLine(");");
+                }
+                else
+                {
+                    writer.Append("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.ParameterName).AppendLine(");");
+                }
             }
 
-            builder.AppendLine("        }");
+            writer.AppendLine("}");
         }
 
         private static readonly HashSet<string> s_wellKnownHttpMethods = new(StringComparer.OrdinalIgnoreCase)
@@ -126,6 +129,16 @@ public sealed partial class OpenApiWeaverSourceGenerator
             {
                 AppendDocElement(builder, indent, "returns", returns!);
             }
+        }
+
+        private static void EmitDocComment(
+            IndentedStringBuilder writer,
+            string? summary = null,
+            string? remarks = null,
+            IEnumerable<KeyValuePair<string, string?>>? parameters = null,
+            string? returns = null)
+        {
+            EmitDocComment(writer.Builder, writer.CurrentIndent, summary, remarks, parameters, returns);
         }
 
         private static void AppendDocElement(StringBuilder builder, string indent, string elementName, string content, string? attributes = null)
