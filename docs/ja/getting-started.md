@@ -34,7 +34,7 @@ Install-Package OpenApiWeaver -Version x.y.z
 
 ### 推奨: `OpenApiWeaverDocument`
 
-任意のメタデータ付きで OpenAPI ドキュメントを含めるには、`OpenApiWeaverDocument` アイテムを使います。
+OpenAPI ドキュメントは `OpenApiWeaverDocument` アイテムとして宣言し、必要に応じて生成されるクライアント名や名前空間を指定します。
 
 ```xml
 <ItemGroup>
@@ -44,29 +44,38 @@ Install-Package OpenApiWeaver -Version x.y.z
 </ItemGroup>
 ```
 
-| Metadata | Required | Default |
+| メタデータ | 必須 | 既定値 |
 |---|---|---|
-| `ClientName` | No | ファイル名から導出 (`petstore.yaml` → `PetstoreClient`) |
-| `Namespace` | No | プロジェクトの `RootNamespace` |
+| `ClientName` | いいえ | ファイル名から導出 (`petstore.yaml` → `PetstoreClient`) |
+| `Namespace` | いいえ | プロジェクトの `RootNamespace` |
 
-`AdditionalFiles` に直接追加しただけのファイルは処理されません。付属の MSBuild ターゲットがドキュメントとメタデータをジェネレーターへ受け渡せるよう、`OpenApiWeaverDocument` を使用してください。
+`AdditionalFiles` に直接追加しただけのファイルは処理されません。付属の MSBuild ターゲットがドキュメントとメタデータをソースジェネレーターへ受け渡せるよう、`OpenApiWeaverDocument` を使用してください。
 
 詳しくは [設定](./configuration) を参照してください。
 
 ## 3. 生成されたクライアントを使う
 
-プロジェクトがビルドされると、生成された型はすべて IntelliSense 付きで利用可能になります。
+プロジェクトのビルド後は、生成された型を IntelliSense 付きで利用できます。
 
 ```csharp
-// コンストラクター引数は security scheme から生成されます
+// コンストラクター引数はセキュリティスキームから生成されます
 var client = new PetstoreClient(accessToken: "your-token");
 
-// 操作は OpenAPI tag ごとにグループ化されます
+// 既存の HttpClient を再利用することもできます
+using var httpClient = new HttpClient
+{
+    BaseAddress = new Uri("https://api.example.com/")
+};
+var injectedClient = new PetstoreClient(httpClient, accessToken: "your-token");
+
+// 操作は OpenAPI のタグごとにグループ化されます
 var pet = await client.Pets.GetAsync(petId: 1);
 ```
 
-生成されたクライアントは、最初の OpenAPI `servers` エントリをもとに `BaseAddress` を設定した内部 `HttpClient` を作成します。すべてのメソッドは async で、任意の `CancellationToken` を受け取れます。
+生成されたクライアントは、自身で `HttpClient` を作成することも、コンストラクター経由で受け取ることもできます。生成側で作成した場合は最初の OpenAPI `servers` エントリをもとに `BaseAddress` を設定します。既存の `HttpClient` を注入した場合は、`BaseAddress` が `null` でない限りその値を維持します。生成されるメソッドはすべて非同期で、任意の `CancellationToken` を受け取れます。
 
-ルートクライアントクラスは `IDisposable` を実装しており、使用後に `Dispose()` を呼び出すことで内部の `HttpClient` を解放できます。また `partial class` として生成されるため、別ファイルで追加のメソッドを定義して拡張できます。
+セキュリティ資格情報は生成クライアント上に保持され、各 `HttpRequestMessage` に対して適用されます。そのため、注入した `HttpClient` の `DefaultRequestHeaders` に認証状態を持たせる必要はありません。
+
+ルートクライアントクラスは `IDisposable` を実装しており、生成クライアント自身が作成した `HttpClient` のみ `Dispose()` で解放します。外部から注入した `HttpClient` は生成クライアントでは破棄されません。また `partial class` として生成されるため、別ファイルで拡張できます。
 
 生成パイプラインや内部構造の詳細は [仕組み](./how-it-works) を参照してください。

@@ -338,7 +338,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             using (writer.PushIndent())
             {
                 writer.AppendLine("private readonly HttpClient _httpClient;");
-                foreach (var securityScheme in _querySecuritySchemes)
+                foreach (var securityScheme in model.SecuritySchemes)
                 {
                     writer.Append("private readonly string? ").Append(securityScheme.FieldName).AppendLine(";");
                 }
@@ -346,14 +346,14 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 writer.AppendLine();
                 var constructorParameters = string.Join(", ",
                     new[] { "HttpClient httpClient" }.Concat(
-                        _querySecuritySchemes
+                        model.SecuritySchemes
                             .Select(static scheme => $"string? {scheme.ParameterName}")));
                 writer.Append("internal ").Append(tagGroup.ClassName).Append('(').Append(constructorParameters).AppendLine(")");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
                     writer.AppendLine("_httpClient = httpClient;");
-                    foreach (var securityScheme in _querySecuritySchemes)
+                    foreach (var securityScheme in model.SecuritySchemes)
                     {
                         writer.Append(securityScheme.FieldName).Append(" = ").Append(securityScheme.ParameterName).AppendLine(";");
                     }
@@ -374,6 +374,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private void EmitClient(IndentedStringBuilder writer)
         {
             var constructorParameters = string.Join(", ", model.SecuritySchemes.Select(static scheme => scheme.ParameterDeclaration));
+            var injectedConstructorParameters = string.Join(", ", new[] { "HttpClient httpClient" }.Concat(model.SecuritySchemes.Select(static scheme => scheme.ParameterDeclaration)));
+            var privateConstructorParameters = string.Join(", ", new[] { "HttpClient httpClient", "bool ownsHttpClient" }.Concat(model.SecuritySchemes.Select(static scheme => scheme.ParameterDeclaration)));
+            var ownedConstructorArguments = string.Join(", ", new[] { "new HttpClient()", "true" }.Concat(model.SecuritySchemes.Select(static scheme => scheme.ParameterName)));
+            var injectedConstructorArguments = string.Join(", ", new[] { "httpClient", "false" }.Concat(model.SecuritySchemes.Select(static scheme => scheme.ParameterName)));
 
             EmitDocComment(
                 writer,
@@ -384,20 +388,41 @@ public sealed partial class OpenApiWeaverSourceGenerator
             using (writer.PushIndent())
             {
                 writer.AppendLine("private readonly HttpClient _httpClient;");
-                foreach (var securityScheme in _querySecuritySchemes)
+                writer.AppendLine("private readonly bool _ownsHttpClient;");
+                foreach (var securityScheme in model.SecuritySchemes)
                 {
                     writer.Append("private readonly string? ").Append(securityScheme.FieldName).AppendLine(";");
                 }
 
                 writer.AppendLine();
                 writer.Append("public ").Append(model.ClientName).Append('(').Append(constructorParameters).AppendLine(")");
+                writer.Append("    : this(").Append(ownedConstructorArguments).AppendLine(")");
+                writer.AppendLine("{");
+                writer.AppendLine("}");
+                writer.AppendLine();
+
+                writer.Append("public ").Append(model.ClientName).Append('(').Append(injectedConstructorParameters).AppendLine(")");
+                writer.Append("    : this(").Append(injectedConstructorArguments).AppendLine(")");
+                writer.AppendLine("{");
+                writer.AppendLine("}");
+                writer.AppendLine();
+
+                writer.Append("private ").Append(model.ClientName).Append('(').Append(privateConstructorParameters).AppendLine(")");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
-                    writer.AppendLine("_httpClient = new HttpClient();");
+                    writer.AppendLine("_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));");
+                    writer.AppendLine("_ownsHttpClient = ownsHttpClient;");
                     if (Uri.TryCreate(model.ServerUrl, UriKind.Absolute, out _))
                     {
-                        writer.Append("_httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute);");
+                        writer.AppendLine("if (_httpClient.BaseAddress is null)");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.Append("_httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute);");
+                        }
+
+                        writer.AppendLine("}");
                     }
 
                     foreach (var securityScheme in model.SecuritySchemes)
@@ -407,7 +432,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
                     var constructorArguments = string.Join(", ",
                         new[] { "_httpClient" }.Concat(
-                            _querySecuritySchemes.Select(static scheme => scheme.FieldName)));
+                            model.SecuritySchemes.Select(static scheme => scheme.FieldName)));
                     foreach (var tagGroup in model.TagGroups)
                     {
                         writer.Append(tagGroup.PropertyName).Append(" = new ").Append(tagGroup.ClassName).Append('(').Append(constructorArguments).AppendLine(");");
@@ -435,7 +460,14 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
-                    writer.AppendLine("_httpClient.Dispose();");
+                    writer.AppendLine("if (_ownsHttpClient)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        writer.AppendLine("_httpClient.Dispose();");
+                    }
+
+                    writer.AppendLine("}");
                 }
 
                 writer.AppendLine("}");

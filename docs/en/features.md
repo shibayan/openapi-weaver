@@ -2,18 +2,18 @@
 
 ## Incremental source generation
 
-OpenApiWeaver leverages the Roslyn incremental generator pipeline for fast, cached rebuilds. Only the documents that have changed are re-processed, making it efficient even in large solutions with multiple OpenAPI files.
+OpenApiWeaver uses the Roslyn incremental generator pipeline for efficient, cached rebuilds. Only changed documents are reprocessed, which keeps builds efficient even in large solutions with multiple OpenAPI files.
 
 ## JSON & YAML support
 
-Reads OpenAPI 3.0-3.2 documents in the following formats:
+OpenApiWeaver reads OpenAPI 3.0-3.2 documents in the following formats:
 
 - `.json` - OpenAPI 3.x JSON
 - `.yaml` / `.yml` - OpenAPI 3.x YAML
 
 ## Tag-based sub-clients
 
-Operations are grouped by their OpenAPI tags and exposed as properties on the root client. Each tag becomes a separate sub-client class:
+Operations are grouped by OpenAPI tags and exposed as properties on the root client. Each tag becomes a separate sub-client class:
 
 ```csharp
 var client = new PetstoreClient(accessToken: "token");
@@ -27,19 +27,19 @@ var user = await client.Users.GetAsync(userId: "me");
 
 Method names are derived from `operationId` when available, with an `Async` suffix appended automatically.
 
-When a tag has a description, it is emitted as XML documentation on the generated tag property and sub-client class.
+When a tag includes a description, OpenApiWeaver emits it as XML documentation on the generated tag property and sub-client class.
 
 ## Typed request / response models
 
-Generates sealed classes for object schemas and maps them to strongly typed method parameters and return values:
+OpenApiWeaver generates sealed classes for object schemas and maps them to strongly typed method parameters and return values:
 
 - **Object schemas** -> `sealed class` with `[JsonPropertyName]` attributes
-- **Enums** -> `readonly record struct` with a dedicated `JsonConverter` (string enums), or standard `enum` (integer enums) — see [Schema Type Mapping](./schema-types)
+- **Enums** -> `readonly record struct` with a dedicated `JsonConverter` for string enums, or standard `enum` for integer enums; see [Schema Type Mapping](./schema-types)
 - **Arrays** -> `IReadOnlyList<T>`
 - **Dictionaries** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
 - **Inline object / enum schemas** -> nested types under the owning model class
 
-Naming conventions are automatically converted from `snake_case` to `PascalCase` for C# idiomatic use, while preserving the original JSON names via `[JsonPropertyName]`.
+Naming conventions are converted to idiomatic C# names, such as `snake_case` to `PascalCase`, while the original JSON names are preserved through `[JsonPropertyName]`.
 
 Optional (non-required) nullable properties are annotated with `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` so they are omitted from the JSON payload when `null`.
 
@@ -47,7 +47,7 @@ OpenAPI 3.2 nullable type arrays such as `type: ["string", "null"]` are mapped t
 
 ## Inline / nested schemas
 
-Inline object or enum schemas that appear inside property definitions, array `items`, or `additionalProperties` are emitted as **nested types** under the owning generated model class. This keeps the type hierarchy compact and avoids excessively long top-level type names.
+Inline object or enum schemas that appear inside property definitions, array `items`, or `additionalProperties` are emitted as nested types under the owning generated model class. This keeps the type hierarchy compact and avoids excessively long top-level type names.
 
 ```csharp
 public sealed class Order
@@ -75,20 +75,20 @@ The generated methods return different types based on the response content:
 | Binary content | `Task<byte[]>` |
 | No content (e.g. 204) | `Task` |
 
-When multiple successful responses are available, OpenApiWeaver prefers a response with a body over a lower-status no-content response. For multiple response media types, JSON is preferred first, then binary, then text.
+When multiple successful responses are available, OpenApiWeaver prefers a response with a body over a lower-status no-content response. When multiple response media types are available, JSON is preferred first, followed by binary content and then text.
 
 ## Runtime error handling
 
-Generated clients do not call `EnsureSuccessStatusCode()`. Instead, they emit explicit error handling code for non-success responses so OpenAPI error definitions can be preserved.
+Generated clients do not call `EnsureSuccessStatusCode()`. Instead, they emit explicit error handling code for non-success responses so that OpenAPI error definitions remain available to the caller.
 
 - Non-2xx responses throw `OpenApiException`
 - The exception includes `StatusCode`, `ReasonPhrase`, `ContentType`, and the raw `ResponseContent`
-- If the OpenAPI operation defines a matching error response schema, the generated code throws `OpenApiException<TError>` with the deserialized error payload in `Error`
+- If the OpenAPI operation defines a matching error response schema, the generated code throws `OpenApiException<TError>` with the deserialized error payload exposed through `Error`
 - Matching prefers exact status codes first, then wildcard patterns such as `4XX`, then `default`
 
 For JSON error responses, deserialization is attempted only when the response content type is JSON-compatible. If deserialization fails, the client falls back to the non-generic `OpenApiException` and preserves the raw response body for troubleshooting.
 
-For successful JSON responses that are expected to have a body, an empty response body results in `InvalidOperationException("The response body was empty.")`.
+For successful JSON responses that are expected to contain a body, an empty response body results in `InvalidOperationException("The response body was empty.")`.
 
 Example:
 
@@ -111,7 +111,7 @@ catch (OpenApiException exception)
 
 ## Multiple request body formats
 
-Supports the following content types for request bodies:
+OpenApiWeaver supports the following content types for request bodies:
 
 | Content Type | Serialization |
 |---|---|
@@ -119,11 +119,11 @@ Supports the following content types for request bodies:
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (supports binary file uploads) |
 
-If a request body declares multiple supported media types, JSON is preferred when available.
+If a request body declares multiple supported media types, JSON is used when available.
 
 ### Compile-time-only policy for form / multipart
 
-For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all code must be emittable entirely at compile time. If this is not possible, generation fails with `OAW004`.
+For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all required code must be generated entirely at compile time. If that is not possible, generation fails with `OAW004`.
 
 Supported form and multipart request bodies require:
 
@@ -131,7 +131,7 @@ Supported form and multipart request bodies require:
 - An object shape whose properties are known at generation time
 - Property types that map directly to CLR types (scalars, `byte[]`, supported collections)
 
-The following are **intentionally unsupported** for form / multipart request bodies:
+The following features are intentionally unsupported for form and multipart request bodies:
 
 - Inline request body schemas
 - `oneOf` / `anyOf`
@@ -139,7 +139,7 @@ The following are **intentionally unsupported** for form / multipart request bod
 
 ## Parameter locations
 
-Parameters defined in the OpenAPI document are mapped to method parameters based on their location:
+Parameters defined in the OpenAPI document are mapped to method parameters according to their location:
 
 | Location | Behavior |
 |---|---|
@@ -150,7 +150,7 @@ Parameters defined in the OpenAPI document are mapped to method parameters based
 
 ## Security scheme support
 
-Constructor parameters are automatically generated based on the security schemes defined in the OpenAPI document:
+Constructor parameters are generated automatically from the security schemes defined in the OpenAPI document:
 
 | Scheme | Generated Parameter |
 |---|---|
@@ -159,15 +159,17 @@ Constructor parameters are automatically generated based on the security schemes
 | API key (query) | `string apiKey` - appended to the query string |
 | API key (cookie) | `string apiKey` - sent in the `Cookie` header |
 
-Multiple security schemes can be combined. For example, if an API requires both an OAuth2 token and an API key, the constructor will accept both parameters.
+Multiple security schemes can be combined. For example, if an API requires both an OAuth2 token and an API key, the constructor accepts both parameters.
+
+Security values are applied to each generated `HttpRequestMessage`. This includes header, query, cookie, OAuth2, and bearer token schemes, and keeps injected `HttpClient` instances free from authentication state in `DefaultRequestHeaders`.
 
 ## All HTTP methods
 
-Supports all standard HTTP methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, and TRACE.
+OpenApiWeaver supports all standard HTTP methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, and TRACE.
 
 ## Build-time diagnostics
 
-Reports errors and warnings as standard compiler diagnostics during compilation:
+OpenApiWeaver reports errors and warnings as standard compiler diagnostics during compilation:
 
 | Code | Severity | Description |
 |---|---|---|
@@ -180,10 +182,10 @@ These diagnostics appear in the Visual Studio Error List, `dotnet build` output,
 
 ## Generated client extensibility
 
-The root client class is generated as a `partial class`, so you can extend it with additional methods or properties in a separate file without modifying the generated code.
+The root client class is generated as a `partial class`, so you can extend it in a separate file without modifying the generated code.
 
-The root client also implements `IDisposable` and disposes the internal `HttpClient` when `Dispose()` is called.
+The root client also implements `IDisposable`. If it creates the `HttpClient` internally, `Dispose()` releases it. If you inject an existing `HttpClient`, the generated client does not dispose it.
 
 ## XML documentation comments
 
-The generated code includes `<summary>`, `<remarks>`, `<param>`, and `<returns>` XML doc comments derived from `info`, tag descriptions, operation `summary` / `description`, parameter descriptions, response `summary` / `description`, and schema `title` / `description`. HTML markup is stripped automatically so the generated IntelliSense stays clean.
+The generated code includes `<summary>`, `<remarks>`, `<param>`, and `<returns>` XML documentation comments derived from `info`, tag descriptions, operation `summary` and `description`, parameter descriptions, response `summary` and `description`, and schema `title` and `description`. HTML markup is stripped automatically so generated IntelliSense remains clean.

@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: OpenApiWeaver
-  text: OpenAPI to C# Client Generator
-  tagline: An incremental Roslyn source generator that turns OpenAPI 3.x documents, including OpenAPI 3.2, into strongly typed C# HTTP clients at build time.
+  text: Build-time OpenAPI to C# Client Generation
+  tagline: Incremental Roslyn source generation for strongly typed C# HTTP clients from OpenAPI 3.x documents, including OpenAPI 3.2.
   image:
     src: /icon.svg
     alt: OpenApiWeaver
@@ -18,15 +18,15 @@ hero:
 
 features:
   - title: Zero Runtime Overhead
-    details: All code is generated at compile time via Roslyn source generators - no runtime code generation, no reflection, no additional runtime dependencies.
+    details: Generates all client code at compile time through Roslyn source generators, without runtime code generation, reflection, or additional runtime dependencies.
   - title: Incremental & Fast
-    details: Leverages the Roslyn incremental generator pipeline so only changed documents are re-processed, keeping rebuilds fast even in large solutions.
-  - title: Just Add the NuGet Package
-    details: The package bundles the source generator and all required analyzer assemblies. No CLI tools, no extra MSBuild steps.
+    details: Uses the Roslyn incremental generator pipeline so only changed documents are reprocessed, which keeps rebuilds efficient even in large solutions.
+  - title: NuGet Package Distribution
+    details: Ships as a single NuGet package that includes the source generator and required analyzer assemblies, without separate CLI tools or additional MSBuild steps.
   - title: Strongly Typed with IntelliSense
-    details: Full IntelliSense, compile-time type safety, and navigation support for all generated clients, operations, and DTOs.
+    details: Provides IntelliSense, compile-time type safety, and navigation support for generated clients, operations, and DTOs.
   - title: JSON & YAML
     details: Reads OpenAPI 3.0-3.2 documents in JSON (.json) and YAML (.yaml, .yml) formats.
   - title: Build-Time Diagnostics
-    details: Reports errors and warnings for invalid or unsupported OpenAPI documents as standard compiler diagnostics.
+    details: Reports invalid or unsupported OpenAPI documents as standard compiler warnings and errors.
 ---

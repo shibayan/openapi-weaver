@@ -2,13 +2,13 @@
 
 ## `OpenApiWeaverDocument` アイテム
 
-OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild アイテムを使うことです。次のメタデータをサポートします。
+OpenApiWeaver は `OpenApiWeaverDocument` MSBuild アイテムで設定します。サポートされるメタデータは次のとおりです。
 
-| Metadata | Required | Description | Default |
+| メタデータ | 必須 | 説明 | 既定値 |
 |---|---|---|---|
-| `Include` | Yes | OpenAPI ドキュメントへのパス (`.json`, `.yaml`, `.yml`) | - |
-| `ClientName` | No | 生成されるルートクライアントクラス名 | ファイル名 → PascalCase + `Client` |
-| `Namespace` | No | 生成されるすべての型の名前空間 | プロジェクトの `RootNamespace` |
+| `Include` | はい | OpenAPI ドキュメントへのパス (`.json`, `.yaml`, `.yml`) | - |
+| `ClientName` | いいえ | 生成されるルートクライアントクラス名 | ファイル名 → PascalCase + `Client` |
+| `Namespace` | いいえ | 生成されるすべての型の名前空間 | プロジェクトの `RootNamespace` |
 
 ### 例
 
@@ -24,7 +24,7 @@ OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild �
 
 ### 複数ドキュメント
 
-1 つのプロジェクトに複数の OpenAPI ドキュメントを含めることができます。各ドキュメントは独立したクライアントを生成します。
+1 つのプロジェクトに複数の OpenAPI ドキュメントを含めることができます。各ドキュメントから独立したクライアントが生成されます。
 
 ```xml
 <ItemGroup>
@@ -39,9 +39,9 @@ OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild �
 
 ## クライアント名の導出
 
-`ClientName` を指定しない場合、ジェネレーターはファイル名を PascalCase に変換して `Client` を末尾に付与した名前を導出します。
+`ClientName` を指定しない場合、ジェネレーターはファイル名を PascalCase に変換し、末尾に `Client` を付与した名前を導出します。
 
-| File Name | Generated Client Name |
+| ファイル名 | 生成されるクライアント名 |
 |---|---|
 | `petstore.yaml` | `PetstoreClient` |
 | `api-schema.json` | `ApiSchemaClient` |
@@ -49,15 +49,15 @@ OpenApiWeaver を設定する推奨方法は、`OpenApiWeaverDocument` MSBuild �
 
 ## 対応ドキュメント形式
 
-OpenApiWeaver は次の形式の OpenAPI 3.0-3.2 ドキュメントを読み込みます。
+OpenApiWeaver は、次の形式の OpenAPI 3.0-3.2 ドキュメントを読み込みます。
 
-| Extension | Format |
+| 拡張子 | 形式 |
 |---|---|
 | `.json` | OpenAPI 3.x JSON |
 | `.yaml` | OpenAPI 3.x YAML |
 | `.yml` | OpenAPI 3.x YAML |
 
-`OpenApiWeaverDocument` に含まれていても、その他の拡張子のファイルはジェネレーターに無視されます。
+これ以外の拡張子を持つファイルは、`OpenApiWeaverDocument` に含まれていてもジェネレーターでは処理されません。
 
 ## ドキュメント検出
 

@@ -1,10 +1,10 @@
 # スキーマ型マッピング
 
-OpenApiWeaver は OpenAPI 3.0-3.2 のスキーマ型を次のように C# 型へマッピングします。
+OpenApiWeaver は OpenAPI 3.0-3.2 のスキーマ型を、次の規則で C# 型へマッピングします。
 
 ## プリミティブ型
 
-| OpenAPI Type | OpenAPI Format | C# Type |
+| OpenAPI 型 | OpenAPI Format | C# 型 |
 |---|---|---|
 | `integer` | - | `int` |
 | `integer` | `int64` | `long` |
@@ -21,13 +21,13 @@ OpenApiWeaver は OpenAPI 3.0-3.2 のスキーマ型を次のように C# 型へ
 
 ## コレクション型
 
-| OpenAPI Schema | C# Type |
+| OpenAPI スキーマ | C# 型 |
 |---|---|
 | `array` with `items` | `IReadOnlyList<T>` |
 | `object` with `additionalProperties` | `IReadOnlyDictionary<string, T>` |
 | `object` with `patternProperties` | `IReadOnlyDictionary<string, T>` |
 
-トップレベルのコンポーネントスキーマで `additionalProperties` または `patternProperties` が定義されている場合、生成クラスは `Dictionary<string, T>` を **継承** し、宣言されたプロパティと任意のキーバリューペアの両方を保持できます。
+トップレベルのコンポーネントスキーマで `additionalProperties` または `patternProperties` が定義されている場合、生成クラスは `Dictionary<string, T>` を継承し、宣言されたプロパティと任意のキーバリューペアの両方を保持できます。
 
 ```yaml
 Metadata:
@@ -94,7 +94,7 @@ public sealed class Pet
 
 ## インラインスキーマ
 
-プロパティ定義や配列の `items`、`additionalProperties` 内に定義されたインラインのオブジェクト / enum スキーマは、親モデルクラスの **ネスト型** として生成され、型階層がコンパクトに保たれます。
+プロパティ定義や配列の `items`、`additionalProperties` 内に定義されたインラインのオブジェクト / enum スキーマは、親モデルクラスのネスト型として生成され、型階層がコンパクトに保たれます。
 
 ```yaml
 Order:
@@ -117,7 +117,7 @@ public sealed class Order
 
 ## 合成キーワード
 
-| OpenAPI Keyword | C# Mapping |
+| OpenAPI キーワード | C# へのマッピング |
 |---|---|
 | `allOf` | すべてのプロパティを含む 1 つのクラスへフラット化 |
 | `oneOf` / `anyOf` | union 風の nullable プロパティ、または primitive と `null` の組み合わせなら nullable CLR プリミティブ |
@@ -153,7 +153,7 @@ public sealed class PartnerResponse
 
 ### 文字列 enum
 
-OpenAPI の文字列 `enum` 値は、static メンバー付きの `readonly record struct` として生成されます。この方式により、数値しか扱えない C# `enum` の制約を受けずに、型安全性と IntelliSense を両立できます。
+OpenAPI の文字列 `enum` 値は、static メンバー付きの `readonly record struct` として生成されます。この方式により、数値のみを扱う C# `enum` の制約を避けつつ、型安全性と IntelliSense を両立できます。
 
 ```yaml
 # OpenAPI schema
@@ -188,7 +188,7 @@ public sealed class StatusJsonConverter : JsonConverter<Status>
 }
 ```
 
-各文字列 enum に対して、シリアライズとデシリアライズを正しく処理するための専用 `JsonConverter` が生成されます。
+各文字列 enum には、スキーマ定義に沿ってシリアライズとデシリアライズを処理する専用 `JsonConverter` が生成されます。
 
 ### 整数 enum
 
@@ -226,7 +226,7 @@ public enum Priority : long
 
 すべてのスキーマ名は、元の表記から C# で一般的な命名規則へ変換されます。
 
-| Source Convention | C# Convention | Example |
+| 元の表記 | C# での表記 | 例 |
 |---|---|---|
 | `snake_case` | `PascalCase` | `pet_name` → `PetName` |
 | `kebab-case` | `PascalCase` | `pet-name` → `PetName` |
