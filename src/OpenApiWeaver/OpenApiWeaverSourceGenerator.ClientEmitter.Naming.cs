@@ -47,31 +47,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private static void EmitSecuritySchemeInitialization(IndentedStringBuilder writer, SecuritySchemeBinding securityScheme)
         {
-            if (securityScheme.Location == SecuritySchemeLocation.Query)
-            {
-                writer.Append(securityScheme.FieldName).Append(" = ").Append(securityScheme.ParameterName).AppendLine(";");
-                return;
-            }
-
-            writer.Append("if (").Append(securityScheme.ParameterName).AppendLine(" is not null)");
-            writer.AppendLine("{");
-            using (writer.PushIndent())
-            {
-                if (securityScheme.IsBearerToken)
-                {
-                    writer.Append("_httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.ParameterName).AppendLine(");");
-                }
-                else if (securityScheme.Location == SecuritySchemeLocation.Cookie)
-                {
-                    writer.Append("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"Cookie\", \"").Append(securityScheme.HeaderOrParameterName).Append("=\" + ").Append(securityScheme.ParameterName).AppendLine(");");
-                }
-                else
-                {
-                    writer.Append("_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.ParameterName).AppendLine(");");
-                }
-            }
-
-            writer.AppendLine("}");
+            writer.Append(securityScheme.FieldName).Append(" = ").Append(securityScheme.ParameterName).AppendLine(";");
         }
 
         private static readonly HashSet<string> s_wellKnownHttpMethods = new(StringComparer.OrdinalIgnoreCase)

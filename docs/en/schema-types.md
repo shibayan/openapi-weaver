@@ -1,6 +1,6 @@
 # Schema Type Mapping
 
-OpenApiWeaver maps OpenAPI 3.0-3.2 schema types to C# types as follows.
+OpenApiWeaver maps OpenAPI 3.0-3.2 schema types to C# types according to the following rules.
 
 ## Primitive types
 
@@ -27,7 +27,7 @@ OpenApiWeaver maps OpenAPI 3.0-3.2 schema types to C# types as follows.
 | `object` with `additionalProperties` | `IReadOnlyDictionary<string, T>` |
 | `object` with `patternProperties` | `IReadOnlyDictionary<string, T>` |
 
-When a top-level component schema defines `additionalProperties` or `patternProperties`, the generated class **extends** `Dictionary<string, T>` so that it can hold both declared properties and arbitrary key-value pairs:
+When a top-level component schema defines `additionalProperties` or `patternProperties`, the generated class extends `Dictionary<string, T>` so that it can hold both declared properties and arbitrary key-value pairs:
 
 ```yaml
 Metadata:
@@ -51,7 +51,7 @@ If `additionalProperties` and `patternProperties` produce incompatible value typ
 
 ## Object schemas
 
-Object schemas defined in `components/schemas` are generated as `sealed class` types. Each property gets a `[JsonPropertyName]` attribute preserving the original JSON name, while the C# property name is converted to PascalCase:
+Object schemas defined in `components/schemas` are generated as `sealed class` types. Each property receives a `[JsonPropertyName]` attribute that preserves the original JSON name, while the C# property name is converted to PascalCase:
 
 ```yaml
 # OpenAPI schema
@@ -94,7 +94,7 @@ public sealed class Pet
 
 ## Inline schemas
 
-Inline object or enum schemas defined inside property definitions, array `items`, or `additionalProperties` are generated as **nested types** under the owning model class, keeping the type hierarchy compact:
+Inline object or enum schemas defined inside property definitions, array `items`, or `additionalProperties` are generated as nested types under the owning model class, which keeps the type hierarchy compact:
 
 ```yaml
 Order:
@@ -153,7 +153,7 @@ public sealed class PartnerResponse
 
 ### String enums
 
-OpenAPI string `enum` values are generated as `readonly record struct` types with static members. This approach provides type safety and IntelliSense without the limitations of C# `enum` (which only supports numeric values):
+OpenAPI string `enum` values are generated as `readonly record struct` types with static members. This approach provides type safety and IntelliSense without the limitations of C# `enum`, which supports only numeric values:
 
 ```yaml
 # OpenAPI schema
@@ -188,11 +188,11 @@ public sealed class StatusJsonConverter : JsonConverter<Status>
 }
 ```
 
-A dedicated `JsonConverter` is generated for each string enum to handle serialization and deserialization correctly.
+A dedicated `JsonConverter` is generated for each string enum so that serialization and deserialization follow the schema definition.
 
 ### Integer enums
 
-When the OpenAPI schema specifies `type: integer` with `enum`, a standard C# `enum` is generated instead:
+When the OpenAPI schema specifies `type: integer` together with `enum`, a standard C# `enum` is generated instead:
 
 ```yaml
 # OpenAPI schema
@@ -224,7 +224,7 @@ public enum Priority : long
 
 ## Naming conventions
 
-All schema names are converted from their original casing to C# idiomatic conventions:
+All schema names are converted from their original casing to idiomatic C# naming conventions:
 
 | Source Convention | C# Convention | Example |
 |---|---|---|

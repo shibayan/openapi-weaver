@@ -2,7 +2,7 @@
 
 ## `OpenApiWeaverDocument` item
 
-The recommended way to configure OpenApiWeaver is with the `OpenApiWeaverDocument` MSBuild item. It supports the following metadata:
+Configure OpenApiWeaver by declaring the `OpenApiWeaverDocument` MSBuild item. The item supports the following metadata:
 
 | Metadata | Required | Description | Default |
 |---|---|---|---|
@@ -24,7 +24,7 @@ At build time, the package's `buildTransitive` targets project each `OpenApiWeav
 
 ### Multiple documents
 
-You can include multiple OpenAPI documents in a single project. Each document generates its own independent client:
+You can include multiple OpenAPI documents in a single project. Each document generates an independent client:
 
 ```xml
 <ItemGroup>
@@ -39,7 +39,7 @@ You can include multiple OpenAPI documents in a single project. Each document ge
 
 ## Client name derivation
 
-When `ClientName` is not specified, the generator derives a name from the file name by converting it to PascalCase and appending `Client`:
+When `ClientName` is not specified, the generator derives the client name from the file name by converting it to PascalCase and appending `Client`:
 
 | File Name | Generated Client Name |
 |---|---|
@@ -57,11 +57,11 @@ OpenApiWeaver reads OpenAPI 3.0-3.2 documents in the following formats:
 | `.yaml` | OpenAPI 3.x YAML |
 | `.yml` | OpenAPI 3.x YAML |
 
-Other file extensions included via `OpenApiWeaverDocument` are ignored by the generator.
+Files with other extensions are ignored, even if they are included through `OpenApiWeaverDocument`.
 
 ## Document discovery
 
-Only `OpenApiWeaverDocument` items are processed by the generator.
+The generator processes only `OpenApiWeaverDocument` items.
 
 - Files added directly as `AdditionalFiles` are ignored
 - `ClientName` and `Namespace` metadata are only available when supplied through `OpenApiWeaverDocument`

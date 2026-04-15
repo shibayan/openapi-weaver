@@ -5,7 +5,7 @@
 [![NuGet](https://img.shields.io/nuget/v/OpenApiWeaver)](https://www.nuget.org/packages/OpenApiWeaver)
 [![License](https://img.shields.io/github/license/shibayan/openapi-weaver)](https://github.com/shibayan/openapi-weaver/blob/master/LICENSE)
 
-**OpenApiWeaver** is an incremental Roslyn source generator that turns OpenAPI 3.x documents, including OpenAPI 3.2, into strongly typed C# HTTP clients at build time. No runtime code generation, no reflection - just plain C# emitted during compilation.
+**OpenApiWeaver** is an incremental Roslyn source generator that generates strongly typed C# HTTP clients from OpenAPI 3.x documents, including OpenAPI 3.2, at build time. It does not rely on runtime code generation or reflection, and emits plain C# during compilation.
 
 ## Quick Start
 
@@ -27,7 +27,7 @@
 </ItemGroup>
 ```
 
-Use `OpenApiWeaverDocument` rather than `AdditionalFiles`; the package's MSBuild targets project these items into compiler inputs automatically.
+Declare the document as an `OpenApiWeaverDocument` item rather than `AdditionalFiles`. The package's MSBuild targets project these items into compiler inputs automatically.
 
 **3. Use the generated client**
 
@@ -38,19 +38,21 @@ var client = new PetstoreClient(accessToken: "your-token");
 var pet = await client.Pets.GetAsync(petId: 1);
 ```
 
-No extra dependencies are required — the package bundles the source generator and all analyzer assemblies.
+You can also pass an existing `HttpClient` to the generated root client. When you do, the generated client reuses that instance, preserves an existing `BaseAddress`, and applies security headers per request instead of mutating `DefaultRequestHeaders`.
+
+The package includes the source generator and all required analyzer assemblies, so no additional dependencies are required.
 
 ## Features
 
-- **Incremental source generation** — fast, cached rebuilds via the Roslyn incremental generator pipeline
+- **Incremental source generation** — uses the Roslyn incremental generator pipeline to keep rebuilds efficient
 - **OpenAPI 3.0-3.2 support** — reads `.json`, `.yaml`, and `.yml` documents, including OpenAPI 3.2 features such as response summaries and nullable type arrays
-- **Tag-based sub-clients** — operations grouped by OpenAPI tags, exposed as properties on the root client
-- **Typed request / response models** — sealed classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`
-- **Multiple request body formats** — `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
-- **Security scheme support** — OAuth2 / Bearer tokens, API keys (header, query, cookie)
-- **Runtime error handling** — non-success responses throw `OpenApiException`, with typed `OpenApiException<TError>` when error schemas are available
-- **OpenAPI-driven XML docs** — IntelliSense comments generated from document, tag, operation, response, and schema metadata with HTML stripped automatically
-- **Build-time diagnostics** — errors and warnings reported as standard compiler diagnostics
+- **Tag-based sub-clients** — groups operations by OpenAPI tags and exposes them as properties on the root client
+- **Typed request / response models** — generates sealed classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`
+- **Multiple request body formats** — supports `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
+- **Security scheme support** — supports OAuth2 and bearer tokens, together with API keys in headers, query strings, and cookies
+- **Runtime error handling** — throws `OpenApiException`, with typed `OpenApiException<TError>` when error schemas are available
+- **OpenAPI-driven XML docs** — generates IntelliSense comments from document, tag, operation, response, and schema metadata, with HTML removed automatically
+- **Build-time diagnostics** — reports errors and warnings as standard compiler diagnostics
 
 ## Requirements
 
@@ -58,7 +60,7 @@ No extra dependencies are required — the package bundles the source generator 
 
 ## Documentation
 
-For detailed guides, configuration options, and schema type mapping, visit the **[documentation site](https://shibayan.github.io/openapi-weaver/)**.
+For detailed guides, configuration options, and schema type mapping, see the **[documentation site](https://shibayan.github.io/openapi-weaver/)**.
 
 ## License
 

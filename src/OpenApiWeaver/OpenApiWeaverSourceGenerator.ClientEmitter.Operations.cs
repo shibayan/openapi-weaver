@@ -135,6 +135,34 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 writer.AppendLine("}");
             }
 
+            foreach (var securityScheme in model.SecuritySchemes)
+            {
+                if (securityScheme.Location == SecuritySchemeLocation.Query)
+                {
+                    continue;
+                }
+
+                writer.Append("if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    if (securityScheme.IsBearerToken)
+                    {
+                        writer.Append("request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.FieldName).AppendLine(");");
+                    }
+                    else if (securityScheme.Location == SecuritySchemeLocation.Cookie)
+                    {
+                        writer.Append("request.Headers.TryAddWithoutValidation(\"Cookie\", \"").Append(securityScheme.HeaderOrParameterName).Append("=\" + ").Append(securityScheme.FieldName).AppendLine(");");
+                    }
+                    else
+                    {
+                        writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                    }
+                }
+
+                writer.AppendLine("}");
+            }
+
             if (operation.RequestBody is not null)
             {
                 if (operation.RequestBody.IsRequired)
