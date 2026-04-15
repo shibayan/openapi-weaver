@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- .NET SDK 8.0 or later
+- .NET SDK 10.0 or later
 - An OpenAPI 3.0-3.2 document in JSON or YAML format
 
 ## 1. Install the package

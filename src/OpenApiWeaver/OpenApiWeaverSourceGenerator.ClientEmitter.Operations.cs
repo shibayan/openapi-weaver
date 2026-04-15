@@ -1,12 +1,10 @@
-﻿using System.Text;
-
-namespace OpenApiWeaver;
+﻿namespace OpenApiWeaver;
 
 public sealed partial class OpenApiWeaverSourceGenerator
 {
     private sealed partial class ClientEmitter
     {
-        private void EmitOperation(StringBuilder builder, OperationGroupItem operation)
+        private void EmitOperation(IndentedStringBuilder writer, OperationGroupItem operation)
         {
             var route = NormalizeRelativeRoute(operation.Route);
             var parameterDocumentation = new List<KeyValuePair<string, string?>>();
@@ -55,8 +53,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             parameterDocumentation.Add(new KeyValuePair<string, string?>("cancellationToken", "A cancellation token that can be used to cancel the operation."));
 
             EmitDocComment(
-                builder,
-                "        ",
+                writer,
                 summary: operation.Summary,
                 remarks: operation.Remarks,
                 parameters: parameterDocumentation,
@@ -64,159 +61,202 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             if (operation.Response.Kind == ResponseKind.None)
             {
-                builder.Append("    public async Task ").Append(operation.MethodName).Append("Async(").Append(string.Join(", ", methodParameters)).AppendLine(")");
+                writer.Append("public async Task ").Append(operation.MethodName).Append("Async(").Append(string.Join(", ", methodParameters)).AppendLine(")");
             }
             else
             {
-                builder.Append("    public async Task<").Append(operation.Response.TypeName).Append("> ").Append(operation.MethodName).Append("Async(").Append(string.Join(", ", methodParameters)).AppendLine(")");
+                writer.Append("public async Task<").Append(operation.Response.TypeName).Append("> ").Append(operation.MethodName).Append("Async(").Append(string.Join(", ", methodParameters)).AppendLine(")");
             }
 
-            builder.AppendLine("    {");
+            writer.AppendLine("{");
+            using var _ = writer.PushIndent();
             var usesPathBuilder = pathParameters.Count > 0 || queryParameters.Count > 0 || _querySecuritySchemes.Count > 0;
             if (usesPathBuilder)
             {
-                builder.AppendLine("        var pathBuilder = new StringBuilder();");
-                EmitRouteTemplate(builder, route, pathParameters);
+                writer.AppendLine("var pathBuilder = new StringBuilder();");
+                EmitRouteTemplate(writer, route, pathParameters);
             }
             else
             {
-                builder.Append("        var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
+                writer.Append("var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
             }
 
             if (queryParameters.Count > 0 || _querySecuritySchemes.Count > 0)
             {
-                builder.AppendLine("        var hasQuery = false;");
+                writer.AppendLine("var hasQuery = false;");
                 foreach (var parameter in queryParameters)
                 {
                     if (parameter.Required)
                     {
-                        builder.Append("        OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.SerializedName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.SerializedName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
                     }
                     else
                     {
-                        builder.Append("        if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                        builder.AppendLine("        {");
-                        builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.SerializedName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
-                        builder.AppendLine("        }");
+                        writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.SerializedName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                        }
+
+                        writer.AppendLine("}");
                     }
                 }
             }
 
             foreach (var securityScheme in _querySecuritySchemes)
             {
-                builder.Append("        if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
-                builder.AppendLine("        {");
-                builder.Append("            OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
-                builder.AppendLine("        }");
+                writer.Append("if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                }
+
+                writer.AppendLine("}");
             }
 
             if (usesPathBuilder)
             {
-                builder.AppendLine("        var path = pathBuilder.ToString();");
+                writer.AppendLine("var path = pathBuilder.ToString();");
             }
 
-            builder.Append("        using var request = new HttpRequestMessage(").Append(GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
+            writer.Append("using var request = new HttpRequestMessage(").Append(GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
 
             foreach (var parameter in headerParameters)
             {
-                builder.Append("        if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                builder.AppendLine("        {");
-                builder.Append("            request.Headers.TryAddWithoutValidation(\"").Append(parameter.SerializedName).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
-                builder.AppendLine("        }");
+                writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(parameter.SerializedName).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                }
+
+                writer.AppendLine("}");
             }
 
             if (operation.RequestBody is not null)
             {
                 if (operation.RequestBody.IsRequired)
                 {
-                    EmitRequestBodyContentAssignment(builder, operation.RequestBody, nullableBody: false);
+                    EmitRequestBodyContentAssignment(writer, operation.RequestBody, nullableBody: false);
                 }
                 else
                 {
-                    builder.AppendLine("        if (body is not null)");
-                    builder.AppendLine("        {");
-                    EmitRequestBodyContentAssignment(builder, operation.RequestBody, nullableBody: true);
-                    builder.AppendLine("        }");
+                    writer.AppendLine("if (body is not null)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        EmitRequestBodyContentAssignment(writer, operation.RequestBody, nullableBody: true);
+                    }
+
+                    writer.AppendLine("}");
                 }
             }
 
-            builder.AppendLine("        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);");
-            builder.AppendLine("        if (!response.IsSuccessStatusCode)");
-            builder.AppendLine("        {");
-            EmitErrorResponseHandling(builder, operation);
-            builder.AppendLine("        }");
+            writer.AppendLine("using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);");
+            writer.AppendLine("if (!response.IsSuccessStatusCode)");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                EmitErrorResponseHandling(writer, operation);
+            }
+
+            writer.AppendLine("}");
 
             if (operation.Response.Kind == ResponseKind.None)
             {
-                builder.AppendLine("        return;");
+                writer.AppendLine("return;");
             }
             else if (operation.Response.Kind == ResponseKind.String)
             {
-                builder.AppendLine("        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
+                writer.AppendLine("return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
             }
             else if (operation.Response.Kind == ResponseKind.Binary)
             {
-                builder.AppendLine("        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);");
+                writer.AppendLine("return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);");
             }
             else if (RequiresNonNullJsonResponse(operation.Response.TypeName))
             {
-                builder.Append("        return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)");
-                builder.AppendLine("            ?? throw new InvalidOperationException(\"The response body was empty.\");");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("?? throw new InvalidOperationException(\"The response body was empty.\");");
+                }
             }
             else
             {
-                builder.Append("        return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false);");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false);");
             }
 
-            builder.AppendLine("    }");
+            writer.AppendLine("}");
         }
 
-        private static void EmitErrorResponseHandling(StringBuilder builder, OperationGroupItem operation)
+        private static void EmitErrorResponseHandling(IndentedStringBuilder writer, OperationGroupItem operation)
         {
-            builder.AppendLine("            var statusCode = (int)response.StatusCode;");
-            builder.AppendLine("            var contentType = response.Content?.Headers?.ContentType?.MediaType;");
-            builder.AppendLine("            var responseContent = response.Content is null");
-            builder.AppendLine("                ? null");
-            builder.AppendLine("                : await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
+            writer.AppendLine("var statusCode = (int)response.StatusCode;");
+            writer.AppendLine("var contentType = response.Content?.Headers?.ContentType?.MediaType;");
+            writer.AppendLine("var responseContent = response.Content is null");
+            using (writer.PushIndent())
+            {
+                writer.AppendLine("? null");
+                writer.AppendLine(": await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
+            }
 
             foreach (var errorResponse in operation.ErrorResponses)
             {
-                builder.Append("            if (OpenApiClientHelpers.ResponseMatchesStatusCode(statusCode, \"").Append(EscapeStringLiteral(errorResponse.StatusCodePattern)).AppendLine("\"))");
-                builder.AppendLine("            {");
-                EmitTypedErrorResponseHandling(builder, errorResponse.Response);
-                builder.AppendLine("            }");
+                writer.Append("if (OpenApiClientHelpers.ResponseMatchesStatusCode(statusCode, \"").Append(EscapeStringLiteral(errorResponse.StatusCodePattern)).AppendLine("\"))");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    EmitTypedErrorResponseHandling(writer, errorResponse.Response);
+                }
+
+                writer.AppendLine("}");
             }
 
-            builder.AppendLine("            throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent);");
+            writer.AppendLine("throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent);");
         }
 
-        private static void EmitTypedErrorResponseHandling(StringBuilder builder, ResponseInfo response)
+        private static void EmitTypedErrorResponseHandling(IndentedStringBuilder writer, ResponseInfo response)
         {
             var errorTypeName = TrimNullableTypeName(response.TypeName);
             switch (response.Kind)
             {
                 case ResponseKind.Json:
-                    builder.AppendLine("                if (string.IsNullOrWhiteSpace(contentType) || OpenApiClientHelpers.HasJsonContentType(contentType))");
-                    builder.AppendLine("                {");
-                    builder.AppendLine("                    try");
-                    builder.AppendLine("                    {");
-                    builder.Append("                        var error = OpenApiClientHelpers.DeserializeResponseContent<").Append(errorTypeName).AppendLine(">(responseContent);");
-                    builder.Append("                        throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, error);");
-                    builder.AppendLine("                    }");
-                    builder.AppendLine("                    catch (JsonException exception)");
-                    builder.AppendLine("                    {");
-                    builder.AppendLine("                        throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent, exception);");
-                    builder.AppendLine("                    }");
-                    builder.AppendLine("                }");
+                    writer.AppendLine("if (string.IsNullOrWhiteSpace(contentType) || OpenApiClientHelpers.HasJsonContentType(contentType))");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        writer.AppendLine("try");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.Append("var error = OpenApiClientHelpers.DeserializeResponseContent<").Append(errorTypeName).AppendLine(">(responseContent);");
+                            writer.Append("throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, error);");
+                        }
+
+                        writer.AppendLine("}");
+                        writer.AppendLine("catch (JsonException exception)");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.AppendLine("throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent, exception);");
+                        }
+
+                        writer.AppendLine("}");
+                    }
+
+                    writer.AppendLine("}");
                     return;
                 case ResponseKind.String:
-                    builder.Append("                throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, responseContent);");
+                    writer.Append("throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, responseContent);");
                     return;
             }
 
         }
 
-        private void EmitRouteTemplate(StringBuilder builder, string route, IReadOnlyList<ParameterInfo> pathParameters)
+        private void EmitRouteTemplate(IndentedStringBuilder writer, string route, IReadOnlyList<ParameterInfo> pathParameters)
         {
             var parameterLookup = pathParameters
                 .Where(static parameter => !string.IsNullOrEmpty(parameter.SerializedName))
@@ -228,41 +268,43 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 var openBraceIndex = route.IndexOf('{', startIndex);
                 if (openBraceIndex < 0)
                 {
-                    EmitRouteLiteral(builder, route.Substring(startIndex));
+                    EmitRouteLiteral(writer, route.Substring(startIndex));
                     break;
                 }
 
                 var closeBraceIndex = route.IndexOf('}', openBraceIndex + 1);
                 if (closeBraceIndex < 0)
                 {
-                    EmitRouteLiteral(builder, route.Substring(startIndex));
+                    EmitRouteLiteral(writer, route.Substring(startIndex));
                     break;
                 }
 
-                EmitRouteLiteral(builder, route.Substring(startIndex, openBraceIndex - startIndex));
+                EmitRouteLiteral(writer, route.Substring(startIndex, openBraceIndex - startIndex));
 
                 var parameterName = route.Substring(openBraceIndex + 1, closeBraceIndex - openBraceIndex - 1);
                 if (parameterLookup.TryGetValue(parameterName, out var parameter))
                 {
-                    builder.AppendLine($"        pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter({parameter.ParameterName})));");
+                    writer.Append("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(")
+                        .Append(parameter.ParameterName)
+                        .AppendLine(")));");
                 }
                 else
                 {
-                    EmitRouteLiteral(builder, route.Substring(openBraceIndex, closeBraceIndex - openBraceIndex + 1));
+                    EmitRouteLiteral(writer, route.Substring(openBraceIndex, closeBraceIndex - openBraceIndex + 1));
                 }
 
                 startIndex = closeBraceIndex + 1;
             }
         }
 
-        private static void EmitRouteLiteral(StringBuilder builder, string segment)
+        private static void EmitRouteLiteral(IndentedStringBuilder writer, string segment)
         {
             if (segment.Length == 0)
             {
                 return;
             }
 
-            builder.Append("        pathBuilder.Append(\"").Append(EscapeStringLiteral(segment)).AppendLine("\");");
+            writer.Append("pathBuilder.Append(\"").Append(EscapeStringLiteral(segment)).AppendLine("\");");
         }
 
         private static string NormalizeRelativeRoute(string route)
