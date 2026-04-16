@@ -209,7 +209,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)");
                 using (writer.PushIndent())
                 {
-                    writer.AppendLine("?? throw new InvalidOperationException(\"The response body was empty.\");");
+                    writer.AppendLine("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);");
                 }
             }
             else
