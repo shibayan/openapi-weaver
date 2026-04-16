@@ -295,22 +295,14 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             var identity = GetSchemaIdentity(schema);
-            if (_inlineSchemaNames.TryGetValue(identity, out var inlineTypeName))
+            if (_inlineSchemasByIdentity.TryGetValue(identity, out var existingInlineSchema))
             {
-                foreach (var existingInlineSchema in _inlineSchemas)
-                {
-                    if (existingInlineSchema.TypeName == inlineTypeName)
-                    {
-                        inlineSchema = existingInlineSchema;
-                        return true;
-                    }
-                }
-
-                throw new InvalidOperationException($"Inline schema '{inlineTypeName}' was not registered.");
+                inlineSchema = existingInlineSchema;
+                return true;
             }
 
             inlineSchema = AllocateInlineSchema(parentTypeName, suggestedTypeName, schema);
-            _inlineSchemaNames.Add(identity, inlineSchema.TypeName);
+            _inlineSchemasByIdentity.Add(identity, inlineSchema);
             _inlineSchemas.Add(inlineSchema);
             return true;
         }
@@ -395,9 +387,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 return required && !IsNullableSchema(schema) ? schemaName : $"{schemaName}?";
             }
 
-            if (_inlineSchemaNames.TryGetValue(GetSchemaIdentity(schema), out var inlineSchemaName))
+            if (_inlineSchemasByIdentity.TryGetValue(GetSchemaIdentity(schema), out var inlineSchema))
             {
-                return required && !IsNullableSchema(schema) ? inlineSchemaName : $"{inlineSchemaName}?";
+                return required && !IsNullableSchema(schema) ? inlineSchema.TypeName : $"{inlineSchema.TypeName}?";
             }
 
             if (TryResolveCompositeTypeName(schema, required, out var compositeTypeName))

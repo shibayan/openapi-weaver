@@ -10,7 +10,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private readonly OpenApiDocument _document;
         private readonly string _clientName;
         private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, string> _inlineSchemaNames = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, InlineSchemaInfo> _inlineSchemasByIdentity = new(StringComparer.Ordinal);
         private readonly HashSet<string> _usedSchemaTypeNames = new(StringComparer.Ordinal);
         private readonly List<InlineSchemaInfo> _inlineSchemas = [];
         private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);

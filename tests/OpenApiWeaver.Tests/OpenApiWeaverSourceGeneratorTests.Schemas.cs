@@ -148,7 +148,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
 
         Assert.Contains("public async Task<IReadOnlyList<string>> ListTagsAsync(CancellationToken cancellationToken = default)", source);
         Assert.Contains("return await response.Content.ReadFromJsonAsync<IReadOnlyList<string>>(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)", source);
-        Assert.Contains("?? throw new InvalidOperationException(\"The response body was empty.\");", source);
+        Assert.Contains("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);", source);
     }
 
     [Fact]
