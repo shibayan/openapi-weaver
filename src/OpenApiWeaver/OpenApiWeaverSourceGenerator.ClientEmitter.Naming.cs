@@ -22,27 +22,47 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private bool IsGeneratedEnumType(string typeName)
         {
-            var trimmedTypeName = TrimNullableTypeName(typeName);
-            foreach (var schema in model.Schemas)
-            {
-                if (schema.IsEnum && string.Equals(schema.TypeName, trimmedTypeName, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _generatedEnumTypeNames.Contains(TrimNullableTypeName(typeName));
         }
 
         private static string EscapeStringLiteral(string value)
         {
-            return value
-                .Replace("\\", "\\\\")
-                .Replace("\"", "\\\"")
-                .Replace("\n", "\\n")
-                .Replace("\r", "\\r")
-                .Replace("\t", "\\t")
-                .Replace("\0", "\\0");
+            if (string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            StringBuilder? builder = null;
+            for (var i = 0; i < value.Length; i++)
+            {
+                var ch = value[i];
+                var replacement = ch switch
+                {
+                    '\\' => "\\\\",
+                    '"' => "\\\"",
+                    '\n' => "\\n",
+                    '\r' => "\\r",
+                    '\t' => "\\t",
+                    '\0' => "\\0",
+                    _ => null
+                };
+
+                if (replacement is null)
+                {
+                    builder?.Append(ch);
+                    continue;
+                }
+
+                if (builder is null)
+                {
+                    builder = new StringBuilder(value.Length + 4);
+                    builder.Append(value, 0, i);
+                }
+
+                builder.Append(replacement);
+            }
+
+            return builder?.ToString() ?? value;
         }
 
         private static void EmitSecuritySchemeInitialization(IndentedStringBuilder writer, SecuritySchemeBinding securityScheme)

@@ -7,6 +7,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
     private sealed partial class ClientEmitter(ClientModel model)
     {
         private List<SecuritySchemeBinding> _querySecuritySchemes = null!;
+        private HashSet<string> _generatedEnumTypeNames = null!;
 
         private bool _needsFormUrlEncoded;
         private bool _needsMultipartFormData;
@@ -15,6 +16,15 @@ public sealed partial class OpenApiWeaverSourceGenerator
         public string Emit()
         {
             _querySecuritySchemes = model.SecuritySchemes.Where(static scheme => scheme.Location == SecuritySchemeLocation.Query).ToList();
+            _generatedEnumTypeNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var schema in model.Schemas)
+            {
+                if (schema.IsEnum)
+                {
+                    _generatedEnumTypeNames.Add(schema.TypeName);
+                }
+            }
+
             AnalyzeRequiredHelpers();
 
             var builder = new StringBuilder();
