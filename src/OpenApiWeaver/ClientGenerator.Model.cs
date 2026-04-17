@@ -1,6 +1,6 @@
 ﻿namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
     private sealed class ClientModel(
         string rootNamespace,

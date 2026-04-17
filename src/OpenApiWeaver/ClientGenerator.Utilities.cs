@@ -2,7 +2,7 @@
 
 namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
     private static readonly HashSet<string> s_reservedIdentifiers = new(StringComparer.Ordinal)
     {
@@ -82,8 +82,22 @@ public sealed partial class OpenApiWeaverSourceGenerator
             normalized.Append(ch);
         }
 
-        var parts = normalized.ToString().Split([' '], StringSplitOptions.RemoveEmptyEntries);
-        return string.Concat(parts.Select(static part => char.ToUpperInvariant(part[0]) + part.Substring(1).ToLowerInvariant()));
+        var result = new StringBuilder(normalized.Length);
+        var atWordStart = true;
+        for (var i = 0; i < normalized.Length; i++)
+        {
+            var ch = normalized[i];
+            if (ch == ' ')
+            {
+                atWordStart = true;
+                continue;
+            }
+
+            result.Append(atWordStart ? char.ToUpperInvariant(ch) : char.ToLowerInvariant(ch));
+            atWordStart = false;
+        }
+
+        return result.ToString();
     }
 
     private static string ToCamelCase(string value)

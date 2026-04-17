@@ -9,87 +9,111 @@ using Microsoft.OpenApi.YamlReader;
 namespace OpenApiWeaver;
 
 [Generator]
-public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
+public sealed partial class ClientGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var openApiFiles = context.AdditionalTextsProvider
             .Where(static file => IsOpenApiDocument(file.Path))
             .Combine(context.AnalyzerConfigOptionsProvider)
-            .Select(static (pair, _) => TryCreateInput(pair.Left, pair.Right))
+            .Select(static (pair, cancellationToken) => TryCreateInput(pair.Left, pair.Right, cancellationToken))
             .Where(static input => input is not null);
 
         context.RegisterSourceOutput(openApiFiles, static (productionContext, input) =>
         {
-            var file = input!.File;
-            var sourceText = file.GetText(productionContext.CancellationToken);
-            var content = sourceText?.ToString();
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                productionContext.ReportDiagnostic(Diagnostic.Create(Diagnostics.DocumentEmpty, Location.None, file.Path));
-                return;
-            }
-
-            ReadResult readResult;
-            try
-            {
-                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content), writable: false);
-                readResult = ReadOpenApiDocument(file.Path, stream);
-            }
-            catch (Exception exception)
-            {
-                productionContext.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.DocumentInvalid,
-                    Location.None,
-                    file.Path,
-                    exception.Message));
-                return;
-            }
-
-            var document = readResult.Document;
-            var diagnostic = readResult.Diagnostic;
-            if (document?.Paths is null)
-            {
-                productionContext.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.DocumentInvalid,
-                    Location.None,
-                    file.Path,
-                    "The document does not contain valid paths or could not be loaded."));
-                return;
-            }
-
-            if (diagnostic?.Errors.Count > 0)
-            {
-                productionContext.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.DocumentHasWarnings,
-                    Location.None,
-                    file.Path,
-                    string.Join(", ", diagnostic.Errors.Select(static error => error.Message))));
-            }
-
-            try
-            {
-                var model = new DocumentTransformer(file.Path, input.RootNamespace, input.Namespace, input.ClientName, document).Transform();
-                var source = new ClientEmitter(model).Emit();
-                productionContext.AddSource($"{SanitizeHintName(file.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
-            }
-            catch (UnsupportedGenerationException exception)
-            {
-                productionContext.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.DocumentUnsupported,
-                    Location.None,
-                    file.Path,
-                    exception.Message));
-            }
-            catch (Exception exception)
-            {
-                productionContext.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.DocumentInvalid,
-                    Location.None,
-                    file.Path,
-                    exception.Message));
-            }
+            EmitClientSource(productionContext, input!);
         });
+
+        var namespaces = openApiFiles
+            .Select(static (input, _) => input!.RootNamespace)
+            .Collect()
+            .SelectMany(static (items, _) => items.Distinct(StringComparer.Ordinal));
+
+        context.RegisterSourceOutput(namespaces, static (productionContext, rootNamespace) =>
+        {
+            var source = SupportTypesEmitter.Emit(rootNamespace);
+            var hintName = string.IsNullOrEmpty(rootNamespace)
+                ? "OpenApiWeaver.Support.g.cs"
+                : $"{SanitizeHintName(rootNamespace)}.Support.g.cs";
+            productionContext.AddSource(hintName, SourceText.From(source, Encoding.UTF8));
+        });
+    }
+
+    private static void EmitClientSource(SourceProductionContext productionContext, GeneratorInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.Content))
+        {
+            productionContext.ReportDiagnostic(Diagnostic.Create(Diagnostics.DocumentEmpty, Location.None, input.Path));
+            return;
+        }
+
+        ReadResult readResult;
+        try
+        {
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(input.Content), writable: false);
+            readResult = ReadOpenApiDocument(input.Path, stream);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            productionContext.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.DocumentInvalid,
+                Location.None,
+                input.Path,
+                exception.Message));
+            return;
+        }
+
+        var document = readResult.Document;
+        var diagnostic = readResult.Diagnostic;
+        if (document?.Paths is null)
+        {
+            productionContext.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.DocumentInvalid,
+                Location.None,
+                input.Path,
+                "The document does not contain valid paths or could not be loaded."));
+            return;
+        }
+
+        if (diagnostic?.Errors.Count > 0)
+        {
+            productionContext.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.DocumentHasWarnings,
+                Location.None,
+                input.Path,
+                string.Join(", ", diagnostic.Errors.Select(static error => error.Message))));
+        }
+
+        try
+        {
+            var model = new Transformer(input.Path, input.RootNamespace, input.ClientName, document).Transform();
+            var source = new Emitter(model).Emit();
+            productionContext.AddSource($"{SanitizeHintName(input.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (UnsupportedGenerationException exception)
+        {
+            productionContext.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.DocumentUnsupported,
+                Location.None,
+                input.Path,
+                exception.Message));
+        }
+        catch (Exception exception)
+        {
+            productionContext.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.DocumentInvalid,
+                Location.None,
+                input.Path,
+                exception.Message));
+        }
     }
 
     private static bool IsOpenApiDocument(string path)
@@ -100,14 +124,12 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static GeneratorInput? TryCreateInput(AdditionalText file, AnalyzerConfigOptionsProvider optionsProvider)
+    private static GeneratorInput? TryCreateInput(AdditionalText file, AnalyzerConfigOptionsProvider optionsProvider, CancellationToken cancellationToken)
     {
         if (!IsOpenApiDocument(file.Path))
         {
             return null;
         }
-
-        optionsProvider.GlobalOptions.TryGetValue(BuildPropertyRootNamespace, out var rootNamespace);
 
         var fileOptions = optionsProvider.GetOptions(file);
         if (!fileOptions.TryGetValue(BuildMetadataAdditionalFilesItemKind, out var itemKind)
@@ -116,13 +138,18 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             return null;
         }
 
+        optionsProvider.GlobalOptions.TryGetValue(BuildPropertyRootNamespace, out var rootNamespace);
         fileOptions.TryGetValue(BuildMetadataAdditionalFilesNamespace, out var configuredNamespace);
         fileOptions.TryGetValue(BuildMetadataAdditionalFilesClientName, out var clientName);
 
+        var content = file.GetText(cancellationToken)?.ToString() ?? string.Empty;
+
+        var effectiveNamespace = NormalizeOption(configuredNamespace) ?? rootNamespace ?? string.Empty;
+
         return new GeneratorInput(
-            file,
-            rootNamespace ?? string.Empty,
-            NormalizeOption(configuredNamespace),
+            file.Path,
+            content,
+            effectiveNamespace,
             NormalizeOption(clientName));
     }
 
@@ -202,13 +229,13 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             isEnabledByDefault: true);
     }
 
-    private sealed class GeneratorInput(AdditionalText file, string rootNamespace, string? ns, string? clientName) : IEquatable<GeneratorInput>
+    private sealed class GeneratorInput(string path, string content, string rootNamespace, string? clientName) : IEquatable<GeneratorInput>
     {
-        public AdditionalText File { get; } = file;
+        public string Path { get; } = path;
+
+        public string Content { get; } = content;
 
         public string RootNamespace { get; } = rootNamespace;
-
-        public string? Namespace { get; } = ns;
 
         public string? ClientName { get; } = clientName;
 
@@ -224,9 +251,9 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
                 return true;
             }
 
-            return ReferenceEquals(File, other.File)
+            return string.Equals(Path, other.Path, StringComparison.Ordinal)
+                && string.Equals(Content, other.Content, StringComparison.Ordinal)
                 && string.Equals(RootNamespace, other.RootNamespace, StringComparison.Ordinal)
-                && string.Equals(Namespace, other.Namespace, StringComparison.Ordinal)
                 && string.Equals(ClientName, other.ClientName, StringComparison.Ordinal);
         }
 
@@ -236,9 +263,9 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
         {
             unchecked
             {
-                var hash = File.GetHashCode();
+                var hash = Path.GetHashCode();
+                hash = (hash * 397) ^ Content.GetHashCode();
                 hash = (hash * 397) ^ RootNamespace.GetHashCode();
-                hash = (hash * 397) ^ (Namespace?.GetHashCode() ?? 0);
                 hash = (hash * 397) ^ (ClientName?.GetHashCode() ?? 0);
                 return hash;
             }

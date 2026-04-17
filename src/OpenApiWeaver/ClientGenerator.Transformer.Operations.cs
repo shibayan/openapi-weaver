@@ -2,11 +2,13 @@
 
 using Microsoft.OpenApi;
 
+using OpenApiParameterLocation = Microsoft.OpenApi.ParameterLocation;
+
 namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
-    private sealed partial class DocumentTransformer
+    private sealed partial class Transformer
     {
         private List<TagGroup> BuildTagGroups()
         {
@@ -60,7 +62,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty)),
                     ResolveTypeName(parameter.Schema, parameter.Required),
                     parameter.Required,
-                    MapParameterLocation(parameter.In ?? Microsoft.OpenApi.ParameterLocation.Query),
+                    MapParameterLocation(parameter.In ?? OpenApiParameterLocation.Query),
                     parameter.Description))
                 .ToList();
 
@@ -83,12 +85,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private ResponseInfo ResolveResponse(OpenApiOperation operation)
         {
             var response = SelectSuccessResponse(operation.Responses ?? []);
-            if (response?.Content is null || response.Content.Count == 0)
+            if (response is null || !TrySelectPreferredContent(response.Content, GetResponseContentPriority, out var selectedContent))
             {
                 return new ResponseInfo(ResponseKind.None, string.Empty, null);
             }
-
-            var selectedContent = SelectPreferredContent(response.Content, GetResponseContentPriority);
 
             var kind = ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
             var typeName = kind switch
@@ -132,15 +132,8 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private ResponseInfo? ResolveErrorResponse(IOpenApiResponse response)
         {
-            if (response.Content is null || response.Content.Count == 0)
-            {
-                return null;
-            }
-
-            var selectedContent = SelectPreferredContent(response.Content, GetErrorResponseContentPriority);
-
-            if (selectedContent.Value.Schema is null
-                && !selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+            if (!TrySelectPreferredContent(response.Content, GetErrorResponseContentPriority, out var selectedContent)
+                || !IsUsableErrorContent(selectedContent))
             {
                 return null;
             }
@@ -302,19 +295,19 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     parameterName,
                     $"string? {parameterName} = default",
                     scheme.Name ?? parameterName,
-                    MapLocation(scheme.In ?? Microsoft.OpenApi.ParameterLocation.Header),
+                    MapLocation(scheme.In ?? OpenApiParameterLocation.Header),
                     isBearerToken: false);
             }
 
             return null;
         }
 
-        private static SecuritySchemeLocation MapLocation(Microsoft.OpenApi.ParameterLocation location)
+        private static SecuritySchemeLocation MapLocation(OpenApiParameterLocation location)
         {
             return location switch
             {
-                Microsoft.OpenApi.ParameterLocation.Query => SecuritySchemeLocation.Query,
-                Microsoft.OpenApi.ParameterLocation.Cookie => SecuritySchemeLocation.Cookie,
+                OpenApiParameterLocation.Query => SecuritySchemeLocation.Query,
+                OpenApiParameterLocation.Cookie => SecuritySchemeLocation.Cookie,
                 _ => SecuritySchemeLocation.Header,
             };
         }
@@ -331,7 +324,7 @@ public sealed partial class OpenApiWeaverSourceGenerator
             }
 
             var parameters = new List<IOpenApiParameter>((pathParameters?.Count ?? 0) + (operationParameters?.Count ?? 0));
-            var indices = new Dictionary<(Microsoft.OpenApi.ParameterLocation Location, string Name), int>();
+            var indices = new Dictionary<(OpenApiParameterLocation Location, string Name), int>();
             if (pathParameters is not null)
             {
                 foreach (var parameter in pathParameters)
@@ -353,13 +346,13 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private static void AddOrReplaceParameter(
             List<IOpenApiParameter> parameters,
-            Dictionary<(Microsoft.OpenApi.ParameterLocation Location, string Name), int> indices,
+            Dictionary<(OpenApiParameterLocation Location, string Name), int> indices,
             IOpenApiParameter parameter)
         {
-            var location = parameter.In ?? Microsoft.OpenApi.ParameterLocation.Query;
+            var location = parameter.In ?? OpenApiParameterLocation.Query;
             var key = (
                 location,
-                location == Microsoft.OpenApi.ParameterLocation.Header
+                location == OpenApiParameterLocation.Header
                     ? (parameter.Name ?? string.Empty).ToUpperInvariant()
                     : parameter.Name ?? string.Empty);
             if (indices.TryGetValue(key, out var index))
@@ -415,18 +408,39 @@ public sealed partial class OpenApiWeaverSourceGenerator
             return selected;
         }
 
+        private static bool TrySelectPreferredContent<T>(
+            IDictionary<string, T>? content,
+            Func<KeyValuePair<string, T>, int> getPriority,
+            out KeyValuePair<string, T> selected)
+        {
+            if (content is null || content.Count == 0)
+            {
+                selected = default;
+                return false;
+            }
+
+            selected = SelectPreferredContent(content, getPriority);
+            return true;
+        }
+
+        private static bool IsUsableErrorContent(KeyValuePair<string, IOpenApiMediaType> content)
+        {
+            return content.Value.Schema is not null
+                || content.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string? GetTagName(OpenApiOperation operation)
         {
             return operation.Tags?.FirstOrDefault()?.Name;
         }
 
-        private static ParameterLocation MapParameterLocation(Microsoft.OpenApi.ParameterLocation location)
+        private static ParameterLocation MapParameterLocation(OpenApiParameterLocation location)
         {
             return location switch
             {
-                Microsoft.OpenApi.ParameterLocation.Path => ParameterLocation.Path,
-                Microsoft.OpenApi.ParameterLocation.Header => ParameterLocation.Header,
-                Microsoft.OpenApi.ParameterLocation.Cookie => ParameterLocation.Cookie,
+                OpenApiParameterLocation.Path => ParameterLocation.Path,
+                OpenApiParameterLocation.Header => ParameterLocation.Header,
+                OpenApiParameterLocation.Cookie => ParameterLocation.Cookie,
                 _ => ParameterLocation.Query,
             };
         }

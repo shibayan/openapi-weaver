@@ -1,8 +1,8 @@
 ﻿namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
-    private sealed partial class ClientEmitter
+    private sealed partial class Emitter
     {
         private void EmitOperation(IndentedStringBuilder writer, OperationGroupItem operation)
         {
@@ -280,8 +280,12 @@ public sealed partial class OpenApiWeaverSourceGenerator
                 case ResponseKind.String:
                     writer.Append("throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, responseContent);");
                     return;
+                case ResponseKind.Binary:
+                case ResponseKind.None:
+                    // No typed deserialization: the untyped OpenApiException emitted after the
+                    // dispatch loop handles these response shapes.
+                    return;
             }
-
         }
 
         private void EmitRouteTemplate(IndentedStringBuilder writer, string route, IReadOnlyList<ParameterInfo> pathParameters)

@@ -4,7 +4,7 @@ using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
-public sealed partial class OpenApiWeaverSourceGeneratorTests
+public sealed partial class ClientGeneratorTests
 {
     [Fact]
     public void EmptyDocument_ReportsDiagnostic_AndDoesNotGenerateSource()
@@ -14,7 +14,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("OAW001", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.Empty(result.GeneratedSources);
+        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         var diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("OAW003", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.Empty(result.GeneratedSources);
+        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Equal("OAW004", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("multipart/form-data request bodies must reference a named component schema", diagnostic.GetMessage());
-        Assert.Empty(result.GeneratedSources);
+        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Equal("OAW004", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("additionalProperties or patternProperties", diagnostic.GetMessage());
-        Assert.Empty(result.GeneratedSources);
+        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -156,6 +156,11 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         Assert.Equal("OAW004", diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("uses oneOf/anyOf", diagnostic.GetMessage());
-        Assert.Empty(result.GeneratedSources);
+        AssertNoClientSource(result);
+    }
+
+    private static void AssertNoClientSource(GeneratorTestResult result)
+    {
+        Assert.DoesNotContain(result.GeneratedSources, static source => source.Contains(": IDisposable"));
     }
 }

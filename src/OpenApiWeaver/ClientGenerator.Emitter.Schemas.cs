@@ -1,13 +1,37 @@
 ﻿namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
-    private sealed partial class ClientEmitter
+    private sealed partial class Emitter
     {
+        private Dictionary<string, List<SchemaDefinition>> _nestedSchemasByParent = null!;
+
         private void EmitSchemas(IndentedStringBuilder writer)
         {
-            foreach (var schema in model.Schemas.Where(static schema => schema.ParentTypeName is null))
+            _nestedSchemasByParent = new Dictionary<string, List<SchemaDefinition>>(StringComparer.Ordinal);
+            foreach (var schema in model.Schemas)
             {
+                if (schema.ParentTypeName is null)
+                {
+                    continue;
+                }
+
+                if (!_nestedSchemasByParent.TryGetValue(schema.ParentTypeName, out var children))
+                {
+                    children = [];
+                    _nestedSchemasByParent[schema.ParentTypeName] = children;
+                }
+
+                children.Add(schema);
+            }
+
+            foreach (var schema in model.Schemas)
+            {
+                if (schema.ParentTypeName is not null)
+                {
+                    continue;
+                }
+
                 EmitSchemaDefinition(writer, schema);
                 writer.AppendLine();
             }
@@ -58,11 +82,13 @@ public sealed partial class OpenApiWeaverSourceGenerator
                     writer.Append("public ").Append(requiredModifier).Append(property.TypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
                 }
 
-                var nestedSchemas = model.Schemas.Where(child => string.Equals(child.ParentTypeName, schema.TypeName, StringComparison.Ordinal)).ToList();
-                foreach (var nestedSchema in nestedSchemas)
+                if (_nestedSchemasByParent.TryGetValue(schema.TypeName, out var nestedSchemas))
                 {
-                    writer.AppendLine();
-                    EmitSchemaDefinition(writer, nestedSchema);
+                    foreach (var nestedSchema in nestedSchemas)
+                    {
+                        writer.AppendLine();
+                        EmitSchemaDefinition(writer, nestedSchema);
+                    }
                 }
             }
 

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
-public sealed partial class OpenApiWeaverSourceGeneratorTests
+public sealed partial class ClientGeneratorTests
 {
     [Fact]
     public void QueryApiKeySecurityScheme_GeneratesConstructorParameter_AndAppendsToPath()

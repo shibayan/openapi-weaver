@@ -11,7 +11,7 @@ using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
-public sealed partial class OpenApiWeaverSourceGeneratorTests
+public sealed partial class ClientGeneratorTests
 {
     private const string BuildMetadataAdditionalFilesClientName = "build_metadata.AdditionalFiles.ClientName";
     private const string BuildMetadataAdditionalFilesNamespace = "build_metadata.AdditionalFiles.Namespace";
@@ -22,14 +22,14 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
     {
         var result = RunGenerator(openApi);
         Assert.DoesNotContain(result.Diagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-        return Assert.Single(result.GeneratedSources);
+        return string.Join(Environment.NewLine, result.GeneratedSources);
     }
 
     private static string GenerateSource(string openApi, IReadOnlyDictionary<string, string> additionalFileOptions)
     {
         var result = RunGenerator(openApi, additionalFileOptions);
         Assert.DoesNotContain(result.Diagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-        return Assert.Single(result.GeneratedSources);
+        return string.Join(Environment.NewLine, result.GeneratedSources);
     }
 
     private static readonly ImmutableArray<MetadataReference> s_metadataReferences = [..
@@ -43,7 +43,7 @@ public sealed partial class OpenApiWeaverSourceGeneratorTests
         IReadOnlyDictionary<string, string>? additionalFileOptions = null,
         bool isOpenApiWeaverDocument = true)
     {
-        var generator = new OpenApiWeaverSourceGenerator();
+        var generator = new ClientGenerator();
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
         var syntaxTree = CSharpSyntaxTree.ParseText("public sealed class Marker {}", parseOptions);
 
