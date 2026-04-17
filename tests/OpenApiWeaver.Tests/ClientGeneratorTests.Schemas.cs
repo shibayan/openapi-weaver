@@ -188,6 +188,158 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void DiscriminatorSchema_GeneratesPolymorphicBaseAndDerivedTypes()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                animal:
+                  type: object
+                  discriminator:
+                    propertyName: kind
+                    mapping:
+                      dog: '#/components/schemas/dog'
+                      cat: '#/components/schemas/cat'
+                  oneOf:
+                    - $ref: '#/components/schemas/dog'
+                    - $ref: '#/components/schemas/cat'
+                  required:
+                    - kind
+                    - name
+                  properties:
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                dog:
+                  allOf:
+                    - $ref: '#/components/schemas/animal'
+                    - type: object
+                      required:
+                        - kind
+                        - barks
+                      properties:
+                        kind:
+                          type: string
+                        barks:
+                          type: boolean
+                cat:
+                  allOf:
+                    - $ref: '#/components/schemas/animal'
+                    - type: object
+                      required:
+                        - kind
+                        - lives
+                      properties:
+                        kind:
+                          type: string
+                        lives:
+                          type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"kind\")]", source);
+        Assert.Contains("[JsonDerivedType(typeof(Dog), typeDiscriminator: \"dog\")]", source);
+        Assert.Contains("[JsonDerivedType(typeof(Cat), typeDiscriminator: \"cat\")]", source);
+        Assert.Contains("public class Animal", source);
+        Assert.Contains("public sealed class Dog : Animal", source);
+        Assert.Contains("public sealed class Cat : Animal", source);
+        Assert.Contains("public required string Name { get; init; }", source);
+        Assert.Contains("public required bool Barks { get; init; }", source);
+        Assert.Contains("public required int Lives { get; init; }", source);
+        Assert.DoesNotContain("[JsonPropertyName(\"kind\")]", source);
+        Assert.Equal(1, source.Split("public required string Name { get; init; }").Length - 1);
+    }
+
+    [Fact]
+    public void DiscriminatorSchema_WithoutMapping_UsesReferencedSchemaNames()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                vehicle:
+                  type: object
+                  discriminator:
+                    propertyName: vehicle_type
+                  oneOf:
+                    - $ref: '#/components/schemas/car'
+                    - $ref: '#/components/schemas/truck'
+                car:
+                  allOf:
+                    - $ref: '#/components/schemas/vehicle'
+                    - type: object
+                      properties:
+                        seat_count:
+                          type: integer
+                truck:
+                  allOf:
+                    - $ref: '#/components/schemas/vehicle'
+                    - type: object
+                      properties:
+                        payload_kg:
+                          type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonDerivedType(typeof(Car), typeDiscriminator: \"car\")]", source);
+        Assert.Contains("[JsonDerivedType(typeof(Truck), typeDiscriminator: \"truck\")]", source);
+    }
+
+    [Fact]
+    public void DiscriminatorSchema_WithPartialMapping_UsesMappingValueAndSchemaNameFallback()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                shape:
+                  type: object
+                  discriminator:
+                    propertyName: kind
+                    mapping:
+                      round: '#/components/schemas/circle'
+                  oneOf:
+                    - $ref: '#/components/schemas/circle'
+                    - $ref: '#/components/schemas/square'
+                circle:
+                  allOf:
+                    - $ref: '#/components/schemas/shape'
+                    - type: object
+                      properties:
+                        radius:
+                          type: number
+                square:
+                  allOf:
+                    - $ref: '#/components/schemas/shape'
+                    - type: object
+                      properties:
+                        side:
+                          type: number
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonDerivedType(typeof(Circle), typeDiscriminator: \"round\")]", source);
+        Assert.Contains("[JsonDerivedType(typeof(Square), typeDiscriminator: \"square\")]", source);
+    }
+
+    [Fact]
     public void AdditionalPropertiesSchema_GeneratesDictionaryBackedType()
     {
         const string openApi = """

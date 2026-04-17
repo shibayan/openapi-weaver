@@ -54,13 +54,29 @@ public sealed partial class ClientGenerator
                 writer,
                 summary: schema.Summary,
                 remarks: schema.Description);
+
+            if (schema.IsPolymorphicBase)
+            {
+                writer.Append("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"").Append(EscapeStringLiteral(schema.DiscriminatorPropertyName!)).AppendLine("\")]");
+                foreach (var derivedType in schema.DerivedTypes)
+                {
+                    writer.Append("[JsonDerivedType(typeof(").Append(derivedType.TypeName).Append("), typeDiscriminator: \"").Append(EscapeStringLiteral(derivedType.DiscriminatorValue)).AppendLine("\")]");
+                }
+            }
+
             if (schema.DictionaryValueType is not null)
             {
                 writer.Append("public sealed class ").Append(schema.DeclaredTypeName).Append(" : Dictionary<string, ").Append(schema.DictionaryValueType).AppendLine(">");
             }
             else
             {
-                writer.Append("public sealed class ").Append(schema.DeclaredTypeName).AppendLine();
+                writer.Append(schema.IsPolymorphicBase ? "public class " : "public sealed class ").Append(schema.DeclaredTypeName);
+                if (!string.IsNullOrWhiteSpace(schema.BaseTypeName))
+                {
+                    writer.Append(" : ").Append(schema.BaseTypeName);
+                }
+
+                writer.AppendLine();
             }
 
             writer.AppendLine("{");
