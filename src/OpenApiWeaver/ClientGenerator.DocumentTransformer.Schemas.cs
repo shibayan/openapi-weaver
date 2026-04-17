@@ -4,7 +4,7 @@ using Microsoft.OpenApi;
 
 namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
     private sealed partial class DocumentTransformer
     {
@@ -125,12 +125,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
         private void RegisterRequestBodyInlineSchema(IOpenApiRequestBody? requestBody, string operationName)
         {
-            if (requestBody?.Content is null || requestBody.Content.Count == 0)
+            if (requestBody is null || !TrySelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority, out var selectedContent))
             {
                 return;
             }
-
-            var selectedContent = SelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority);
 
             RegisterOperationInlineSchema(selectedContent.Value.Schema, operationName, "Body");
         }
@@ -138,12 +136,10 @@ public sealed partial class OpenApiWeaverSourceGenerator
         private void RegisterResponseInlineSchema(OpenApiOperation operation, string operationName)
         {
             var response = SelectSuccessResponse(operation.Responses ?? []);
-            if (response?.Content is null || response.Content.Count == 0)
+            if (response is null || !TrySelectPreferredContent(response.Content, GetResponseContentPriority, out var selectedContent))
             {
                 return;
             }
-
-            var selectedContent = SelectPreferredContent(response.Content, GetResponseContentPriority);
 
             RegisterOperationInlineSchema(selectedContent.Value.Schema, operationName, "Response");
         }
@@ -157,15 +153,9 @@ public sealed partial class OpenApiWeaverSourceGenerator
 
             foreach (var item in operation.Responses)
             {
-                if (IsSuccessResponseStatus(item.Key) || item.Value.Content is null || item.Value.Content.Count == 0)
-                {
-                    continue;
-                }
-
-                var selectedContent = SelectPreferredContent(item.Value.Content, GetErrorResponseContentPriority);
-
-                if (selectedContent.Value.Schema is null
-                    && !selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                if (IsSuccessResponseStatus(item.Key)
+                    || !TrySelectPreferredContent(item.Value.Content, GetErrorResponseContentPriority, out var selectedContent)
+                    || !IsUsableErrorContent(selectedContent))
                 {
                     continue;
                 }

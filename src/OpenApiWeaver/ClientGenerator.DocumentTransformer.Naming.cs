@@ -4,7 +4,7 @@ using Microsoft.OpenApi;
 
 namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
     private sealed partial class DocumentTransformer
     {

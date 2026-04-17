@@ -2,18 +2,16 @@
 
 namespace OpenApiWeaver;
 
-public sealed partial class OpenApiWeaverSourceGenerator
+public sealed partial class ClientGenerator
 {
     private sealed partial class DocumentTransformer
     {
         private RequestBodyInfo? ResolveRequestBody(IOpenApiRequestBody? requestBody)
         {
-            if (requestBody?.Content is null || requestBody.Content.Count == 0)
+            if (requestBody is null || !TrySelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority, out var selectedContent))
             {
                 return null;
             }
-
-            var selectedContent = SelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority);
 
             var kind = ResolveRequestBodyKind(selectedContent.Key);
             return new RequestBodyInfo(
