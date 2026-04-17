@@ -6,7 +6,7 @@ namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class DocumentTransformer
+    private sealed partial class Transformer
     {
         private static string BuildClientName(string documentPath, OpenApiDocument document, string? configuredClientName)
         {

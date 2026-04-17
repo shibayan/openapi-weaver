@@ -8,7 +8,7 @@ namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class DocumentTransformer
+    private sealed partial class Transformer
     {
         private List<TagGroup> BuildTagGroups()
         {

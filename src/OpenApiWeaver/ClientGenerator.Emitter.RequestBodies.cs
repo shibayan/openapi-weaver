@@ -2,7 +2,7 @@
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class ClientEmitter
+    private sealed partial class Emitter
     {
         private void EmitRequestBodyContentAssignment(IndentedStringBuilder writer, RequestBodyInfo requestBody, bool nullableBody)
         {

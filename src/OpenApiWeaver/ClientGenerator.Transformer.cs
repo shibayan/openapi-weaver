@@ -4,7 +4,7 @@ namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class DocumentTransformer
+    private sealed partial class Transformer
     {
         private readonly string _rootNamespace;
         private readonly OpenApiDocument _document;
@@ -15,7 +15,7 @@ public sealed partial class ClientGenerator
         private readonly List<InlineSchemaInfo> _inlineSchemas = [];
         private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);
 
-        public DocumentTransformer(string documentPath, string rootNamespace, string? clientNameOverride, OpenApiDocument document)
+        public Transformer(string documentPath, string rootNamespace, string? clientNameOverride, OpenApiDocument document)
         {
             _rootNamespace = rootNamespace;
             _document = document;

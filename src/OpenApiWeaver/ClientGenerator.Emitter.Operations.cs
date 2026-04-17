@@ -2,7 +2,7 @@
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class ClientEmitter
+    private sealed partial class Emitter
     {
         private void EmitOperation(IndentedStringBuilder writer, OperationGroupItem operation)
         {

@@ -4,7 +4,7 @@ namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class ClientEmitter(ClientModel model)
+    private sealed partial class Emitter(ClientModel model)
     {
         private List<SecuritySchemeBinding> _querySecuritySchemes = null!;
         private HashSet<string> _generatedEnumTypeNames = null!;

@@ -90,8 +90,8 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
 
         try
         {
-            var model = new DocumentTransformer(input.Path, input.RootNamespace, input.ClientName, document).Transform();
-            var source = new ClientEmitter(model).Emit();
+            var model = new Transformer(input.Path, input.RootNamespace, input.ClientName, document).Transform();
+            var source = new Emitter(model).Emit();
             productionContext.AddSource($"{SanitizeHintName(input.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
         }
         catch (OperationCanceledException)

@@ -4,7 +4,7 @@ namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {
-    private sealed partial class ClientEmitter
+    private sealed partial class Emitter
     {
         private static void EmitDocComment(
             IndentedStringBuilder writer,
