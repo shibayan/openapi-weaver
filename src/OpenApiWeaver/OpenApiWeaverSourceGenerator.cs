@@ -14,6 +14,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var openApiFiles = context.AdditionalTextsProvider
+            .Where(static file => IsOpenApiDocument(file.Path))
             .Combine(context.AnalyzerConfigOptionsProvider)
             .Select(static (pair, _) => TryCreateInput(pair.Left, pair.Right))
             .Where(static input => input is not null);
@@ -201,7 +202,7 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
             isEnabledByDefault: true);
     }
 
-    private sealed class GeneratorInput(AdditionalText file, string rootNamespace, string? ns, string? clientName)
+    private sealed class GeneratorInput(AdditionalText file, string rootNamespace, string? ns, string? clientName) : IEquatable<GeneratorInput>
     {
         public AdditionalText File { get; } = file;
 
@@ -210,6 +211,38 @@ public sealed partial class OpenApiWeaverSourceGenerator : IIncrementalGenerator
         public string? Namespace { get; } = ns;
 
         public string? ClientName { get; } = clientName;
+
+        public bool Equals(GeneratorInput? other)
+        {
+            if (other is null)
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(this, other))
+            {
+                return true;
+            }
+
+            return ReferenceEquals(File, other.File)
+                && string.Equals(RootNamespace, other.RootNamespace, StringComparison.Ordinal)
+                && string.Equals(Namespace, other.Namespace, StringComparison.Ordinal)
+                && string.Equals(ClientName, other.ClientName, StringComparison.Ordinal);
+        }
+
+        public override bool Equals(object? obj) => Equals(obj as GeneratorInput);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hash = File.GetHashCode();
+                hash = (hash * 397) ^ RootNamespace.GetHashCode();
+                hash = (hash * 397) ^ (Namespace?.GetHashCode() ?? 0);
+                hash = (hash * 397) ^ (ClientName?.GetHashCode() ?? 0);
+                return hash;
+            }
+        }
     }
 
     private sealed class UnsupportedGenerationException(string message) : Exception(message);
