@@ -59,11 +59,39 @@ public sealed partial class ClientGenerator
         public ResponseInfo Response { get; } = response;
     }
 
-    private sealed class ParameterInfo(string serializedName, string parameterName, string typeName, bool required, ParameterLocation location, string? description)
+    private enum TypeShape
     {
-        public string SerializedName { get; } = serializedName;
+        Primitive,
+        String,
+        Enum,
+        Object,
+        Array,
+        Dictionary,
+        Binary,
+        JsonElement
+    }
+
+    private sealed class TypeUsage(string nonNullableCSharpTypeName, TypeShape shape, bool schemaAllowsNull, bool isOptional)
+    {
+        public string NonNullableCSharpTypeName { get; } = nonNullableCSharpTypeName;
+        public TypeShape Shape { get; } = shape;
+        public bool SchemaAllowsNull { get; } = schemaAllowsNull;
+        public bool IsOptional { get; } = isOptional;
+        public bool CanBeNullInCSharp { get; } = schemaAllowsNull || isOptional;
+        public string CSharpTypeName { get; } = schemaAllowsNull || isOptional
+            ? MakeNullableTypeName(nonNullableCSharpTypeName)
+            : nonNullableCSharpTypeName;
+        public bool RequiresNonNullJsonResponse { get; } = !schemaAllowsNull
+            && !isOptional
+            && shape is TypeShape.String or TypeShape.Object or TypeShape.Array or TypeShape.Dictionary;
+    }
+
+    private sealed class ParameterInfo(string wireName, string parameterName, TypeUsage type, bool required, ParameterLocation location, string? description)
+    {
+        public string WireName { get; } = wireName;
         public string ParameterName { get; } = parameterName;
-        public string TypeName { get; } = typeName;
+        public TypeUsage Type { get; } = type;
+        public string ParameterTypeName { get; } = type.CSharpTypeName;
         public bool Required { get; } = required;
         public ParameterLocation Location { get; } = location;
         public string? Description { get; } = description;
@@ -84,7 +112,7 @@ public sealed partial class ClientGenerator
         string? enumUnderlyingType,
         IReadOnlyList<SchemaEnumMemberDefinition> enumMembers)
     {
-        public string TypeName { get; } = typeName;
+        public string QualifiedTypeName { get; } = typeName;
         public string DeclaredTypeName { get; } = declaredTypeName;
         public string? ParentTypeName { get; } = parentTypeName;
         public string? BaseTypeName { get; } = baseTypeName;
@@ -121,16 +149,17 @@ public sealed partial class ClientGenerator
     }
 
     private sealed class SchemaPropertyDefinition(
-        string jsonName,
+        string jsonPropertyName,
         string propertyName,
-        string typeName,
+        TypeUsage type,
         bool required,
         string summary,
         string? description)
     {
-        public string JsonName { get; } = jsonName;
+        public string JsonPropertyName { get; } = jsonPropertyName;
         public string PropertyName { get; } = propertyName;
-        public string TypeName { get; } = typeName;
+        public TypeUsage Type { get; } = type;
+        public string PropertyTypeName { get; } = type.CSharpTypeName;
         public bool Required { get; } = required;
         public string Summary { get; } = summary;
         public string? Description { get; } = description;
@@ -155,22 +184,26 @@ public sealed partial class ClientGenerator
 
     private sealed class RequestBodyInfo(
         RequestBodyKind kind,
-        string typeName,
+        TypeUsage type,
+        string parameterName,
         bool isRequired,
         string? description,
         IReadOnlyList<RequestBodyPropertyInfo> properties)
     {
         public RequestBodyKind Kind { get; } = kind;
-        public string TypeName { get; } = typeName;
+        public TypeUsage Type { get; } = type;
+        public string BodyTypeName { get; } = type.CSharpTypeName;
+        public string ParameterName { get; } = parameterName;
         public bool IsRequired { get; } = isRequired;
         public string? Description { get; } = description;
         public IReadOnlyList<RequestBodyPropertyInfo> Properties { get; } = properties;
     }
 
-    private sealed class ResponseInfo(ResponseKind kind, string typeName, string? documentation)
+    private sealed class ResponseInfo(ResponseKind kind, TypeUsage? type, string? documentation)
     {
         public ResponseKind Kind { get; } = kind;
-        public string TypeName { get; } = typeName;
+        public TypeUsage? Type { get; } = type;
+        public string ResponseTypeName { get; } = type?.CSharpTypeName ?? string.Empty;
         public string? Documentation { get; } = documentation;
     }
 
@@ -204,13 +237,13 @@ public sealed partial class ClientGenerator
         Collection
     }
 
-    private sealed class RequestBodyPropertyInfo(string serializedName, string propertyName, RequestBodyValueKind kind, bool nullable, RequestBodyValueKind? elementKind = null, bool elementNullable = false)
+    private sealed class RequestBodyPropertyInfo(string wireName, string propertyName, RequestBodyValueKind kind, bool isNullable, RequestBodyValueKind? elementKind = null, bool isElementNullable = false)
     {
-        public string SerializedName { get; } = serializedName;
+        public string WireName { get; } = wireName;
         public string PropertyName { get; } = propertyName;
         public RequestBodyValueKind Kind { get; } = kind;
-        public bool Nullable { get; } = nullable;
+        public bool IsNullable { get; } = isNullable;
         public RequestBodyValueKind? ElementKind { get; } = elementKind;
-        public bool ElementNullable { get; } = elementNullable;
+        public bool IsElementNullable { get; } = isElementNullable;
     }
 }

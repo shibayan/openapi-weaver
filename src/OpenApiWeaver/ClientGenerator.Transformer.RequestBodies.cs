@@ -6,7 +6,7 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Transformer
     {
-        private RequestBodyInfo? ResolveRequestBody(IOpenApiRequestBody? requestBody)
+        private RequestBodyInfo? ResolveRequestBody(IOpenApiRequestBody? requestBody, ISet<string> usedParameterNames)
         {
             if (requestBody is null || !TrySelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority, out var selectedContent))
             {
@@ -16,7 +16,8 @@ public sealed partial class ClientGenerator
             var kind = ResolveRequestBodyKind(selectedContent.Key);
             return new RequestBodyInfo(
                 kind,
-                ResolveTypeName(selectedContent.Value.Schema, requestBody.Required),
+                ResolveTypeUsage(selectedContent.Value.Schema, requestBody.Required),
+                AllocateUniqueName(usedParameterNames, "body", "body"),
                 requestBody.Required,
                 requestBody.Description,
                 kind == RequestBodyKind.Json ? [] : GetSupportedRequestBodyProperties(kind, selectedContent.Value.Schema));
@@ -47,22 +48,26 @@ public sealed partial class ClientGenerator
 
             var properties = GetSchemaProperties(resolvedSchema);
             var result = new List<RequestBodyPropertyInfo>(properties.Count);
+            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in properties)
             {
-                result.Add(CreateRequestBodyPropertyInfo(schemaName, requestBodyKind, property));
+                result.Add(CreateRequestBodyPropertyInfo(schemaName, requestBodyKind, property, usedPropertyNames));
             }
 
             return result;
         }
 
-        private RequestBodyPropertyInfo CreateRequestBodyPropertyInfo(string schemaName, RequestBodyKind requestBodyKind, SchemaPropertyInfo property)
+        private RequestBodyPropertyInfo CreateRequestBodyPropertyInfo(string schemaName, RequestBodyKind requestBodyKind, SchemaPropertyInfo property, ISet<string> usedPropertyNames)
         {
-            var propertyName = SafeIdentifier(ToPascalCase(property.Name));
-            var propertyTypeName = ResolveTypeName(property.Schema, property.Required);
+            var propertyName = AllocateUniqueName(
+                usedPropertyNames,
+                NormalizePascalIdentifier(property.Name, "Value"),
+                "Value");
+            var propertyType = ResolveTypeUsage(property.Schema, property.Required);
             var valueKind = ClassifyRequestBodyValueKind(schemaName, property.Name, requestBodyKind, property.Schema, out var elementKind);
-            var isNullable = propertyTypeName.EndsWith("?", StringComparison.Ordinal);
+            var isNullable = propertyType.CanBeNullInCSharp;
             var elementNullable = valueKind == RequestBodyValueKind.Collection
-                && ResolveTypeName(ResolveSchemaReference(property.Schema).Items, required: true).EndsWith("?", StringComparison.Ordinal);
+                && ResolveTypeUsage(ResolveSchemaReference(property.Schema).Items, required: true).CanBeNullInCSharp;
 
             return new RequestBodyPropertyInfo(
                 property.Name,

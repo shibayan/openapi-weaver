@@ -17,7 +17,7 @@ public sealed partial class ClientGenerator
 
             foreach (var parameter in operation.Parameters)
             {
-                var parameterDeclaration = $"{parameter.TypeName} {parameter.ParameterName}";
+                var parameterDeclaration = $"{parameter.ParameterTypeName} {parameter.ParameterName}";
                 if (parameter.Required)
                 {
                     requiredMethodParameters.Add(parameterDeclaration);
@@ -32,8 +32,7 @@ public sealed partial class ClientGenerator
 
             if (operation.RequestBody is not null)
             {
-                var bodyTypeName = operation.RequestBody.IsRequired ? operation.RequestBody.TypeName : MakeNullableTypeName(operation.RequestBody.TypeName);
-                var bodyParameter = $"{bodyTypeName} body";
+                var bodyParameter = $"{operation.RequestBody.BodyTypeName} {operation.RequestBody.ParameterName}";
                 if (operation.RequestBody.IsRequired)
                 {
                     requiredMethodParameters.Add(bodyParameter);
@@ -43,7 +42,7 @@ public sealed partial class ClientGenerator
                     optionalMethodParameters.Add($"{bodyParameter} = default");
                 }
 
-                parameterDocumentation.Add(new KeyValuePair<string, string?>("body", operation.RequestBody.Description));
+                parameterDocumentation.Add(new KeyValuePair<string, string?>(operation.RequestBody.ParameterName, operation.RequestBody.Description));
             }
 
             var methodParameters = requiredMethodParameters
@@ -65,7 +64,7 @@ public sealed partial class ClientGenerator
             }
             else
             {
-                writer.Append("public async Task<").Append(operation.Response.TypeName).Append("> ").Append(operation.MethodName).Append("Async(").Append(string.Join(", ", methodParameters)).AppendLine(")");
+                writer.Append("public async Task<").Append(operation.Response.ResponseTypeName).Append("> ").Append(operation.MethodName).Append("Async(").Append(string.Join(", ", methodParameters)).AppendLine(")");
             }
 
             writer.AppendLine("{");
@@ -88,7 +87,7 @@ public sealed partial class ClientGenerator
                 {
                     if (parameter.Required)
                     {
-                        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.SerializedName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
                     }
                     else
                     {
@@ -96,7 +95,7 @@ public sealed partial class ClientGenerator
                         writer.AppendLine("{");
                         using (writer.PushIndent())
                         {
-                            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.SerializedName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
                         }
 
                         writer.AppendLine("}");
@@ -129,7 +128,7 @@ public sealed partial class ClientGenerator
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
-                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(parameter.SerializedName).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(parameter.WireName).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
                 }
 
                 writer.AppendLine("}");
@@ -171,7 +170,7 @@ public sealed partial class ClientGenerator
                 }
                 else
                 {
-                    writer.AppendLine("if (body is not null)");
+                    writer.Append("if (").Append(operation.RequestBody.ParameterName).AppendLine(" is not null)");
                     writer.AppendLine("{");
                     using (writer.PushIndent())
                     {
@@ -204,9 +203,9 @@ public sealed partial class ClientGenerator
             {
                 writer.AppendLine("return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);");
             }
-            else if (RequiresNonNullJsonResponse(operation.Response.TypeName))
+            else if (operation.Response.Type?.RequiresNonNullJsonResponse == true)
             {
-                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)");
                 using (writer.PushIndent())
                 {
                     writer.AppendLine("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);");
@@ -214,7 +213,7 @@ public sealed partial class ClientGenerator
             }
             else
             {
-                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.TypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false);");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false);");
             }
 
             writer.AppendLine("}");
@@ -248,7 +247,7 @@ public sealed partial class ClientGenerator
 
         private static void EmitTypedErrorResponseHandling(IndentedStringBuilder writer, ResponseInfo response)
         {
-            var errorTypeName = TrimNullableTypeName(response.TypeName);
+            var errorTypeName = response.Type?.NonNullableCSharpTypeName ?? string.Empty;
             switch (response.Kind)
             {
                 case ResponseKind.Json:
@@ -291,8 +290,8 @@ public sealed partial class ClientGenerator
         private void EmitRouteTemplate(IndentedStringBuilder writer, string route, IReadOnlyList<ParameterInfo> pathParameters)
         {
             var parameterLookup = pathParameters
-                .Where(static parameter => !string.IsNullOrEmpty(parameter.SerializedName))
-                .ToDictionary(static parameter => parameter.SerializedName, StringComparer.Ordinal);
+                .Where(static parameter => !string.IsNullOrEmpty(parameter.WireName))
+                .ToDictionary(static parameter => parameter.WireName, StringComparer.Ordinal);
 
             var startIndex = 0;
             while (startIndex < route.Length)

@@ -94,16 +94,16 @@ public sealed partial class ClientGenerator
                         writer,
                         summary: property.Summary,
                         remarks: property.Description);
-                    if (!property.Required && property.TypeName.EndsWith("?", StringComparison.Ordinal))
+                    if (!property.Required && property.Type.CanBeNullInCSharp)
                     {
                         writer.AppendLine("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]");
                     }
 
-                    writer.Append("[JsonPropertyName(\"").Append(EscapeStringLiteral(property.JsonName)).AppendLine("\")]");
-                    writer.Append("public ").Append(requiredModifier).Append(property.TypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
+                    writer.Append("[JsonPropertyName(\"").Append(EscapeStringLiteral(property.JsonPropertyName)).AppendLine("\")]");
+                    writer.Append("public ").Append(requiredModifier).Append(property.PropertyTypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
                 }
 
-                if (_nestedSchemasByParent.TryGetValue(schema.TypeName, out var nestedSchemas))
+                if (_nestedSchemasByParent.TryGetValue(schema.QualifiedTypeName, out var nestedSchemas))
                 {
                     foreach (var nestedSchema in nestedSchemas)
                     {

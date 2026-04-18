@@ -49,6 +49,133 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void TagNamesThatNormalizeToSameIdentifier_GenerateDistinctTagClients()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Tag Collision API
+              version: v1
+            paths:
+              /pet-store:
+                get:
+                  tags:
+                    - pet-store
+                  operationId: list_pet_store
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /pet_store:
+                get:
+                  tags:
+                    - pet_store
+                  operationId: list_pet_store_alt
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class PetStoreClient", source);
+        Assert.Contains("public sealed class PetStore2Client", source);
+        Assert.Contains("public PetStoreClient PetStore { get; }", source);
+        Assert.Contains("public PetStore2Client PetStore2 { get; }", source);
+    }
+
+    [Fact]
+    public void MethodAndParameterNamesThatNormalizeToSameIdentifier_GenerateUniqueNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Method Collision API
+              version: v1
+            paths:
+              /reports/by-id:
+                post:
+                  tags:
+                    - reports
+                  operationId: get-report
+                  parameters:
+                    - name: user-id
+                      in: query
+                      required: true
+                      schema:
+                        type: integer
+                    - name: user_id
+                      in: query
+                      required: true
+                      schema:
+                        type: integer
+                    - name: body
+                      in: query
+                      required: false
+                      schema:
+                        type: string
+                    - name: cancellation_token
+                      in: query
+                      required: false
+                      schema:
+                        type: string
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/reportCreateParams'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+              /reports/by_id:
+                post:
+                  tags:
+                    - reports
+                  operationId: get_report
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/reportCreateParams'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              schemas:
+                reportCreateParams:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("GetAsync(int userId, int userId2, ReportCreateParams body2, string? body = default, string? cancellationToken2 = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("Get2Async(ReportCreateParams body, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("request.Content = JsonContent.Create(body2, options: OpenApiClientHelpers.SerializerOptions);", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"user-id\", OpenApiClientHelpers.FormatParameter(userId));", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"user_id\", OpenApiClientHelpers.FormatParameter(userId2));", source);
+    }
+
+    [Fact]
     public void QueryParameter_WithInlineObject_RemainsJsonElement()
     {
         const string openApi = """
@@ -371,6 +498,44 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void BinaryResponse_UsingReferencedSchema_GeneratesByteArrayReturnType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Download API
+              version: v1
+            paths:
+              /receipts/{id}/download:
+                get:
+                  operationId: download_receipt
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/pdf:
+                          schema:
+                            $ref: '#/components/schemas/binaryPayload'
+            components:
+              schemas:
+                binaryPayload:
+                  type: string
+                  format: binary
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<byte[]> ", source);
+        Assert.Contains("return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);", source);
+    }
+
+    [Fact]
     public void RequestBody_WithJsonAndFormMediaTypes_PrefersJson()
     {
         const string openApi = """
@@ -598,6 +763,48 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Contains("public async Task<GetPartnerResponseModel?> ", source);
         Assert.Contains("return await response.Content.ReadFromJsonAsync<GetPartnerResponseModel?>", source);
+        Assert.DoesNotContain("The response body was empty.", source);
+    }
+
+    [Fact]
+    public void NullableReferencedJsonResponse_DoesNotForceNonNullBody()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Nullable Response API
+              version: v1
+            paths:
+              /partners/{id}:
+                get:
+                  operationId: get_partner
+                  parameters:
+                    - name: id
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/partnerResponse'
+            components:
+              schemas:
+                partnerResponse:
+                  nullable: true
+                  type: object
+                  properties:
+                    company_id:
+                      type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task<PartnerResponse?> GetPartnerAsync", source);
+        Assert.Contains("return await response.Content.ReadFromJsonAsync<PartnerResponse?>", source);
         Assert.DoesNotContain("The response body was empty.", source);
     }
 
@@ -1790,6 +1997,49 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Contains("public sealed class ProblemDetails", source);
         Assert.DoesNotContain("public sealed class OpenApiProblemDetails", source);
+        Assert.Contains("var error = OpenApiClientHelpers.DeserializeResponseContent<ProblemDetails>(responseContent);", source);
+        Assert.Contains("throw new OpenApiException<ProblemDetails>(statusCode, response.ReasonPhrase, contentType, responseContent, error);", source);
+    }
+
+    [Fact]
+    public void NullableReferencedErrorResponse_UsesNullablePayloadTypeWithoutLosingTypedException()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Nullable Error API
+              version: v1
+            paths:
+              /partners:
+                get:
+                  operationId: list_partners
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                    '422':
+                      description: invalid request
+                      content:
+                        application/problem+json:
+                          schema:
+                            $ref: '#/components/schemas/problemDetails'
+            components:
+              schemas:
+                problemDetails:
+                  nullable: true
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                    detail:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
         Assert.Contains("var error = OpenApiClientHelpers.DeserializeResponseContent<ProblemDetails>(responseContent);", source);
         Assert.Contains("throw new OpenApiException<ProblemDetails>(statusCode, response.ReasonPhrase, contentType, responseContent, error);", source);
     }
