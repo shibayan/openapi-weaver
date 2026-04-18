@@ -321,7 +321,8 @@ public sealed partial class ClientGenerator
             }
 
             var suggestedTypeName = BuildInlineSchemaTypeName(operationName, childName, schema);
-            if (TryRegisterInlineSchema(schema, parentTypeName: null, suggestedTypeName, out var inlineSchema))
+            var inlineSchema = TryRegisterInlineSchema(schema, parentTypeName: null, suggestedTypeName);
+            if (inlineSchema is not null)
             {
                 RegisterNestedInlineSchemas(schema, new HashSet<string>(StringComparer.Ordinal), inlineSchema.TypeName, string.Empty);
                 return;
@@ -404,7 +405,8 @@ public sealed partial class ClientGenerator
             }
 
             var suggestedTypeName = BuildInlineSchemaTypeName(nestedNamePrefix, childName, childSchema);
-            if (TryRegisterInlineSchema(childSchema, containingTypeName, suggestedTypeName, out var inlineSchema))
+            var inlineSchema = TryRegisterInlineSchema(childSchema, containingTypeName, suggestedTypeName);
+            if (inlineSchema is not null)
             {
                 RegisterNestedInlineSchemas(childSchema, visited, inlineSchema.TypeName, string.Empty);
                 return;
@@ -414,25 +416,23 @@ public sealed partial class ClientGenerator
             RegisterNestedInlineSchemas(childSchema, visited, containingTypeName, nextPrefix);
         }
 
-        private bool TryRegisterInlineSchema(IOpenApiSchema schema, string? parentTypeName, string suggestedTypeName, out InlineSchemaInfo inlineSchema)
+        private InlineSchemaInfo? TryRegisterInlineSchema(IOpenApiSchema schema, string? parentTypeName, string suggestedTypeName)
         {
-            inlineSchema = null!;
             if (!CanGenerateInlineSchema(schema))
             {
-                return false;
+                return null;
             }
 
             var identity = GetSchemaIdentity(schema);
             if (_inlineSchemasByIdentity.TryGetValue(identity, out var existingInlineSchema))
             {
-                inlineSchema = existingInlineSchema;
-                return true;
+                return existingInlineSchema;
             }
 
-            inlineSchema = AllocateInlineSchema(parentTypeName, suggestedTypeName, schema);
+            var inlineSchema = AllocateInlineSchema(parentTypeName, suggestedTypeName, schema);
             _inlineSchemasByIdentity.Add(identity, inlineSchema);
             _inlineSchemas.Add(inlineSchema);
-            return true;
+            return inlineSchema;
         }
 
         private bool CanGenerateInlineSchema(IOpenApiSchema schema)

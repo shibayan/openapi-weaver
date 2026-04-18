@@ -4,27 +4,32 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Emitter
     {
-        private Dictionary<string, List<SchemaDefinition>> _nestedSchemasByParent = null!;
+        private readonly Dictionary<string, List<SchemaDefinition>> _nestedSchemasByParent = BuildNestedSchemaLookup(model.Schemas);
 
-        private void EmitSchemas(IndentedStringBuilder writer)
+        private static Dictionary<string, List<SchemaDefinition>> BuildNestedSchemaLookup(IReadOnlyList<SchemaDefinition> schemas)
         {
-            _nestedSchemasByParent = new Dictionary<string, List<SchemaDefinition>>(StringComparer.Ordinal);
-            foreach (var schema in model.Schemas)
+            var lookup = new Dictionary<string, List<SchemaDefinition>>(StringComparer.Ordinal);
+            foreach (var schema in schemas)
             {
                 if (schema.ParentTypeName is null)
                 {
                     continue;
                 }
 
-                if (!_nestedSchemasByParent.TryGetValue(schema.ParentTypeName, out var children))
+                if (!lookup.TryGetValue(schema.ParentTypeName, out var children))
                 {
                     children = [];
-                    _nestedSchemasByParent[schema.ParentTypeName] = children;
+                    lookup[schema.ParentTypeName] = children;
                 }
 
                 children.Add(schema);
             }
 
+            return lookup;
+        }
+
+        private void EmitSchemas(IndentedStringBuilder writer)
+        {
             foreach (var schema in model.Schemas)
             {
                 if (schema.ParentTypeName is not null)
