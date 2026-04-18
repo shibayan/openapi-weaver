@@ -15,7 +15,6 @@ public sealed partial class ClientGenerator
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly HashSet<string> _usedSchemaTypeNames = new(StringComparer.Ordinal);
         private readonly List<InlineSchemaInfo> _inlineSchemas = [];
-        private readonly Dictionary<string, string> _tagDescriptions = new(StringComparer.Ordinal);
 
         public Transformer(string documentPath, string rootNamespace, string? clientNameOverride, OpenApiDocument document)
         {

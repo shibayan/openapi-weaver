@@ -12,20 +12,19 @@ public sealed partial class ClientGenerator
     {
         private List<TagGroup> BuildTagGroups()
         {
+            var tagDescriptions = new Dictionary<string, string>(StringComparer.Ordinal);
             if (_document.Tags is not null)
             {
                 foreach (var tag in _document.Tags)
                 {
                     if (!string.IsNullOrWhiteSpace(tag.Name) && !string.IsNullOrWhiteSpace(tag.Description))
                     {
-                        _tagDescriptions[tag.Name!] = tag.Description!;
+                        tagDescriptions[tag.Name!] = tag.Description!;
                     }
                 }
             }
 
-            var groups = new Dictionary<string, List<OperationGroupItem>>(StringComparer.Ordinal);
-            var classNames = new Dictionary<string, string>(StringComparer.Ordinal);
-            var descriptions = new Dictionary<string, string?>(StringComparer.Ordinal);
+            var accumulators = new Dictionary<string, TagGroupAccumulator>(StringComparer.Ordinal);
 
             foreach (var path in _document.Paths)
             {
@@ -34,23 +33,29 @@ public sealed partial class ClientGenerator
                     var tagName = GetTagName(operation.Value);
                     var groupName = string.IsNullOrWhiteSpace(tagName) ? "Default" : tagName!;
                     var propertyName = SafeIdentifier(ToPascalCase(groupName));
-                    var className = propertyName.EndsWith("Client", StringComparison.Ordinal) ? propertyName : propertyName + "Client";
 
-                    if (!groups.ContainsKey(propertyName))
+                    if (!accumulators.TryGetValue(propertyName, out var accumulator))
                     {
-                        groups[propertyName] = [];
-                        classNames[propertyName] = className;
-                        _tagDescriptions.TryGetValue(groupName, out var description);
-                        descriptions[propertyName] = description;
+                        var className = propertyName.EndsWith("Client", StringComparison.Ordinal) ? propertyName : propertyName + "Client";
+                        tagDescriptions.TryGetValue(groupName, out var description);
+                        accumulator = new TagGroupAccumulator(className, description);
+                        accumulators[propertyName] = accumulator;
                     }
 
-                    groups[propertyName].Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value));
+                    accumulator.Operations.Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value));
                 }
             }
 
             return [..
-                groups.OrderBy(static pair => pair.Key, StringComparer.Ordinal)
-                    .Select(pair => new TagGroup(pair.Key, classNames[pair.Key], descriptions[pair.Key], pair.Value))];
+                accumulators.OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+                    .Select(static pair => new TagGroup(pair.Key, pair.Value.ClassName, pair.Value.Description, pair.Value.Operations))];
+        }
+
+        private sealed class TagGroupAccumulator(string className, string? description)
+        {
+            public string ClassName { get; } = className;
+            public string? Description { get; } = description;
+            public List<OperationGroupItem> Operations { get; } = [];
         }
 
         private OperationGroupItem BuildOperation(string route, string operationType, IOpenApiPathItem pathItem, OpenApiOperation operation)
