@@ -47,7 +47,7 @@ The package includes the source generator and all required analyzer assemblies, 
 - **Incremental source generation** — uses the Roslyn incremental generator pipeline to keep rebuilds efficient
 - **OpenAPI 3.0-3.2 support** — reads `.json`, `.yaml`, and `.yml` documents, including OpenAPI 3.2 features such as response summaries and nullable type arrays
 - **Tag-based sub-clients** — groups operations by OpenAPI tags and exposes them as properties on the root client
-- **Typed request / response models** — generates sealed classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`
+- **Typed request / response models** — generates classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`, including discriminator-based polymorphic models
 - **Multiple request body formats** — supports `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
 - **Security scheme support** — supports OAuth2 and bearer tokens, together with API keys in headers, query strings, and cookies
 - **Runtime error handling** — throws `OpenApiException`, with typed `OpenApiException<TError>` when error schemas are available
