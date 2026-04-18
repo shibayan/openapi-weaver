@@ -73,10 +73,13 @@ public sealed partial class ClientGenerator
         string typeName,
         string declaredTypeName,
         string? parentTypeName,
+        string? baseTypeName,
         string summary,
         string? description,
         string? dictionaryValueType,
         IReadOnlyList<SchemaPropertyDefinition> properties,
+        string? discriminatorPropertyName,
+        IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes,
         SchemaEnumKind enumKind,
         string? enumUnderlyingType,
         IReadOnlyList<SchemaEnumMemberDefinition> enumMembers)
@@ -84,14 +87,24 @@ public sealed partial class ClientGenerator
         public string TypeName { get; } = typeName;
         public string DeclaredTypeName { get; } = declaredTypeName;
         public string? ParentTypeName { get; } = parentTypeName;
+        public string? BaseTypeName { get; } = baseTypeName;
         public string Summary { get; } = summary;
         public string? Description { get; } = description;
         public string? DictionaryValueType { get; } = dictionaryValueType;
         public IReadOnlyList<SchemaPropertyDefinition> Properties { get; } = properties;
+        public string? DiscriminatorPropertyName { get; } = discriminatorPropertyName;
+        public IReadOnlyList<SchemaDerivedTypeDefinition> DerivedTypes { get; } = derivedTypes;
         public SchemaEnumKind EnumKind { get; } = enumKind;
         public string? EnumUnderlyingType { get; } = enumUnderlyingType;
         public IReadOnlyList<SchemaEnumMemberDefinition> EnumMembers { get; } = enumMembers;
         public bool IsEnum { get; } = enumKind != SchemaEnumKind.None;
+        public bool IsPolymorphicBase { get; } = !string.IsNullOrWhiteSpace(discriminatorPropertyName) && derivedTypes.Count > 0;
+    }
+
+    private sealed class SchemaDerivedTypeDefinition(string typeName, string discriminatorValue)
+    {
+        public string TypeName { get; } = typeName;
+        public string DiscriminatorValue { get; } = discriminatorValue;
     }
 
     private enum SchemaEnumKind

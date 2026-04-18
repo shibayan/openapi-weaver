@@ -31,9 +31,10 @@ var user = await client.Users.GetAsync(userId: "me");
 
 ## 型付きのリクエスト / レスポンスモデル
 
-OpenApiWeaver はオブジェクトスキーマに対して sealed class を生成し、メソッド引数や戻り値へ型付きでマッピングします。
+OpenApiWeaver はオブジェクトスキーマに対してクラスを生成し、メソッド引数や戻り値へ型付きでマッピングします。
 
 - **オブジェクトスキーマ** -> `[JsonPropertyName]` 属性付きの `sealed class`
+- **ポリモーフィックスキーマ** -> スキーマが `discriminator` と `oneOf` を使う場合はベースクラスと派生クラスを生成
 - **列挙型** -> 文字列 enum は専用 `JsonConverter` 付きの `readonly record struct`、整数 enum は標準 `enum`。詳細は [スキーマ型マッピング](./schema-types) を参照
 - **配列** -> `IReadOnlyList<T>`
 - **辞書** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
@@ -44,6 +45,8 @@ OpenApiWeaver はオブジェクトスキーマに対して sealed class を生�
 任意かつ nullable なプロパティには `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` が付与され、`null` の場合は JSON ペイロードから省略されます。
 
 OpenAPI 3.2 の nullable type array である `type: ["string", "null"]` のような表現は、`string?` のような nullable CLR 型へマッピングされます。
+
+コンポーネントスキーマが `discriminator` と、名前付きスキーマを参照する `oneOf` を併用している場合、OpenApiWeaver は `[JsonPolymorphic]` と `[JsonDerivedType]` を使ったポリモーフィックなベースモデルと、その派生型を生成します。
 
 ## インラインスキーマ / ネスト型
 
@@ -63,6 +66,64 @@ public sealed class Order
     }
 }
 ```
+
+## discriminator を使ったポリモーフィックスキーマ
+
+OpenApiWeaver は、次の条件を満たすコンポーネントスキーマに対して OpenAPI の discriminator ベースのポリモーフィズムをサポートします。
+
+- ベーススキーマが `discriminator.propertyName` を持つ
+- ベーススキーマが `oneOf` を使う
+- `oneOf` の各要素が `components/schemas` 内の名前付きスキーマへの `$ref` である
+
+生成されるベース型は、System.Text.Json のポリモーフィックシリアライズ用属性が付与された non-sealed なクラスになります。参照された各スキーマは派生型として出力されます。`discriminator.mapping` がある場合はそのキーが discriminator 値として使われ、ない場合は参照先のスキーマ名が使われます。
+
+```yaml
+animal:
+    type: object
+    discriminator:
+        propertyName: kind
+        mapping:
+            dog: '#/components/schemas/dog'
+            cat: '#/components/schemas/cat'
+    oneOf:
+        - $ref: '#/components/schemas/dog'
+        - $ref: '#/components/schemas/cat'
+dog:
+    allOf:
+        - $ref: '#/components/schemas/animal'
+        - type: object
+            properties:
+                barks:
+                    type: boolean
+cat:
+    allOf:
+        - $ref: '#/components/schemas/animal'
+        - type: object
+            properties:
+                lives:
+                    type: integer
+```
+
+```csharp
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(Dog), typeDiscriminator: "dog")]
+[JsonDerivedType(typeof(Cat), typeDiscriminator: "cat")]
+public class Animal
+{
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+}
+
+public sealed class Dog : Animal
+{
+    [JsonPropertyName("barks")]
+    public required bool Barks { get; init; }
+}
+```
+
+discriminator 用のプロパティ自体は通常の CLR プロパティとしては生成されません。これにより、ポリモーフィックシリアライズ時の重複した JSON 出力を避けます。
+
+未対応の discriminator パターンは `OAW004` で生成失敗になります。対象には、`anyOf` と組み合わせた discriminator、`oneOf` を持たない discriminator、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` に含まれないスキーマを参照する mapping が含まれます。
 
 ## レスポンス型
 

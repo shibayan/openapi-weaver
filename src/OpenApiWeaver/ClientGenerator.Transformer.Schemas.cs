@@ -23,6 +23,121 @@ public sealed partial class ClientGenerator
             }
         }
 
+        private void RegisterPolymorphicSchemaInfo()
+        {
+            if (_document.Components?.Schemas is null)
+            {
+                return;
+            }
+
+            foreach (var schema in _document.Components.Schemas)
+            {
+                if (schema.Value.Discriminator is null)
+                {
+                    continue;
+                }
+
+                RegisterPolymorphicSchemaInfo(schema.Key, schema.Value);
+            }
+        }
+
+        private void RegisterPolymorphicSchemaInfo(string schemaName, IOpenApiSchema schema)
+        {
+            if (schema.AnyOf is { Count: > 0 })
+            {
+                throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator with anyOf, which is not supported for compile-time code generation.");
+            }
+
+            if (schema.OneOf is not { Count: > 0 })
+            {
+                throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator without oneOf, which is not supported for compile-time code generation.");
+            }
+
+            var discriminatorPropertyName = schema.Discriminator?.PropertyName;
+            if (string.IsNullOrWhiteSpace(discriminatorPropertyName))
+            {
+                throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator without a propertyName, which is not supported for compile-time code generation.");
+            }
+
+            var baseTypeName = _schemaNames[schemaName];
+            var derivedSchemaNames = new HashSet<string>(StringComparer.Ordinal);
+            var derivedTypes = new List<SchemaDerivedTypeDefinition>();
+            var pendingDerivedSchemas = new List<(string TypeName, PolymorphicDerivedSchemaInfo Info)>();
+            var usedDiscriminatorValues = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var child in schema.OneOf)
+            {
+                var derivedSchemaName = TryResolveSchemaReferenceId(child);
+                if (derivedSchemaName is null)
+                {
+                    throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator with inline oneOf members, which is not supported for compile-time code generation.");
+                }
+
+                derivedSchemaNames.Add(derivedSchemaName);
+
+                if (!_schemaNames.TryGetValue(derivedSchemaName, out var derivedTypeName))
+                {
+                    throw new UnsupportedGenerationException($"Schema '{schemaName}' discriminator references unknown schema '{derivedSchemaName}'.");
+                }
+
+                var discriminatorValue = ResolveDiscriminatorValue(schema.Discriminator!, derivedSchemaName);
+                if (!usedDiscriminatorValues.Add(discriminatorValue))
+                {
+                    throw new UnsupportedGenerationException($"Schema '{schemaName}' uses duplicate discriminator value '{discriminatorValue}', which is not supported for compile-time code generation.");
+                }
+
+                if (_polymorphicDerivedSchemasByTypeName.TryGetValue(derivedTypeName, out var existingDerivedSchema)
+                    && !string.Equals(existingDerivedSchema.BaseTypeName, baseTypeName, StringComparison.Ordinal))
+                {
+                    throw new UnsupportedGenerationException($"Schema '{derivedSchemaName}' is used by multiple discriminator hierarchies, which is not supported for compile-time code generation.");
+                }
+
+                pendingDerivedSchemas.Add((derivedTypeName, new PolymorphicDerivedSchemaInfo(schemaName, baseTypeName, discriminatorPropertyName!)));
+                derivedTypes.Add(new SchemaDerivedTypeDefinition(derivedTypeName, discriminatorValue));
+            }
+
+            ValidateDiscriminatorMappings(schemaName, schema.Discriminator!, derivedSchemaNames);
+
+            foreach (var (derivedTypeName, derivedInfo) in pendingDerivedSchemas)
+            {
+                _polymorphicDerivedSchemasByTypeName[derivedTypeName] = derivedInfo;
+            }
+
+            _polymorphicSchemasByTypeName[baseTypeName] = new PolymorphicSchemaInfo(discriminatorPropertyName!, derivedTypes);
+        }
+
+        private static string ResolveDiscriminatorValue(OpenApiDiscriminator discriminator, string derivedSchemaName)
+        {
+            if (discriminator.Mapping is not null)
+            {
+                foreach (var mapping in discriminator.Mapping)
+                {
+                    if (string.Equals(TryResolveSchemaReferenceId(mapping.Value), derivedSchemaName, StringComparison.Ordinal))
+                    {
+                        return mapping.Key;
+                    }
+                }
+            }
+
+            return derivedSchemaName;
+        }
+
+        private static void ValidateDiscriminatorMappings(string schemaName, OpenApiDiscriminator discriminator, HashSet<string> derivedSchemaNames)
+        {
+            if (discriminator.Mapping is null)
+            {
+                return;
+            }
+
+            foreach (var mapping in discriminator.Mapping)
+            {
+                var mappedSchemaName = TryResolveSchemaReferenceId(mapping.Value);
+                if (mappedSchemaName is null || !derivedSchemaNames.Contains(mappedSchemaName))
+                {
+                    throw new UnsupportedGenerationException($"Schema '{schemaName}' discriminator mapping '{mapping.Key}' must reference a schema listed in oneOf.");
+                }
+            }
+        }
+
         private void RegisterInlineSchemaNames()
         {
             if (_document.Components?.Schemas is not null)
@@ -60,8 +175,28 @@ public sealed partial class ClientGenerator
 
         private SchemaDefinition CreateSchemaDefinition(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema)
         {
+            var ignoredPropertyNames = new HashSet<string>(StringComparer.Ordinal);
+            var ignoredSchemaReferences = new HashSet<string>(StringComparer.Ordinal);
+            string? baseTypeName = null;
+            string? discriminatorPropertyName = null;
+            IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes = [];
+
+            if (_polymorphicSchemasByTypeName.TryGetValue(typeName, out var polymorphicSchema))
+            {
+                discriminatorPropertyName = polymorphicSchema.DiscriminatorPropertyName;
+                ignoredPropertyNames.Add(polymorphicSchema.DiscriminatorPropertyName);
+                derivedTypes = polymorphicSchema.DerivedTypes;
+            }
+
+            if (_polymorphicDerivedSchemasByTypeName.TryGetValue(typeName, out var polymorphicDerivedSchema))
+            {
+                baseTypeName = polymorphicDerivedSchema.BaseTypeName;
+                ignoredPropertyNames.Add(polymorphicDerivedSchema.DiscriminatorPropertyName);
+                ignoredSchemaReferences.Add(polymorphicDerivedSchema.BaseSchemaName);
+            }
+
             var properties = new List<SchemaPropertyDefinition>();
-            foreach (var property in GetSchemaProperties(schema))
+            foreach (var property in GetSchemaProperties(schema, ignoredPropertyNames, ignoredSchemaReferences))
             {
                 var propertyName = SafeIdentifier(ToPascalCase(property.Name));
                 properties.Add(new SchemaPropertyDefinition(
@@ -81,10 +216,13 @@ public sealed partial class ClientGenerator
                 typeName,
                 declaredTypeName,
                 parentTypeName,
+                baseTypeName,
                 schema.Title ?? typeName,
                 schema.Description,
                 TryGetDictionaryValueType(schema, out var dictionaryValueType) ? dictionaryValueType : null,
                 properties,
+                discriminatorPropertyName,
+                derivedTypes,
                 enumKind,
                 enumUnderlyingType,
                 enumMembers);
@@ -415,11 +553,11 @@ public sealed partial class ClientGenerator
             return required && !IsNullableSchema(schema) ? typeName : $"{typeName}?";
         }
 
-        private List<SchemaPropertyInfo> GetSchemaProperties(IOpenApiSchema schema)
+        private List<SchemaPropertyInfo> GetSchemaProperties(IOpenApiSchema schema, ISet<string>? ignoredPropertyNames = null, ISet<string>? ignoredSchemaReferences = null)
         {
             var properties = new List<SchemaPropertyInfo>();
             var indices = new Dictionary<string, int>(StringComparer.Ordinal);
-            CollectSchemaProperties(schema, properties, indices, new HashSet<string>(StringComparer.Ordinal));
+            CollectSchemaProperties(schema, properties, indices, new HashSet<string>(StringComparer.Ordinal), ignoredPropertyNames, ignoredSchemaReferences);
             return properties;
         }
 
@@ -427,8 +565,16 @@ public sealed partial class ClientGenerator
             IOpenApiSchema schema,
             List<SchemaPropertyInfo> properties,
             Dictionary<string, int> indices,
-            HashSet<string> visited)
+            HashSet<string> visited,
+            ISet<string>? ignoredPropertyNames,
+            ISet<string>? ignoredSchemaReferences)
         {
+            var schemaReferenceId = TryResolveSchemaReferenceId(schema);
+            if (schemaReferenceId is not null && ignoredSchemaReferences?.Contains(schemaReferenceId) == true)
+            {
+                return;
+            }
+
             var identity = GetSchemaIdentity(schema);
             if (!visited.Add(identity))
             {
@@ -439,7 +585,7 @@ public sealed partial class ClientGenerator
             {
                 foreach (var child in schema.AllOf)
                 {
-                    CollectSchemaProperties(child, properties, indices, visited);
+                    CollectSchemaProperties(child, properties, indices, visited, ignoredPropertyNames, ignoredSchemaReferences);
                 }
             }
 
@@ -447,6 +593,11 @@ public sealed partial class ClientGenerator
             {
                 foreach (var property in schema.Properties)
                 {
+                    if (ignoredPropertyNames?.Contains(property.Key) == true)
+                    {
+                        continue;
+                    }
+
                     var item = new SchemaPropertyInfo(
                         property.Key,
                         property.Value,
@@ -479,13 +630,20 @@ public sealed partial class ClientGenerator
 
         private string? TryResolveSchemaReferenceName(IOpenApiSchema? schema)
         {
-            if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
-                && _schemaNames.TryGetValue(referenceHolder.Reference.Id, out var schemaName))
+            if (TryResolveSchemaReferenceId(schema) is { } schemaReferenceId
+                && _schemaNames.TryGetValue(schemaReferenceId, out var schemaName))
             {
                 return schemaName;
             }
 
             return null;
+        }
+
+        private static string? TryResolveSchemaReferenceId(IOpenApiSchema? schema)
+        {
+            return schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
+                ? referenceHolder.Reference.Id
+                : null;
         }
 
         private bool TryResolveCompositeTypeName(IOpenApiSchema schema, bool required, out string typeName)
@@ -694,6 +852,19 @@ public sealed partial class ClientGenerator
             public string DeclaredTypeName { get; } = declaredTypeName;
             public string? ParentTypeName { get; } = parentTypeName;
             public IOpenApiSchema Schema { get; } = schema;
+        }
+
+        private sealed class PolymorphicSchemaInfo(string discriminatorPropertyName, IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes)
+        {
+            public string DiscriminatorPropertyName { get; } = discriminatorPropertyName;
+            public IReadOnlyList<SchemaDerivedTypeDefinition> DerivedTypes { get; } = derivedTypes;
+        }
+
+        private sealed class PolymorphicDerivedSchemaInfo(string baseSchemaName, string baseTypeName, string discriminatorPropertyName)
+        {
+            public string BaseSchemaName { get; } = baseSchemaName;
+            public string BaseTypeName { get; } = baseTypeName;
+            public string DiscriminatorPropertyName { get; } = discriminatorPropertyName;
         }
 
         private sealed class SchemaPropertyInfo(string name, IOpenApiSchema schema, bool required)

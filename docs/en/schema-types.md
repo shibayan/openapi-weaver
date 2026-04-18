@@ -121,6 +121,21 @@ public sealed class Order
 |---|---|
 | `allOf` | Flattened into a single class containing all properties |
 | `oneOf` / `anyOf` | Union-style nullable properties or nullable CLR primitives when the union is a primitive plus `null` |
+| `discriminator` + `oneOf` | Polymorphic base class annotated with `JsonPolymorphic` / `JsonDerivedType`, with referenced schemas emitted as derived classes |
+
+### Discriminator-based polymorphism
+
+When a component schema declares `discriminator` and `oneOf` references named component schemas, OpenApiWeaver treats that schema as the polymorphic base type.
+
+- The base type is emitted as `public class` instead of `public sealed class`
+- The base type receives `[JsonPolymorphic(TypeDiscriminatorPropertyName = "...")]`
+- Each `oneOf` member produces a `[JsonDerivedType(typeof(...), typeDiscriminator: "...")]` attribute
+- Referenced child schemas are emitted as derived classes
+- `discriminator.mapping` keys are used as discriminator values when present; otherwise the schema names are used
+
+To keep System.Text.Json polymorphic serialization consistent, the discriminator property is not emitted as a normal CLR property on the generated types.
+
+This feature currently requires all discriminator members to be `$ref` entries in `oneOf`. Using `anyOf`, inline `oneOf` members, duplicate discriminator values, or mappings that point outside `oneOf` is rejected with `OAW004`.
 
 ## Nullable type arrays (OpenAPI 3.2)
 

@@ -121,6 +121,21 @@ public sealed class Order
 |---|---|
 | `allOf` | すべてのプロパティを含む 1 つのクラスへフラット化 |
 | `oneOf` / `anyOf` | union 風の nullable プロパティ、または primitive と `null` の組み合わせなら nullable CLR プリミティブ |
+| `discriminator` + `oneOf` | `JsonPolymorphic` / `JsonDerivedType` 属性付きのポリモーフィックなベースクラスと、参照先スキーマの派生クラス |
+
+### discriminator ベースのポリモーフィズム
+
+コンポーネントスキーマが `discriminator` を持ち、`oneOf` で名前付きコンポーネントスキーマを参照している場合、OpenApiWeaver はそのスキーマをポリモーフィックなベース型として扱います。
+
+- ベース型は `public sealed class` ではなく `public class` として生成される
+- ベース型には `[JsonPolymorphic(TypeDiscriminatorPropertyName = "...")]` が付与される
+- `oneOf` の各要素に対して `[JsonDerivedType(typeof(...), typeDiscriminator: "...")]` が生成される
+- 参照先の子スキーマは派生クラスとして生成される
+- `discriminator.mapping` がある場合はそのキーが discriminator 値に使われ、ない場合はスキーマ名が使われる
+
+System.Text.Json のポリモーフィックシリアライズと整合させるため、discriminator プロパティ自体は生成型の通常の CLR プロパティとしては出力されません。
+
+この機能では、discriminator の各メンバーが `oneOf` 内の `$ref` であることが必要です。`anyOf`、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` 外を指す mapping は `OAW004` で拒否されます。
 
 ## Nullable 型配列（OpenAPI 3.2）
 

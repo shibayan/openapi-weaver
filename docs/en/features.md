@@ -31,9 +31,10 @@ When a tag includes a description, OpenApiWeaver emits it as XML documentation o
 
 ## Typed request / response models
 
-OpenApiWeaver generates sealed classes for object schemas and maps them to strongly typed method parameters and return values:
+OpenApiWeaver generates classes for object schemas and maps them to strongly typed method parameters and return values:
 
 - **Object schemas** -> `sealed class` with `[JsonPropertyName]` attributes
+- **Polymorphic object schemas** -> base class plus derived classes when a schema uses `discriminator` with `oneOf`
 - **Enums** -> `readonly record struct` with a dedicated `JsonConverter` for string enums, or standard `enum` for integer enums; see [Schema Type Mapping](./schema-types)
 - **Arrays** -> `IReadOnlyList<T>`
 - **Dictionaries** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
@@ -44,6 +45,8 @@ Naming conventions are converted to idiomatic C# names, such as `snake_case` to 
 Optional (non-required) nullable properties are annotated with `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` so they are omitted from the JSON payload when `null`.
 
 OpenAPI 3.2 nullable type arrays such as `type: ["string", "null"]` are mapped to nullable CLR types like `string?`.
+
+When a component schema uses `discriminator` together with `oneOf` references to named component schemas, OpenApiWeaver generates a polymorphic base model annotated with `[JsonPolymorphic]` and `[JsonDerivedType]`, and the referenced schemas become derived classes.
 
 ## Inline / nested schemas
 
@@ -63,6 +66,64 @@ public sealed class Order
     }
 }
 ```
+
+## Polymorphic schemas with discriminator
+
+OpenApiWeaver supports OpenAPI discriminator-based polymorphism for component schemas that follow this pattern:
+
+- The base schema declares `discriminator.propertyName`
+- The base schema uses `oneOf`
+- Every `oneOf` member is a `$ref` to a named schema in `components/schemas`
+
+The generated base type becomes a non-sealed class annotated for System.Text.Json polymorphism, and each referenced schema is emitted as a derived type. If `discriminator.mapping` is present, the mapping key is used as the discriminator value. Otherwise the referenced schema name is used.
+
+```yaml
+animal:
+    type: object
+    discriminator:
+        propertyName: kind
+        mapping:
+            dog: '#/components/schemas/dog'
+            cat: '#/components/schemas/cat'
+    oneOf:
+        - $ref: '#/components/schemas/dog'
+        - $ref: '#/components/schemas/cat'
+dog:
+    allOf:
+        - $ref: '#/components/schemas/animal'
+        - type: object
+            properties:
+                barks:
+                    type: boolean
+cat:
+    allOf:
+        - $ref: '#/components/schemas/animal'
+        - type: object
+            properties:
+                lives:
+                    type: integer
+```
+
+```csharp
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(Dog), typeDiscriminator: "dog")]
+[JsonDerivedType(typeof(Cat), typeDiscriminator: "cat")]
+public class Animal
+{
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+}
+
+public sealed class Dog : Animal
+{
+    [JsonPropertyName("barks")]
+    public required bool Barks { get; init; }
+}
+```
+
+The discriminator property itself is not generated as a normal CLR property on the base or derived types, which avoids duplicate JSON output during polymorphic serialization.
+
+Unsupported discriminator patterns fail generation with `OAW004`. This includes `discriminator` used with `anyOf`, `discriminator` without `oneOf`, inline `oneOf` members, duplicate discriminator values, and mappings that reference schemas not listed in `oneOf`.
 
 ## Response types
 
