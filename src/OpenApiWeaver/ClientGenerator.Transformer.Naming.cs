@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Globalization;
+using System.Text;
 
 using Microsoft.OpenApi;
 
@@ -8,6 +9,37 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Transformer
     {
+        private static string NormalizePascalIdentifier(string value, string fallback = "Value")
+        {
+            var normalized = SafeIdentifier(ToPascalCase(value));
+            return normalized == "value" && !string.Equals(value, "value", StringComparison.OrdinalIgnoreCase)
+                ? SafeIdentifier(ToPascalCase(fallback))
+                : normalized;
+        }
+
+        private static string NormalizeCamelIdentifier(string value, string fallback = "value")
+        {
+            var normalized = SafeIdentifier(ToCamelCase(value));
+            return normalized == "value" && !string.Equals(value, "value", StringComparison.OrdinalIgnoreCase)
+                ? SafeIdentifier(ToCamelCase(fallback))
+                : normalized;
+        }
+
+        private static string AllocateUniqueName(ISet<string> usedNames, string suggestedName, string fallback = "Value")
+        {
+            var baseName = string.IsNullOrWhiteSpace(suggestedName) ? fallback : suggestedName;
+            var candidate = baseName;
+            var suffix = 2;
+
+            while (!usedNames.Add(candidate))
+            {
+                candidate = baseName + suffix.ToString(CultureInfo.InvariantCulture);
+                suffix++;
+            }
+
+            return candidate;
+        }
+
         private static string BuildClientName(string documentPath, OpenApiDocument document, string? configuredClientName)
         {
             var baseName = configuredClientName;
@@ -23,7 +55,7 @@ public sealed partial class ClientGenerator
                     : "OpenApi";
             }
 
-            var normalized = SafeIdentifier(ToPascalCase(baseName ?? "OpenApi"));
+            var normalized = NormalizePascalIdentifier(baseName ?? "OpenApi", "OpenApi");
             return normalized.EndsWith("Client", StringComparison.Ordinal) ? normalized : $"{normalized}Client";
         }
 
@@ -52,7 +84,7 @@ public sealed partial class ClientGenerator
                 return canonicalGetName;
             }
 
-            return SafeIdentifier(string.Concat(filteredTokens.Select(static token => ToPascalCase(token ?? string.Empty))));
+            return NormalizePascalIdentifier(string.Concat(filteredTokens.Select(static token => ToPascalCase(token ?? string.Empty))), "Operation");
         }
 
         private static string BuildOperationSchemaTypeName(string? operationId, string operationType, string route)
@@ -70,7 +102,7 @@ public sealed partial class ClientGenerator
                 tokens.Add("Operation");
             }
 
-            return SafeIdentifier(string.Concat(tokens.Select(static token => ToPascalCase(token ?? string.Empty))));
+            return NormalizePascalIdentifier(string.Concat(tokens.Select(static token => ToPascalCase(token ?? string.Empty))), "Operation");
         }
 
         private static string? TryBuildCanonicalGetMethodName(string route, string? tagName, IReadOnlyList<string> filteredTokens)
@@ -188,16 +220,11 @@ public sealed partial class ClientGenerator
                 return normalized;
             }
 
-            // Invariant words (same in singular and plural)
             if (normalized is "series" or "species")
             {
                 return normalized;
             }
 
-            // consonant + "ies" → consonant + "y" (e.g., "companies" → "company")
-            // Guards against common "ie + s" plurals:
-            //   - Length <= 4 (e.g., "ties", length 4): too short to be a consonant+y plural
-            //   - Double-vowel pattern (e.g., "cookies", "rookies"): excluded by HasRepeatedVowelBeforeConsonantIes
             if (normalized.Length > 4
                 && normalized.EndsWith("ies")
                 && IsConsonant(normalized[normalized.Length - 4])
@@ -235,10 +262,6 @@ public sealed partial class ClientGenerator
             return char.IsLetter(lower) && lower is not 'a' and not 'e' and not 'i' and not 'o' and not 'u';
         }
 
-        // Returns true when the word ends in a repeated-vowel + consonant + "ies" pattern
-        // (e.g., "cookies" = "oo" + "k" + "ies", "rookies" = "oo" + "k" + "ies"), which
-        // indicates the plural is formed by adding "s" to an "-ie" root rather than changing
-        // a trailing "y" to "ies". Requires length >= 7 to ensure enough characters exist.
         private static bool HasRepeatedVowelBeforeConsonantIes(string value)
         {
             if (value.Length < 7)

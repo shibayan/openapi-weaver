@@ -11,11 +11,6 @@ public sealed partial class ClientGenerator
                 .Where(static scheme => scheme.Location == SecuritySchemeLocation.Query)
                 .ToList();
 
-        private readonly HashSet<string> _generatedEnumTypeNames =
-            new(
-                model.Schemas.Where(static schema => schema.IsEnum).Select(static schema => schema.TypeName),
-                StringComparer.Ordinal);
-
         public string Emit()
         {
             var builder = new StringBuilder();

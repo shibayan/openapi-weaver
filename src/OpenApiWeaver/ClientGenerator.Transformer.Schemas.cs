@@ -10,6 +10,10 @@ public sealed partial class ClientGenerator
     {
         private void RegisterSchemaNames()
         {
+            _usedSchemaTypeNames.Add(_clientName);
+            _usedSchemaTypeNames.Add("OpenApiClientHelpers");
+            _usedSchemaTypeNames.Add("OpenApiException");
+
             if (_document.Components?.Schemas is null)
             {
                 return;
@@ -17,9 +21,8 @@ public sealed partial class ClientGenerator
 
             foreach (var schema in _document.Components.Schemas)
             {
-                var schemaName = SafeIdentifier(ToPascalCase(schema.Key));
+                var schemaName = AllocateTypeName(parentTypeName: null, NormalizePascalIdentifier(schema.Key, "Model"));
                 _schemaNames[schema.Key] = schemaName;
-                _usedSchemaTypeNames.Add(schemaName);
             }
         }
 
@@ -196,13 +199,17 @@ public sealed partial class ClientGenerator
             }
 
             var properties = new List<SchemaPropertyDefinition>();
+            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in GetSchemaProperties(schema, ignoredPropertyNames, ignoredSchemaReferences))
             {
-                var propertyName = SafeIdentifier(ToPascalCase(property.Name));
+                var propertyName = AllocateUniqueName(
+                    usedPropertyNames,
+                    NormalizePascalIdentifier(property.Name, "Value"),
+                    "Value");
                 properties.Add(new SchemaPropertyDefinition(
                     property.Name,
                     propertyName,
-                    ResolveTypeName(property.Schema, property.Required),
+                    ResolveTypeUsage(property.Schema, property.Required),
                     property.Required,
                     property.Schema.Title ?? propertyName,
                     property.Schema.Description));
@@ -454,22 +461,9 @@ public sealed partial class ClientGenerator
 
         private InlineSchemaInfo AllocateInlineSchema(string? parentTypeName, string suggestedTypeName, IOpenApiSchema schema)
         {
-            var baseTypeName = SafeIdentifier(suggestedTypeName);
-            if (string.IsNullOrWhiteSpace(baseTypeName))
-            {
-                baseTypeName = "InlineObject";
-            }
-
-            var candidate = baseTypeName;
-            var suffix = 2;
-            while (!_usedSchemaTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate)))
-            {
-                candidate = baseTypeName + suffix.ToString(CultureInfo.InvariantCulture);
-                suffix++;
-            }
-
-            var typeName = BuildQualifiedTypeName(parentTypeName, candidate);
-            return new InlineSchemaInfo(typeName, candidate, parentTypeName, schema);
+            var declaredTypeName = AllocateTypeName(parentTypeName, NormalizePascalIdentifier(suggestedTypeName, "InlineObject"));
+            var typeName = BuildQualifiedTypeName(parentTypeName, declaredTypeName);
+            return new InlineSchemaInfo(typeName, declaredTypeName, parentTypeName, schema);
         }
 
         private static string BuildInlineSchemaTypeName(string nestedNamePrefix, string childName, IOpenApiSchema schema)
@@ -484,7 +478,7 @@ public sealed partial class ClientGenerator
                 _ => ToPascalCase(childName) + "Model"
             };
 
-            return SafeIdentifier(nestedNamePrefix + suffix);
+            return NormalizePascalIdentifier(nestedNamePrefix + suffix, "InlineObject");
         }
 
         private static string CombineNestedTypeNamePrefix(string nestedNamePrefix, string childName)
@@ -496,62 +490,97 @@ public sealed partial class ClientGenerator
                 _ => ToPascalCase(childName)
             };
 
-            return SafeIdentifier(nestedNamePrefix + segment);
+            return NormalizePascalIdentifier(nestedNamePrefix + segment, "InlineObject");
         }
 
         private static string BuildQualifiedTypeName(string? parentTypeName, string declaredTypeName)
             => string.IsNullOrWhiteSpace(parentTypeName) ? declaredTypeName : $"{parentTypeName}.{declaredTypeName}";
 
-        private string ResolveTypeName(IOpenApiSchema? schema, bool required)
+        private string AllocateTypeName(string? parentTypeName, string suggestedTypeName)
+        {
+            var baseTypeName = string.IsNullOrWhiteSpace(suggestedTypeName) ? "Model" : suggestedTypeName;
+            var candidate = baseTypeName;
+            var suffix = 2;
+
+            while (!_usedSchemaTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate)))
+            {
+                candidate = baseTypeName + suffix.ToString(CultureInfo.InvariantCulture);
+                suffix++;
+            }
+
+            return candidate;
+        }
+
+        private TypeUsage ResolveTypeUsage(IOpenApiSchema? schema, bool required)
         {
             if (schema is null)
             {
-                return required ? "string" : "string?";
+                return new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: !required);
             }
 
             if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
                 && _schemaNames.TryGetValue(referenceHolder.Reference.Id, out var schemaName))
             {
-                return required && !IsNullableSchema(schema) ? schemaName : $"{schemaName}?";
+                return new TypeUsage(
+                    schemaName,
+                    GetTypeShape(ResolveSchemaReference(schema)),
+                    SchemaAllowsNull(schema),
+                    isOptional: !required);
             }
 
             if (_inlineSchemasByIdentity.TryGetValue(GetSchemaIdentity(schema), out var inlineSchema))
             {
-                return required && !IsNullableSchema(schema) ? inlineSchema.TypeName : $"{inlineSchema.TypeName}?";
+                return new TypeUsage(
+                    inlineSchema.TypeName,
+                    GetTypeShape(schema),
+                    SchemaAllowsNull(schema),
+                    isOptional: !required);
             }
 
-            if (TryResolveCompositeTypeName(schema, required, out var compositeTypeName))
+            if (TryResolveCompositeTypeUsage(schema, required, out var compositeType))
             {
-                return compositeTypeName;
+                return compositeType;
             }
 
             if (TryGetDictionaryValueType(schema, out var dictionaryValueType))
             {
                 var dictionaryType = $"IReadOnlyDictionary<string, {dictionaryValueType}>";
-                return required && !IsNullableSchema(schema) ? dictionaryType : $"{dictionaryType}?";
+                return new TypeUsage(
+                    dictionaryType,
+                    TypeShape.Dictionary,
+                    SchemaAllowsNull(schema),
+                    isOptional: !required);
             }
 
-            var baseType = schema.Type & ~JsonSchemaType.Null;
-            var typeName = baseType switch
+            var resolvedSchema = ResolveSchemaReference(schema);
+            var baseType = resolvedSchema.Type & ~JsonSchemaType.Null;
+            var (typeName, typeShape) = baseType switch
             {
-                JsonSchemaType.Integer when string.Equals(schema.Format, "int64", StringComparison.OrdinalIgnoreCase) => "long",
-                JsonSchemaType.Integer => "int",
-                JsonSchemaType.Number when string.Equals(schema.Format, "float", StringComparison.OrdinalIgnoreCase) => "float",
-                JsonSchemaType.Number when string.Equals(schema.Format, "double", StringComparison.OrdinalIgnoreCase) => "double",
-                JsonSchemaType.Number when string.Equals(schema.Format, "decimal", StringComparison.OrdinalIgnoreCase) => "decimal",
-                JsonSchemaType.Number => "decimal",
-                JsonSchemaType.Boolean => "bool",
-                JsonSchemaType.String when string.Equals(schema.Format, "date", StringComparison.OrdinalIgnoreCase) => "DateOnly",
-                JsonSchemaType.String when string.Equals(schema.Format, "date-time", StringComparison.OrdinalIgnoreCase) => "DateTimeOffset",
-                JsonSchemaType.String when string.Equals(schema.Format, "uuid", StringComparison.OrdinalIgnoreCase) => "Guid",
-                JsonSchemaType.String when string.Equals(schema.Format, "binary", StringComparison.OrdinalIgnoreCase) => "byte[]",
-                JsonSchemaType.Array => $"IReadOnlyList<{ResolveTypeName(schema.Items, required: true)}>",
-                JsonSchemaType.String => "string",
-                _ => "JsonElement"
+                JsonSchemaType.Integer when string.Equals(resolvedSchema.Format, "int64", StringComparison.OrdinalIgnoreCase) => ("long", TypeShape.Primitive),
+                JsonSchemaType.Integer => ("int", TypeShape.Primitive),
+                JsonSchemaType.Number when string.Equals(resolvedSchema.Format, "float", StringComparison.OrdinalIgnoreCase) => ("float", TypeShape.Primitive),
+                JsonSchemaType.Number when string.Equals(resolvedSchema.Format, "double", StringComparison.OrdinalIgnoreCase) => ("double", TypeShape.Primitive),
+                JsonSchemaType.Number when string.Equals(resolvedSchema.Format, "decimal", StringComparison.OrdinalIgnoreCase) => ("decimal", TypeShape.Primitive),
+                JsonSchemaType.Number => ("decimal", TypeShape.Primitive),
+                JsonSchemaType.Boolean => ("bool", TypeShape.Primitive),
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date", StringComparison.OrdinalIgnoreCase) => ("DateOnly", TypeShape.Primitive),
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date-time", StringComparison.OrdinalIgnoreCase) => ("DateTimeOffset", TypeShape.Primitive),
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "uuid", StringComparison.OrdinalIgnoreCase) => ("Guid", TypeShape.Primitive),
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) => ("byte[]", TypeShape.Binary),
+                JsonSchemaType.Array => ($"IReadOnlyList<{ResolveTypeUsage(resolvedSchema.Items, required: true).CSharpTypeName}>", TypeShape.Array),
+                JsonSchemaType.String => ("string", TypeShape.String),
+                _ => ("JsonElement", TypeShape.JsonElement)
             };
 
-            return required && !IsNullableSchema(schema) ? typeName : $"{typeName}?";
+            return new TypeUsage(
+                typeName,
+                typeShape,
+                SchemaAllowsNull(schema),
+                isOptional: !required);
         }
+
+        private string ResolveTypeName(IOpenApiSchema? schema, bool required)
+            => ResolveTypeUsage(schema, required).CSharpTypeName;
 
         private List<SchemaPropertyInfo> GetSchemaProperties(IOpenApiSchema schema, ISet<string>? ignoredPropertyNames = null, ISet<string>? ignoredSchemaReferences = null)
         {
@@ -646,28 +675,29 @@ public sealed partial class ClientGenerator
                 : null;
         }
 
-        private bool TryResolveCompositeTypeName(IOpenApiSchema schema, bool required, out string typeName)
+        private bool TryResolveCompositeTypeUsage(IOpenApiSchema schema, bool required, out TypeUsage typeUsage)
         {
-            if (TryResolveSchemaUnion(schema.OneOf, required, out typeName)
-                || TryResolveSchemaUnion(schema.AnyOf, required, out typeName)
-                || TryResolveSchemaUnion(schema.AllOf, required, out typeName))
+            if (TryResolveSchemaUnion(schema.OneOf, required, out typeUsage)
+                || TryResolveSchemaUnion(schema.AnyOf, required, out typeUsage)
+                || TryResolveSchemaUnion(schema.AllOf, required, out typeUsage))
             {
                 return true;
             }
 
-            typeName = string.Empty;
+            typeUsage = null!;
             return false;
         }
 
-        private bool TryResolveSchemaUnion(IList<IOpenApiSchema>? schemas, bool required, out string typeName)
+        private bool TryResolveSchemaUnion(IList<IOpenApiSchema>? schemas, bool required, out TypeUsage typeUsage)
         {
-            typeName = string.Empty;
+            typeUsage = null!;
             if (schemas is null || schemas.Count == 0)
             {
                 return false;
             }
 
             var nullable = false;
+            TypeUsage? representativeUsage = null;
             var memberTypeNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var child in schemas)
             {
@@ -677,17 +707,21 @@ public sealed partial class ClientGenerator
                     continue;
                 }
 
-                var childTypeName = TryResolveSchemaReferenceName(child) ?? ResolveTypeName(child, required: true);
-                memberTypeNames.Add(TrimNullableTypeName(childTypeName));
+                var childUsage = ResolveTypeUsage(child, required: true);
+                representativeUsage ??= childUsage;
+                memberTypeNames.Add(childUsage.NonNullableCSharpTypeName);
             }
 
-            if (memberTypeNames.Count != 1)
+            if (memberTypeNames.Count != 1 || representativeUsage is null)
             {
                 return false;
             }
 
-            var resolvedTypeName = memberTypeNames.Single();
-            typeName = nullable || !required ? MakeNullableTypeName(resolvedTypeName) : resolvedTypeName;
+            typeUsage = new TypeUsage(
+                representativeUsage.NonNullableCSharpTypeName,
+                representativeUsage.Shape,
+                nullable || representativeUsage.SchemaAllowsNull,
+                isOptional: !required);
             return true;
         }
 
@@ -753,6 +787,54 @@ public sealed partial class ClientGenerator
             }
 
             return schema;
+        }
+
+        private TypeShape GetTypeShape(IOpenApiSchema schema)
+        {
+            var resolvedSchema = ResolveSchemaReference(schema);
+            if (IsEnumSchema(resolvedSchema))
+            {
+                return TypeShape.Enum;
+            }
+
+            if (TryGetDictionaryValueType(resolvedSchema, out _))
+            {
+                return TypeShape.Dictionary;
+            }
+
+            var baseType = resolvedSchema.Type & ~JsonSchemaType.Null;
+            return baseType switch
+            {
+                JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean => TypeShape.Primitive,
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) => TypeShape.Binary,
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date", StringComparison.OrdinalIgnoreCase) => TypeShape.Primitive,
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date-time", StringComparison.OrdinalIgnoreCase) => TypeShape.Primitive,
+                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "uuid", StringComparison.OrdinalIgnoreCase) => TypeShape.Primitive,
+                JsonSchemaType.String => TypeShape.String,
+                JsonSchemaType.Array => TypeShape.Array,
+                JsonSchemaType.Object => TypeShape.Object,
+                _ when resolvedSchema.AllOf is { Count: > 0 } || (resolvedSchema.Properties?.Count ?? 0) > 0 => TypeShape.Object,
+                _ => TypeShape.JsonElement
+            };
+        }
+
+        private bool SchemaAllowsNull(IOpenApiSchema schema)
+        {
+            if (HasSchemaType(schema, JsonSchemaType.Null) || SchemaCompositionsAllowNull(schema))
+            {
+                return true;
+            }
+
+            var resolvedSchema = ResolveSchemaReference(schema);
+            return !ReferenceEquals(resolvedSchema, schema)
+                && (HasSchemaType(resolvedSchema, JsonSchemaType.Null) || SchemaCompositionsAllowNull(resolvedSchema));
+        }
+
+        private static bool SchemaCompositionsAllowNull(IOpenApiSchema schema)
+        {
+            return (schema.OneOf?.Any(IsNullOnlySchema) == true)
+                || (schema.AnyOf?.Any(IsNullOnlySchema) == true)
+                || (schema.AllOf?.Any(IsNullOnlySchema) == true);
         }
 
         private static bool HasSchemaType(IOpenApiSchema? schema, JsonSchemaType type)

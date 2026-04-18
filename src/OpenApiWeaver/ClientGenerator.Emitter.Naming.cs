@@ -6,25 +6,6 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Emitter
     {
-        private static bool IsReferenceLikeType(string typeName)
-        {
-            return typeName is "string"
-                || typeName.StartsWith("IReadOnlyList<", StringComparison.Ordinal)
-                || (!typeName.EndsWith("?", StringComparison.Ordinal) && typeName is not "int" and not "long" and not "float" and not "double" and not "decimal" and not "bool" and not "DateOnly" and not "DateTimeOffset" and not "Guid" and not "JsonElement");
-        }
-
-        private bool RequiresNonNullJsonResponse(string typeName)
-        {
-            return !typeName.EndsWith("?", StringComparison.Ordinal)
-                && !IsGeneratedEnumType(typeName)
-                && IsReferenceLikeType(typeName);
-        }
-
-        private bool IsGeneratedEnumType(string typeName)
-        {
-            return _generatedEnumTypeNames.Contains(TrimNullableTypeName(typeName));
-        }
-
         private static string EscapeStringLiteral(string value)
         {
             if (string.IsNullOrEmpty(value))

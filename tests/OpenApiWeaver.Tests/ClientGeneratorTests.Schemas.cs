@@ -35,6 +35,63 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void SchemaNamesThatNormalizeToSameIdentifier_GenerateUniqueTypeNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Naming API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                user-id:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                user_id:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class UserId", source);
+        Assert.Contains("public sealed class UserId2", source);
+    }
+
+    [Fact]
+    public void SchemaPropertiesThatNormalizeToSameIdentifier_GenerateUniquePropertyNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Naming API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                userResponse:
+                  type: object
+                  properties:
+                    user-id:
+                      type: integer
+                    user_id:
+                      type: integer
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonPropertyName(\"user-id\")]", source);
+        Assert.Contains("public int? UserId { get; init; }", source);
+        Assert.Contains("[JsonPropertyName(\"user_id\")]", source);
+        Assert.Contains("public int? UserId2 { get; init; }", source);
+    }
+
+    [Fact]
     public void EnumSchema_GeneratesEnumType()
     {
         const string openApi = """
@@ -964,6 +1021,37 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("public required int CompanyId { get; init; }", source);
         Assert.DoesNotContain("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]", source);
         Assert.Contains("public required string? DisplayName { get; init; }", source);
+    }
+
+    [Fact]
+    public void RequiredNullableReferencedProperty_GeneratesRequiredNullableProperty()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Required Nullable Reference API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                partnerResponse:
+                  type: object
+                  required:
+                    - profile
+                  properties:
+                    profile:
+                      $ref: '#/components/schemas/profile'
+                profile:
+                  nullable: true
+                  type: object
+                  properties:
+                    display_name:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required Profile? Profile { get; init; }", source);
     }
 
     [Fact]

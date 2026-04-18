@@ -32,53 +32,83 @@ public sealed partial class ClientGenerator
                 {
                     var tagName = GetTagName(operation.Value);
                     var groupName = string.IsNullOrWhiteSpace(tagName) ? "Default" : tagName!;
-                    var propertyName = SafeIdentifier(ToPascalCase(groupName));
 
-                    if (!accumulators.TryGetValue(propertyName, out var accumulator))
+                    if (!accumulators.TryGetValue(groupName, out var accumulator))
                     {
-                        var className = propertyName.EndsWith("Client", StringComparison.Ordinal) ? propertyName : propertyName + "Client";
                         tagDescriptions.TryGetValue(groupName, out var description);
-                        accumulator = new TagGroupAccumulator(className, description);
-                        accumulators[propertyName] = accumulator;
+                        accumulator = new TagGroupAccumulator(groupName, description);
+                        accumulators[groupName] = accumulator;
                     }
 
-                    accumulator.Operations.Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value));
+                    accumulator.Operations.Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value, accumulator.UsedMethodNames));
                 }
             }
 
+            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
+            var usedClassNames = new HashSet<string>(
+                _schemaNames.Values
+                    .Concat(_inlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
+                    .Append(_clientName)
+                    .Append("OpenApiClientHelpers")
+                    .Append("OpenApiException"),
+                StringComparer.Ordinal);
+
             return [..
                 accumulators.OrderBy(static pair => pair.Key, StringComparer.Ordinal)
-                    .Select(static pair => new TagGroup(pair.Key, pair.Value.ClassName, pair.Value.Description, pair.Value.Operations))];
+                    .Select(pair =>
+                    {
+                        var propertyName = AllocateUniqueName(
+                            usedPropertyNames,
+                            NormalizePascalIdentifier(pair.Value.GroupName, "Default"),
+                            "Default");
+                        var className = AllocateUniqueName(
+                            usedClassNames,
+                            propertyName.EndsWith("Client", StringComparison.Ordinal) ? propertyName : propertyName + "Client",
+                            "DefaultClient");
+                        return new TagGroup(propertyName, className, pair.Value.Description, pair.Value.Operations);
+                    })];
         }
 
-        private sealed class TagGroupAccumulator(string className, string? description)
+        private sealed class TagGroupAccumulator(string groupName, string? description)
         {
-            public string ClassName { get; } = className;
+            public string GroupName { get; } = groupName;
             public string? Description { get; } = description;
             public List<OperationGroupItem> Operations { get; } = [];
+            public HashSet<string> UsedMethodNames { get; } = new(StringComparer.Ordinal);
         }
 
-        private OperationGroupItem BuildOperation(string route, string operationType, IOpenApiPathItem pathItem, OpenApiOperation operation)
+        private OperationGroupItem BuildOperation(string route, string operationType, IOpenApiPathItem pathItem, OpenApiOperation operation, ISet<string> usedMethodNames)
         {
             var tagName = GetTagName(operation);
+            var usedParameterNames = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "cancellationToken"
+            };
             var parameters = CollectParameters(pathItem, operation)
                 .Select(parameter => new ParameterInfo(
                     parameter.Name ?? string.Empty,
-                    SafeIdentifier(ToCamelCase(parameter.Name ?? string.Empty)),
-                    ResolveTypeName(parameter.Schema, parameter.Required),
+                    AllocateUniqueName(
+                        usedParameterNames,
+                        NormalizeCamelIdentifier(parameter.Name ?? string.Empty, "value"),
+                        "value"),
+                    ResolveTypeUsage(parameter.Schema, parameter.Required),
                     parameter.Required,
                     MapParameterLocation(parameter.In ?? OpenApiParameterLocation.Query),
                     parameter.Description))
                 .ToList();
 
-            var requestBody = ResolveRequestBody(operation.RequestBody);
+            var requestBody = ResolveRequestBody(operation.RequestBody, usedParameterNames);
             var response = ResolveResponse(operation);
             var errorResponses = ResolveErrorResponses(operation);
+            var methodName = AllocateUniqueName(
+                usedMethodNames,
+                BuildOperationMethodName(operation.OperationId, operationType, route, tagName),
+                NormalizePascalIdentifier(operationType, "Operation"));
 
             return new OperationGroupItem(
                 route,
                 operationType,
-                BuildOperationMethodName(operation.OperationId, operationType, route, tagName),
+                methodName,
                 operation.Summary ?? operation.Description ?? $"{ToPascalCase(operationType.ToLowerInvariant())} {route}.",
                 operation.Summary is not null && !string.IsNullOrWhiteSpace(operation.Description) ? operation.Description : null,
                 parameters,
@@ -92,19 +122,13 @@ public sealed partial class ClientGenerator
             var response = SelectSuccessResponse(operation.Responses ?? []);
             if (response is null || !TrySelectPreferredContent(response.Content, GetResponseContentPriority, out var selectedContent))
             {
-                return new ResponseInfo(ResponseKind.None, string.Empty, null);
+                return new ResponseInfo(ResponseKind.None, type: null, null);
             }
 
-            var kind = ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
-            var typeName = kind switch
-            {
-                ResponseKind.Binary => "byte[]",
-                ResponseKind.String => "string",
-                ResponseKind.None => string.Empty,
-                _ => ResolveTypeName(selectedContent.Value.Schema, required: selectedContent.Value.Schema is null || !IsNullableSchema(selectedContent.Value.Schema))
-            };
+            var type = ResolveResponseTypeUsage(selectedContent.Key, selectedContent.Value.Schema);
+            var kind = ResolveResponseKind(selectedContent.Key, type);
 
-            return new ResponseInfo(kind, typeName, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
+            return new ResponseInfo(kind, type, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
         }
 
         private List<ErrorResponseInfo> ResolveErrorResponses(OpenApiOperation operation)
@@ -143,23 +167,37 @@ public sealed partial class ClientGenerator
                 return null;
             }
 
+            var type = ResolveResponseTypeUsage(selectedContent.Key, selectedContent.Value.Schema);
             var kind = selectedContent.Value.Schema is null && selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
                 ? ResponseKind.String
-                : ResolveResponseKind(selectedContent.Key, selectedContent.Value.Schema);
-            var typeName = kind switch
-            {
-                ResponseKind.Binary => "byte[]",
-                ResponseKind.String => "string",
-                ResponseKind.None => string.Empty,
-                _ => ResolveTypeName(selectedContent.Value.Schema, required: selectedContent.Value.Schema is null || !IsNullableSchema(selectedContent.Value.Schema))
-            };
+                : ResolveResponseKind(selectedContent.Key, type);
 
-            return new ResponseInfo(kind, typeName, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
+            return new ResponseInfo(kind, type, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
         }
 
-        private static ResponseKind ResolveResponseKind(string contentType, IOpenApiSchema? schema)
+        private TypeUsage ResolveResponseTypeUsage(string contentType, IOpenApiSchema? schema)
         {
-            if (HasSchemaType(schema, JsonSchemaType.String) && string.Equals(schema?.Format, "binary", StringComparison.OrdinalIgnoreCase))
+            var resolvedType = schema is null
+                ? new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: false)
+                : ResolveTypeUsage(schema, required: true);
+            var kind = ResolveResponseKind(contentType, resolvedType);
+
+            if (kind == ResponseKind.Binary)
+            {
+                return new TypeUsage("byte[]", TypeShape.Binary, resolvedType.SchemaAllowsNull, isOptional: false);
+            }
+
+            if (kind == ResponseKind.String)
+            {
+                return new TypeUsage("string", TypeShape.String, resolvedType.SchemaAllowsNull, isOptional: false);
+            }
+
+            return resolvedType;
+        }
+
+        private static ResponseKind ResolveResponseKind(string contentType, TypeUsage? type)
+        {
+            if (type?.Shape == TypeShape.Binary)
             {
                 return ResponseKind.Binary;
             }
@@ -376,16 +414,16 @@ public sealed partial class ClientGenerator
                 string.Equals(item.Key, "multipart/form-data", StringComparison.OrdinalIgnoreCase) ? 2 :
                 int.MaxValue;
 
-        private static int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
+        private int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
             => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 1 :
+                ResolveResponseTypeUsage(item.Key, item.Value.Schema).Shape == TypeShape.Binary ? 1 :
                 item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 2 :
                 int.MaxValue;
 
-        private static int GetErrorResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
+        private int GetErrorResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
             => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
                 item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 1 :
-                HasSchemaType(item.Value.Schema, JsonSchemaType.String) && string.Equals(item.Value.Schema?.Format, "binary", StringComparison.OrdinalIgnoreCase) ? 2 :
+                ResolveResponseTypeUsage(item.Key, item.Value.Schema).Shape == TypeShape.Binary ? 2 :
                 int.MaxValue;
 
         private static KeyValuePair<string, T> SelectPreferredContent<T>(IEnumerable<KeyValuePair<string, T>> content, Func<KeyValuePair<string, T>, int> getPriority)

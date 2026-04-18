@@ -6,7 +6,7 @@ public sealed partial class ClientGenerator
     {
         private void EmitRequestBodyContentAssignment(IndentedStringBuilder writer, RequestBodyInfo requestBody, bool nullableBody)
         {
-            var bodyValue = nullableBody ? "body!" : "body";
+            var bodyValue = nullableBody ? requestBody.ParameterName + "!" : requestBody.ParameterName;
 
             switch (requestBody.Kind)
             {
@@ -28,15 +28,15 @@ public sealed partial class ClientGenerator
             foreach (var property in requestBody.Properties)
             {
                 var propertyAccess = $"{bodyValue}.{property.PropertyName}";
-                EmitIfNotNull(writer, propertyAccess, property.Nullable, () =>
+                EmitIfNotNull(writer, propertyAccess, property.IsNullable, () =>
                 {
                     switch (property.Kind)
                     {
                         case RequestBodyValueKind.Scalar:
-                            EmitFormValueAdd(writer, property.SerializedName, propertyAccess);
+                            EmitFormValueAdd(writer, property.WireName, propertyAccess);
                             break;
                         case RequestBodyValueKind.Collection:
-                            EmitCollectionLoop(writer, propertyAccess, () => EmitIfNotNull(writer, "item", property.ElementNullable, () => EmitFormValueAdd(writer, property.SerializedName, "item")));
+                            EmitCollectionLoop(writer, propertyAccess, () => EmitIfNotNull(writer, "item", property.IsElementNullable, () => EmitFormValueAdd(writer, property.WireName, "item")));
                             break;
                     }
                 });
@@ -51,16 +51,16 @@ public sealed partial class ClientGenerator
             foreach (var property in requestBody.Properties)
             {
                 var propertyAccess = $"{bodyValue}.{property.PropertyName}";
-                EmitIfNotNull(writer, propertyAccess, property.Nullable, () =>
+                EmitIfNotNull(writer, propertyAccess, property.IsNullable, () =>
                 {
                     switch (property.Kind)
                     {
                         case RequestBodyValueKind.Scalar:
                         case RequestBodyValueKind.Binary:
-                            EmitMultipartValueAdd(writer, property.SerializedName, propertyAccess, property.Kind);
+                            EmitMultipartValueAdd(writer, property.WireName, propertyAccess, property.Kind);
                             break;
                         case RequestBodyValueKind.Collection:
-                            EmitCollectionLoop(writer, propertyAccess, () => EmitIfNotNull(writer, "item", property.ElementNullable, () => EmitMultipartValueAdd(writer, property.SerializedName, "item", property.ElementKind!.Value)));
+                            EmitCollectionLoop(writer, propertyAccess, () => EmitIfNotNull(writer, "item", property.IsElementNullable, () => EmitMultipartValueAdd(writer, property.WireName, "item", property.ElementKind!.Value)));
                             break;
                     }
                 });
