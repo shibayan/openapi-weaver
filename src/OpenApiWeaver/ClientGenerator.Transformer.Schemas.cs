@@ -579,9 +579,6 @@ public sealed partial class ClientGenerator
                 isOptional: !required);
         }
 
-        private string ResolveTypeName(IOpenApiSchema? schema, bool required)
-            => ResolveTypeUsage(schema, required).CSharpTypeName;
-
         private List<SchemaPropertyInfo> GetSchemaProperties(IOpenApiSchema schema, ISet<string>? ignoredPropertyNames = null, ISet<string>? ignoredSchemaReferences = null)
         {
             var properties = new List<SchemaPropertyInfo>();
@@ -755,14 +752,14 @@ public sealed partial class ClientGenerator
 
             if (schema.AdditionalProperties is not null)
             {
-                valueTypes.Add(TrimNullableTypeName(ResolveTypeName(schema.AdditionalProperties, required: true)));
+                valueTypes.Add(TrimNullableTypeName(ResolveTypeUsage(schema.AdditionalProperties, required: true).CSharpTypeName));
             }
 
             if (schema.PatternProperties is not null)
             {
                 foreach (var patternProperty in schema.PatternProperties)
                 {
-                    valueTypes.Add(TrimNullableTypeName(ResolveTypeName(patternProperty.Value, required: true)));
+                    valueTypes.Add(TrimNullableTypeName(ResolveTypeUsage(patternProperty.Value, required: true).CSharpTypeName));
                 }
             }
 
@@ -826,8 +823,12 @@ public sealed partial class ClientGenerator
             }
 
             var resolvedSchema = ResolveSchemaReference(schema);
-            return !ReferenceEquals(resolvedSchema, schema)
-                && (HasSchemaType(resolvedSchema, JsonSchemaType.Null) || SchemaCompositionsAllowNull(resolvedSchema));
+            if (ReferenceEquals(resolvedSchema, schema))
+            {
+                return false;
+            }
+
+            return HasSchemaType(resolvedSchema, JsonSchemaType.Null) || SchemaCompositionsAllowNull(resolvedSchema);
         }
 
         private static bool SchemaCompositionsAllowNull(IOpenApiSchema schema)
@@ -840,11 +841,6 @@ public sealed partial class ClientGenerator
         private static bool HasSchemaType(IOpenApiSchema? schema, JsonSchemaType type)
         {
             return schema?.Type is { } schemaType && (schemaType & type) == type;
-        }
-
-        private static bool IsNullableSchema(IOpenApiSchema schema)
-        {
-            return HasSchemaType(schema, JsonSchemaType.Null);
         }
 
         private static bool IsNullOnlySchema(IOpenApiSchema? schema)

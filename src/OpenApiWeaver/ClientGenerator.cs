@@ -126,11 +126,6 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
 
     private static GeneratorInput? TryCreateInput(AdditionalText file, AnalyzerConfigOptionsProvider optionsProvider, CancellationToken cancellationToken)
     {
-        if (!IsOpenApiDocument(file.Path))
-        {
-            return null;
-        }
-
         var fileOptions = optionsProvider.GetOptions(file);
         if (!fileOptions.TryGetValue(BuildMetadataAdditionalFilesItemKind, out var itemKind)
             || !string.Equals(itemKind, OpenApiWeaverDocumentItemKind, StringComparison.Ordinal))
