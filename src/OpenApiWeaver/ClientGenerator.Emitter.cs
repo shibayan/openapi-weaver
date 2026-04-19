@@ -164,7 +164,7 @@ public sealed partial class ClientGenerator
 
                     foreach (var securityScheme in model.SecuritySchemes)
                     {
-                        EmitSecuritySchemeInitialization(writer, securityScheme);
+                        writer.Append(securityScheme.FieldName).Append(" = ").Append(securityScheme.ParameterName).AppendLine(";");
                     }
 
                     var constructorArguments = string.Join(", ",

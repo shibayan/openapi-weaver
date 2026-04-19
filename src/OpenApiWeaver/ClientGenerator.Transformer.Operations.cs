@@ -415,26 +415,49 @@ public sealed partial class ClientGenerator
                 int.MaxValue;
 
         private int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-            => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                ResolveResponseTypeUsage(item.Key, item.Value.Schema).Shape == TypeShape.Binary ? 1 :
-                item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 2 :
-                int.MaxValue;
+            => GetContentPriority(item, IsJson, IsBinary, IsText);
 
         private int GetErrorResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-            => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ? 1 :
-                ResolveResponseTypeUsage(item.Key, item.Value.Schema).Shape == TypeShape.Binary ? 2 :
-                int.MaxValue;
+            => GetContentPriority(item, IsJson, IsText, IsBinary);
 
-        private static KeyValuePair<string, T> SelectPreferredContent<T>(IEnumerable<KeyValuePair<string, T>> content, Func<KeyValuePair<string, T>, int> getPriority)
+        private int GetContentPriority(
+            KeyValuePair<string, IOpenApiMediaType> item,
+            params Func<KeyValuePair<string, IOpenApiMediaType>, bool>[] predicates)
         {
-            using var enumerator = content.GetEnumerator();
-            if (!enumerator.MoveNext())
+            for (var i = 0; i < predicates.Length; i++)
             {
-                throw new InvalidOperationException("The content collection must not be empty.");
+                if (predicates[i](item))
+                {
+                    return i;
+                }
             }
 
-            var selected = enumerator.Current;
+            return int.MaxValue;
+        }
+
+        private static bool IsJson(KeyValuePair<string, IOpenApiMediaType> item)
+            => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsText(KeyValuePair<string, IOpenApiMediaType> item)
+            => item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase);
+
+        private bool IsBinary(KeyValuePair<string, IOpenApiMediaType> item)
+            => ResolveResponseTypeUsage(item.Key, item.Value.Schema).Shape == TypeShape.Binary;
+
+        private static bool TrySelectPreferredContent<T>(
+            IDictionary<string, T>? content,
+            Func<KeyValuePair<string, T>, int> getPriority,
+            out KeyValuePair<string, T> selected)
+        {
+            if (content is null || content.Count == 0)
+            {
+                selected = default;
+                return false;
+            }
+
+            using var enumerator = content.GetEnumerator();
+            enumerator.MoveNext();
+            selected = enumerator.Current;
             var bestPriority = getPriority(selected);
 
             while (enumerator.MoveNext())
@@ -448,21 +471,6 @@ public sealed partial class ClientGenerator
                 }
             }
 
-            return selected;
-        }
-
-        private static bool TrySelectPreferredContent<T>(
-            IDictionary<string, T>? content,
-            Func<KeyValuePair<string, T>, int> getPriority,
-            out KeyValuePair<string, T> selected)
-        {
-            if (content is null || content.Count == 0)
-            {
-                selected = default;
-                return false;
-            }
-
-            selected = SelectPreferredContent(content, getPriority);
             return true;
         }
 

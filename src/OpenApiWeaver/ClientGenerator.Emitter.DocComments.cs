@@ -74,8 +74,7 @@ public sealed partial class ClientGenerator
                 .Replace("\r\n", "\n")
                 .Replace('\r', '\n')
                 .Split('\n')
-                .Select(static line => line.Trim())
-                .DefaultIfEmpty(string.Empty);
+                .Select(static line => line.Trim());
         }
 
         private static string SanitizeDocumentationContent(string value)
@@ -171,43 +170,26 @@ public sealed partial class ClientGenerator
         }
 
         private static string EscapeXmlDocumentationText(string value)
-        {
-            if (string.IsNullOrEmpty(value))
+            => EscapeByLookup(value, static ch => ch switch
             {
-                return value;
-            }
-
-            StringBuilder? builder = null;
-            for (var i = 0; i < value.Length; i++)
-            {
-                var ch = value[i];
-                var replacement = ch switch
-                {
-                    '&' => "&amp;",
-                    '<' => "&lt;",
-                    '>' => "&gt;",
-                    _ => null
-                };
-
-                if (replacement is null)
-                {
-                    builder?.Append(ch);
-                    continue;
-                }
-
-                if (builder is null)
-                {
-                    builder = new StringBuilder(value.Length + 8);
-                    builder.Append(value, 0, i);
-                }
-
-                builder.Append(replacement);
-            }
-
-            return builder?.ToString() ?? value;
-        }
+                '&' => "&amp;",
+                '<' => "&lt;",
+                '>' => "&gt;",
+                _ => null
+            });
 
         private static string EscapeXmlDocumentationAttribute(string value)
+            => EscapeByLookup(value, static ch => ch switch
+            {
+                '&' => "&amp;",
+                '<' => "&lt;",
+                '>' => "&gt;",
+                '"' => "&quot;",
+                '\'' => "&apos;",
+                _ => null
+            });
+
+        private static string EscapeByLookup(string value, Func<char, string?> lookup)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -218,15 +200,7 @@ public sealed partial class ClientGenerator
             for (var i = 0; i < value.Length; i++)
             {
                 var ch = value[i];
-                var replacement = ch switch
-                {
-                    '&' => "&amp;",
-                    '<' => "&lt;",
-                    '>' => "&gt;",
-                    '"' => "&quot;",
-                    '\'' => "&apos;",
-                    _ => null
-                };
+                var replacement = lookup(ch);
 
                 if (replacement is null)
                 {

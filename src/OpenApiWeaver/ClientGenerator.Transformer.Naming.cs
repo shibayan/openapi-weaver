@@ -10,18 +10,16 @@ public sealed partial class ClientGenerator
     private sealed partial class Transformer
     {
         private static string NormalizePascalIdentifier(string value, string fallback = "Value")
-        {
-            var normalized = SafeIdentifier(ToPascalCase(value));
-            return normalized == "value" && !string.Equals(value, "value", StringComparison.OrdinalIgnoreCase)
-                ? SafeIdentifier(ToPascalCase(fallback))
-                : normalized;
-        }
+            => NormalizeIdentifier(value, fallback, ToPascalCase, "value");
 
         private static string NormalizeCamelIdentifier(string value, string fallback = "value")
+            => NormalizeIdentifier(value, fallback, ToCamelCase, "value");
+
+        private static string NormalizeIdentifier(string value, string fallback, Func<string, string> transform, string defaultPlaceholder)
         {
-            var normalized = SafeIdentifier(ToCamelCase(value));
-            return normalized == "value" && !string.Equals(value, "value", StringComparison.OrdinalIgnoreCase)
-                ? SafeIdentifier(ToCamelCase(fallback))
+            var normalized = SafeIdentifier(transform(value));
+            return normalized == defaultPlaceholder && !string.Equals(value, defaultPlaceholder, StringComparison.OrdinalIgnoreCase)
+                ? SafeIdentifier(transform(fallback))
                 : normalized;
         }
 

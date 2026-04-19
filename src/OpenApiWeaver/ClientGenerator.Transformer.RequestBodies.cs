@@ -79,18 +79,28 @@ public sealed partial class ClientGenerator
         }
 
         private RequestBodyValueKind ClassifyRequestBodyValueKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema, out RequestBodyValueKind? elementKind)
+            => ClassifyValueKind(schemaName, propertyName, requestBodyKind, schema, isArrayItem: false, out elementKind);
+
+        private RequestBodyValueKind ClassifyCollectionElementKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema)
+            => ClassifyValueKind(schemaName, propertyName, requestBodyKind, schema, isArrayItem: true, out _);
+
+        private RequestBodyValueKind ClassifyValueKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema, bool isArrayItem, out RequestBodyValueKind? elementKind)
         {
             var resolvedSchema = ResolveSchemaReference(schema);
             elementKind = null;
 
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses oneOf/anyOf, which is not supported for compile-time code generation.");
+                throw UnsupportedProperty(requestBodyKind, schemaName, propertyName, isArrayItem,
+                    propertyReason: "uses oneOf/anyOf, which is not supported for compile-time code generation.",
+                    arrayItemReason: "has array items using oneOf/anyOf, which is not supported for compile-time code generation.");
             }
 
             if (TryGetDictionaryValueType(resolvedSchema, out _))
             {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses additionalProperties or patternProperties, which is not supported for compile-time code generation.");
+                throw UnsupportedProperty(requestBodyKind, schemaName, propertyName, isArrayItem,
+                    propertyReason: "uses additionalProperties or patternProperties, which is not supported for compile-time code generation.",
+                    arrayItemReason: "has array items using additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
 
             if (IsEnumSchema(resolvedSchema))
@@ -104,25 +114,39 @@ public sealed partial class ClientGenerator
                 var nonNullMembers = resolvedSchema.AllOf.Where(static s => !IsNullOnlySchema(s)).ToList();
                 if (nonNullMembers.Count == 1)
                 {
-                    return ClassifyRequestBodyValueKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0], out elementKind);
+                    return ClassifyValueKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0], isArrayItem, out elementKind);
                 }
             }
+
+            var isBinaryString = schemaType == JsonSchemaType.String
+                && string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase);
 
             switch (schemaType)
             {
                 case JsonSchemaType.Integer:
                 case JsonSchemaType.Number:
                 case JsonSchemaType.Boolean:
-                case JsonSchemaType.String when !string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase):
                     return RequestBodyValueKind.Scalar;
-                case JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase):
+                case JsonSchemaType.String when !isBinaryString:
+                    return RequestBodyValueKind.Scalar;
+                case JsonSchemaType.String when isBinaryString:
+                    if (isArrayItem)
+                    {
+                        if (requestBodyKind != RequestBodyKind.MultipartFormData)
+                        {
+                            throw UnsupportedArrayItemType(requestBodyKind, schemaName, propertyName);
+                        }
+
+                        return RequestBodyValueKind.Binary;
+                    }
+
                     if (requestBodyKind == RequestBodyKind.FormUrlEncoded)
                     {
                         throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses binary format, which is not supported for application/x-www-form-urlencoded request bodies.");
                     }
 
                     return RequestBodyValueKind.Binary;
-                case JsonSchemaType.Array:
+                case JsonSchemaType.Array when !isArrayItem:
                     if (resolvedSchema.Items is null)
                     {
                         throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' defines an array without an items schema.");
@@ -131,70 +155,39 @@ public sealed partial class ClientGenerator
                     elementKind = ClassifyCollectionElementKind(schemaName, propertyName, requestBodyKind, resolvedSchema.Items);
                     return RequestBodyValueKind.Collection;
                 default:
-                    throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses a schema type that is not supported for compile-time code generation.");
+                    throw isArrayItem
+                        ? UnsupportedArrayItemType(requestBodyKind, schemaName, propertyName)
+                        : new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses a schema type that is not supported for compile-time code generation.");
             }
         }
 
-        private RequestBodyValueKind ClassifyCollectionElementKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema)
-        {
-            var resolvedSchema = ResolveSchemaReference(schema);
-            if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
-            {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' has array items using oneOf/anyOf, which is not supported for compile-time code generation.");
-            }
+        private static UnsupportedGenerationException UnsupportedProperty(RequestBodyKind kind, string schemaName, string propertyName, bool isArrayItem, string propertyReason, string arrayItemReason)
+            => new($"{GetRequestBodyContentType(kind)} request body '{schemaName}' property '{propertyName}' {(isArrayItem ? arrayItemReason : propertyReason)}");
 
-            if (TryGetDictionaryValueType(resolvedSchema, out _))
-            {
-                throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' has array items using additionalProperties or patternProperties, which is not supported for compile-time code generation.");
-            }
-
-            if (IsEnumSchema(resolvedSchema))
-            {
-                return RequestBodyValueKind.Scalar;
-            }
-
-            var schemaType = resolvedSchema.Type & ~JsonSchemaType.Null;
-            if (schemaType == 0 && resolvedSchema.AllOf is { Count: > 0 })
-            {
-                var nonNullMembers = resolvedSchema.AllOf.Where(static s => !IsNullOnlySchema(s)).ToList();
-                if (nonNullMembers.Count == 1)
-                {
-                    return ClassifyCollectionElementKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0]);
-                }
-            }
-
-            return schemaType switch
-            {
-                JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean => RequestBodyValueKind.Scalar,
-                JsonSchemaType.String when !string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) => RequestBodyValueKind.Scalar,
-                JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) && requestBodyKind == RequestBodyKind.MultipartFormData => RequestBodyValueKind.Binary,
-                _ => throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' has array items with a schema type that is not supported for compile-time code generation.")
-            };
-        }
+        private static UnsupportedGenerationException UnsupportedArrayItemType(RequestBodyKind kind, string schemaName, string propertyName)
+            => new($"{GetRequestBodyContentType(kind)} request body '{schemaName}' property '{propertyName}' has array items with a schema type that is not supported for compile-time code generation.");
 
         private static string GetRequestBodyContentType(RequestBodyKind kind)
-        {
-            return kind switch
-            {
-                RequestBodyKind.FormUrlEncoded => "application/x-www-form-urlencoded",
-                RequestBodyKind.MultipartFormData => "multipart/form-data",
-                _ => "application/json"
-            };
-        }
+            => s_requestBodyContentTypes.First(pair => pair.Kind == kind).ContentType;
 
         private static RequestBodyKind ResolveRequestBodyKind(string contentType)
         {
-            if (string.Equals(contentType, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
+            foreach (var (mapped, mediaType) in s_requestBodyContentTypes)
             {
-                return RequestBodyKind.FormUrlEncoded;
-            }
-
-            if (string.Equals(contentType, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
-            {
-                return RequestBodyKind.MultipartFormData;
+                if (string.Equals(contentType, mediaType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return mapped;
+                }
             }
 
             return RequestBodyKind.Json;
         }
+
+        private static readonly (RequestBodyKind Kind, string ContentType)[] s_requestBodyContentTypes =
+        [
+            (RequestBodyKind.Json, "application/json"),
+            (RequestBodyKind.FormUrlEncoded, "application/x-www-form-urlencoded"),
+            (RequestBodyKind.MultipartFormData, "multipart/form-data"),
+        ];
     }
 }
