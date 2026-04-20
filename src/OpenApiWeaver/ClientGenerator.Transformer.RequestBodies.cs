@@ -13,7 +13,11 @@ public sealed partial class ClientGenerator
                 return null;
             }
 
-            var kind = ResolveRequestBodyKind(selectedContent.Key);
+            if (TryResolveRequestBodyKind(selectedContent.Key) is not { } kind)
+            {
+                throw new UnsupportedGenerationException($"Request body content type '{selectedContent.Key}' is not supported. Supported content types are: application/json, application/*+json, application/x-www-form-urlencoded, multipart/form-data.");
+            }
+
             return new RequestBodyInfo(
                 kind,
                 ResolveTypeUsage(selectedContent.Value.Schema, requestBody.Required),
@@ -170,17 +174,46 @@ public sealed partial class ClientGenerator
         private static string GetRequestBodyContentType(RequestBodyKind kind)
             => s_requestBodyContentTypes.First(pair => pair.Kind == kind).ContentType;
 
-        private static RequestBodyKind ResolveRequestBodyKind(string contentType)
+        private static RequestBodyKind? TryResolveRequestBodyKind(string contentType)
         {
-            foreach (var (mapped, mediaType) in s_requestBodyContentTypes)
+            var mediaType = StripMediaTypeParameters(contentType);
+
+            if (IsJsonMediaType(mediaType))
             {
-                if (string.Equals(contentType, mediaType, StringComparison.OrdinalIgnoreCase))
+                return RequestBodyKind.Json;
+            }
+
+            foreach (var (mapped, knownType) in s_requestBodyContentTypes)
+            {
+                if (mapped == RequestBodyKind.Json)
+                {
+                    continue;
+                }
+
+                if (string.Equals(mediaType, knownType, StringComparison.OrdinalIgnoreCase))
                 {
                     return mapped;
                 }
             }
 
-            return RequestBodyKind.Json;
+            return null;
+        }
+
+        private static bool IsJsonMediaType(string mediaType)
+        {
+            if (string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return mediaType.StartsWith("application/", StringComparison.OrdinalIgnoreCase)
+                && mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string StripMediaTypeParameters(string contentType)
+        {
+            var separatorIndex = contentType.IndexOf(';');
+            return separatorIndex < 0 ? contentType.Trim() : contentType.Substring(0, separatorIndex).Trim();
         }
 
         private static readonly (RequestBodyKind Kind, string ContentType)[] s_requestBodyContentTypes =
