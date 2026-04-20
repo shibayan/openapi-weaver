@@ -138,10 +138,17 @@ public sealed partial class ClientGenerator
                 return [];
             }
 
+            var hasSuccessStatus = operation.Responses.Any(static item => IsSuccessResponseStatus(item.Key));
+
             var errorResponses = new List<ErrorResponseInfo>();
             foreach (var item in operation.Responses)
             {
                 if (IsSuccessResponseStatus(item.Key))
+                {
+                    continue;
+                }
+
+                if (!hasSuccessStatus && string.Equals(item.Key, "default", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -233,6 +240,17 @@ public sealed partial class ClientGenerator
                     selectedResponse = item.Value;
                     bestStatusCode = statusCode;
                     selectedHasUsableContent = hasUsableContent;
+                }
+            }
+
+            if (selectedResponse is null)
+            {
+                foreach (var item in responses)
+                {
+                    if (string.Equals(item.Key, "default", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return item.Value;
+                    }
                 }
             }
 
@@ -393,6 +411,11 @@ public sealed partial class ClientGenerator
             IOpenApiParameter parameter)
         {
             var location = parameter.In ?? OpenApiParameterLocation.Query;
+            if (IsReservedHeaderParameter(location, parameter.Name))
+            {
+                return;
+            }
+
             var key = (
                 location,
                 location == OpenApiParameterLocation.Header
@@ -409,10 +432,25 @@ public sealed partial class ClientGenerator
         }
 
         private static int GetRequestBodyContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-            => string.Equals(item.Key, "application/json", StringComparison.OrdinalIgnoreCase) ? 0 :
-                string.Equals(item.Key, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase) ? 1 :
-                string.Equals(item.Key, "multipart/form-data", StringComparison.OrdinalIgnoreCase) ? 2 :
-                int.MaxValue;
+        {
+            var mediaType = StripMediaTypeParameters(item.Key);
+            if (IsJsonMediaType(mediaType))
+            {
+                return 0;
+            }
+
+            if (string.Equals(mediaType, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
+            {
+                return 1;
+            }
+
+            if (string.Equals(mediaType, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
+            {
+                return 2;
+            }
+
+            return int.MaxValue;
+        }
 
         private int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
             => GetContentPriority(item, IsJson, IsBinary, IsText);
@@ -483,6 +521,18 @@ public sealed partial class ClientGenerator
         private static string? GetTagName(OpenApiOperation operation)
         {
             return operation.Tags?.FirstOrDefault()?.Name;
+        }
+
+        private static bool IsReservedHeaderParameter(OpenApiParameterLocation location, string? name)
+        {
+            if (location != OpenApiParameterLocation.Header || string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            return string.Equals(name, "Accept", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Content-Type", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Authorization", StringComparison.OrdinalIgnoreCase);
         }
 
         private static ParameterLocation MapParameterLocation(OpenApiParameterLocation location)

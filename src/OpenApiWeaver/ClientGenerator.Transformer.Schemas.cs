@@ -1,4 +1,6 @@
 ﻿using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using Microsoft.OpenApi;
 
@@ -296,10 +298,21 @@ public sealed partial class ClientGenerator
                 return;
             }
 
+            var hasSuccessStatus = operation.Responses.Any(static item => IsSuccessResponseStatus(item.Key));
+
             foreach (var item in operation.Responses)
             {
-                if (IsSuccessResponseStatus(item.Key)
-                    || !TrySelectPreferredContent(item.Value.Content, GetErrorResponseContentPriority, out var selectedContent)
+                if (IsSuccessResponseStatus(item.Key))
+                {
+                    continue;
+                }
+
+                if (!hasSuccessStatus && string.Equals(item.Key, "default", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!TrySelectPreferredContent(item.Value.Content, GetErrorResponseContentPriority, out var selectedContent)
                     || !IsUsableErrorContent(selectedContent))
                 {
                     continue;
@@ -861,18 +874,101 @@ public sealed partial class ClientGenerator
 
         private static SchemaEnumKind GetSchemaEnumKind(IOpenApiSchema schema)
         {
-            if (schema.Enum is not { Count: > 0 })
+            var hasEnum = schema.Enum is { Count: > 0 };
+            var hasConst = !string.IsNullOrEmpty(schema.Const);
+            if (!hasEnum && !hasConst)
             {
                 return SchemaEnumKind.None;
             }
 
-            var baseType = schema.Type & ~JsonSchemaType.Null;
-            return baseType switch
+            if (schema.Type is { } declaredType)
             {
-                JsonSchemaType.String => SchemaEnumKind.String,
-                JsonSchemaType.Integer => SchemaEnumKind.Integer,
+                var baseType = declaredType & ~JsonSchemaType.Null;
+                if (baseType == JsonSchemaType.String)
+                {
+                    return SchemaEnumKind.String;
+                }
+
+                if (baseType == JsonSchemaType.Integer)
+                {
+                    return SchemaEnumKind.Integer;
+                }
+
+                if (baseType != 0)
+                {
+                    return SchemaEnumKind.None;
+                }
+            }
+
+            return InferEnumKindFromValues(schema);
+        }
+
+        private static SchemaEnumKind InferEnumKindFromValues(IOpenApiSchema schema)
+        {
+            var kind = SchemaEnumKind.None;
+
+            if (schema.Enum is { Count: > 0 } enumValues)
+            {
+                foreach (var node in enumValues)
+                {
+                    var resolved = ClassifyJsonNodeEnumKind(node);
+                    if (resolved == SchemaEnumKind.None)
+                    {
+                        return SchemaEnumKind.None;
+                    }
+
+                    if (kind == SchemaEnumKind.None)
+                    {
+                        kind = resolved;
+                    }
+                    else if (kind != resolved)
+                    {
+                        return SchemaEnumKind.None;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(schema.Const))
+            {
+                var resolved = ClassifyStringValueEnumKind(schema.Const!);
+                if (resolved == SchemaEnumKind.None)
+                {
+                    return SchemaEnumKind.None;
+                }
+
+                if (kind == SchemaEnumKind.None)
+                {
+                    kind = resolved;
+                }
+                else if (kind != resolved)
+                {
+                    return SchemaEnumKind.None;
+                }
+            }
+
+            return kind;
+        }
+
+        private static SchemaEnumKind ClassifyJsonNodeEnumKind(JsonNode? node)
+        {
+            if (node is not JsonValue jsonValue)
+            {
+                return SchemaEnumKind.None;
+            }
+
+            return jsonValue.GetValueKind() switch
+            {
+                JsonValueKind.String => SchemaEnumKind.String,
+                JsonValueKind.Number => SchemaEnumKind.Integer,
                 _ => SchemaEnumKind.None
             };
+        }
+
+        private static SchemaEnumKind ClassifyStringValueEnumKind(string value)
+        {
+            return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                ? SchemaEnumKind.Integer
+                : SchemaEnumKind.String;
         }
 
         private static string GetIntegerEnumUnderlyingType(IOpenApiSchema schema)
@@ -885,10 +981,9 @@ public sealed partial class ClientGenerator
             var members = new List<SchemaEnumMemberDefinition>();
             var usedMemberNames = new Dictionary<string, int>(StringComparer.Ordinal);
 
-            foreach (var item in schema.Enum ?? [])
+            foreach (var enumValue in EnumerateEnumLiteralValues(schema))
             {
-                var enumValue = item?.ToString();
-                if (enumValue is null || string.IsNullOrWhiteSpace(enumValue))
+                if (string.IsNullOrWhiteSpace(enumValue))
                 {
                     continue;
                 }
@@ -911,6 +1006,26 @@ public sealed partial class ClientGenerator
             }
 
             return members;
+        }
+
+        private static IEnumerable<string> EnumerateEnumLiteralValues(IOpenApiSchema schema)
+        {
+            if (schema.Enum is { Count: > 0 } enumValues)
+            {
+                foreach (var item in enumValues)
+                {
+                    var value = item?.ToString();
+                    if (!string.IsNullOrEmpty(value))
+                    {
+                        yield return value!;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(schema.Const))
+            {
+                yield return schema.Const!;
+            }
         }
 
         private static string BuildIntegerEnumMemberName(string value)

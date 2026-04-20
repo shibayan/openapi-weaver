@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace OpenApiWeaver;
+﻿namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {
