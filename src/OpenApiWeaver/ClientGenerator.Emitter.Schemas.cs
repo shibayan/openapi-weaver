@@ -124,6 +124,12 @@ public sealed partial class ClientGenerator
                 return;
             }
 
+            if (schema.EnumKind == SchemaEnumKind.Number)
+            {
+                EmitNumberEnumSchema(writer, schema);
+                return;
+            }
+
             EmitStringEnumSchema(writer, schema);
         }
 
@@ -175,6 +181,56 @@ public sealed partial class ClientGenerator
             writer.AppendLine("}");
         }
 
+        private static void EmitNumberEnumSchema(IndentedStringBuilder writer, SchemaDefinition schema)
+        {
+            var valueType = schema.EnumUnderlyingType ?? "decimal";
+            EmitDocComment(
+                writer,
+                summary: schema.Summary,
+                remarks: schema.Description);
+            writer.Append("[JsonConverter(typeof(").Append(schema.DeclaredTypeName).AppendLine("JsonConverter))]");
+            writer.Append("public readonly record struct ").Append(schema.DeclaredTypeName).Append('(').Append(valueType).AppendLine(" Value)");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                foreach (var enumMember in schema.EnumMembers)
+                {
+                    writer.Append("public static readonly ").Append(schema.DeclaredTypeName).Append(' ').Append(enumMember.MemberName).Append(" = new(")
+                        .Append(FormatNumberLiteral(enumMember.Value, valueType)).AppendLine(");");
+                }
+
+                writer.AppendLine();
+                writer.AppendLine("public override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);");
+            }
+
+            writer.AppendLine("}");
+            writer.AppendLine();
+            writer.Append("public sealed class ").Append(schema.DeclaredTypeName).Append("JsonConverter : JsonConverter<").Append(schema.DeclaredTypeName).AppendLine(">");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                writer.Append("public override ").Append(schema.DeclaredTypeName).AppendLine(" Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.Append("return new ").Append(schema.DeclaredTypeName).Append("(reader.").Append(GetJsonReaderNumberMethod(valueType)).AppendLine("());");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.Append("public override void Write(Utf8JsonWriter writer, ").Append(schema.DeclaredTypeName).AppendLine(" value, JsonSerializerOptions options)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("writer.WriteNumberValue(value.Value);");
+                }
+
+                writer.AppendLine("}");
+            }
+
+            writer.AppendLine("}");
+        }
+
         private static void EmitIntegerEnumSchema(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             EmitDocComment(
@@ -201,6 +257,27 @@ public sealed partial class ClientGenerator
             }
 
             writer.AppendLine("}");
+        }
+
+        private static string FormatNumberLiteral(string value, string valueType)
+        {
+            var suffix = valueType switch
+            {
+                "float" => "f",
+                "double" => "d",
+                _ => "m"
+            };
+            return value.Trim() + suffix;
+        }
+
+        private static string GetJsonReaderNumberMethod(string valueType)
+        {
+            return valueType switch
+            {
+                "float" => "GetSingle",
+                "double" => "GetDouble",
+                _ => "GetDecimal"
+            };
         }
     }
 }

@@ -218,7 +218,12 @@ public sealed partial class ClientGenerator
             }
 
             var enumKind = GetSchemaEnumKind(schema);
-            var enumUnderlyingType = enumKind == SchemaEnumKind.Integer ? GetIntegerEnumUnderlyingType(schema) : null;
+            var enumUnderlyingType = enumKind switch
+            {
+                SchemaEnumKind.Integer => GetIntegerEnumUnderlyingType(schema),
+                SchemaEnumKind.Number => GetNumberEnumValueType(schema),
+                _ => null
+            };
             var enumMembers = enumKind == SchemaEnumKind.None ? [] : CreateEnumMembers(schema, enumKind);
 
             return new SchemaDefinition(
@@ -891,7 +896,12 @@ public sealed partial class ClientGenerator
 
                 if (baseType == JsonSchemaType.Integer)
                 {
-                    return SchemaEnumKind.Integer;
+                    return EnumValuesMatchKind(schema, SchemaEnumKind.Integer) ? SchemaEnumKind.Integer : SchemaEnumKind.None;
+                }
+
+                if (baseType == JsonSchemaType.Number)
+                {
+                    return EnumValuesMatchKind(schema, SchemaEnumKind.Number) ? SchemaEnumKind.Number : SchemaEnumKind.None;
                 }
 
                 if (baseType != 0)
@@ -917,11 +927,7 @@ public sealed partial class ClientGenerator
                         return SchemaEnumKind.None;
                     }
 
-                    if (kind == SchemaEnumKind.None)
-                    {
-                        kind = resolved;
-                    }
-                    else if (kind != resolved)
+                    if (!TryMergeInferredEnumKind(kind, resolved, out kind))
                     {
                         return SchemaEnumKind.None;
                     }
@@ -936,11 +942,7 @@ public sealed partial class ClientGenerator
                     return SchemaEnumKind.None;
                 }
 
-                if (kind == SchemaEnumKind.None)
-                {
-                    kind = resolved;
-                }
-                else if (kind != resolved)
+                if (!TryMergeInferredEnumKind(kind, resolved, out kind))
                 {
                     return SchemaEnumKind.None;
                 }
@@ -959,16 +961,105 @@ public sealed partial class ClientGenerator
             return jsonValue.GetValueKind() switch
             {
                 JsonValueKind.String => SchemaEnumKind.String,
-                JsonValueKind.Number => SchemaEnumKind.Integer,
+                JsonValueKind.Number => IsIntegerLiteral(node.ToString())
+                    ? SchemaEnumKind.Integer
+                    : IsNumberLiteral(node.ToString()) ? SchemaEnumKind.Number : SchemaEnumKind.None,
                 _ => SchemaEnumKind.None
             };
         }
 
         private static SchemaEnumKind ClassifyStringValueEnumKind(string value)
         {
-            return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
-                ? SchemaEnumKind.Integer
+            if (IsIntegerLiteral(value))
+            {
+                return SchemaEnumKind.Integer;
+            }
+
+            return IsNumberLiteral(value)
+                ? SchemaEnumKind.Number
                 : SchemaEnumKind.String;
+        }
+
+        private static bool TryMergeInferredEnumKind(SchemaEnumKind current, SchemaEnumKind candidate, out SchemaEnumKind merged)
+        {
+            if (current == SchemaEnumKind.None)
+            {
+                merged = candidate;
+                return true;
+            }
+
+            if (current == candidate)
+            {
+                merged = current;
+                return true;
+            }
+
+            if ((current == SchemaEnumKind.Integer && candidate == SchemaEnumKind.Number)
+                || (current == SchemaEnumKind.Number && candidate == SchemaEnumKind.Integer))
+            {
+                merged = SchemaEnumKind.Number;
+                return true;
+            }
+
+            merged = SchemaEnumKind.None;
+            return false;
+        }
+
+        private static bool EnumValuesMatchKind(IOpenApiSchema schema, SchemaEnumKind expectedKind)
+        {
+            foreach (var value in EnumerateEnumLiteralValues(schema))
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                if (expectedKind == SchemaEnumKind.Integer && !IsIntegerLiteral(value))
+                {
+                    return false;
+                }
+
+                if (expectedKind == SchemaEnumKind.Number
+                    && !CanParseNumberLiteral(value, GetNumberEnumValueType(schema)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsIntegerLiteral(string value)
+        {
+            if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return true;
+            }
+
+            return decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue)
+                && decimal.Truncate(decimalValue) == decimalValue;
+        }
+
+        private static bool IsNumberLiteral(string value)
+            => decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+
+        private static bool CanParseNumberLiteral(string value, string valueType)
+        {
+            return valueType switch
+            {
+                "float" => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+                "double" => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+                _ => decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _)
+            };
+        }
+
+        private static string GetNumberEnumValueType(IOpenApiSchema schema)
+        {
+            return string.Equals(schema.Format, "float", StringComparison.OrdinalIgnoreCase)
+                ? "float"
+                : string.Equals(schema.Format, "double", StringComparison.OrdinalIgnoreCase)
+                    ? "double"
+                    : "decimal";
         }
 
         private static string GetIntegerEnumUnderlyingType(IOpenApiSchema schema)
@@ -981,16 +1072,22 @@ public sealed partial class ClientGenerator
             var members = new List<SchemaEnumMemberDefinition>();
             var usedMemberNames = new Dictionary<string, int>(StringComparer.Ordinal);
 
-            foreach (var enumValue in EnumerateEnumLiteralValues(schema))
+            foreach (var literalValue in EnumerateEnumLiteralValues(schema))
             {
+                var enumValue = enumKind == SchemaEnumKind.Integer
+                    ? NormalizeIntegerEnumLiteral(literalValue)
+                    : literalValue;
                 if (string.IsNullOrWhiteSpace(enumValue))
                 {
                     continue;
                 }
 
-                var memberName = enumKind == SchemaEnumKind.String
-                    ? SafeIdentifier(ToPascalCase(enumValue))
-                    : BuildIntegerEnumMemberName(enumValue);
+                var memberName = enumKind switch
+                {
+                    SchemaEnumKind.String => SafeIdentifier(ToPascalCase(enumValue)),
+                    SchemaEnumKind.Number => BuildNumberEnumMemberName(enumValue),
+                    _ => BuildIntegerEnumMemberName(enumValue)
+                };
 
                 if (!usedMemberNames.ContainsKey(memberName))
                 {
@@ -1006,6 +1103,16 @@ public sealed partial class ClientGenerator
             }
 
             return members;
+        }
+
+        private static string BuildNumberEnumMemberName(string value)
+            => BuildIntegerEnumMemberName(value);
+
+        private static string NormalizeIntegerEnumLiteral(string value)
+        {
+            return decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue)
+                ? decimal.Truncate(decimalValue).ToString(CultureInfo.InvariantCulture)
+                : value;
         }
 
         private static IEnumerable<string> EnumerateEnumLiteralValues(IOpenApiSchema schema)

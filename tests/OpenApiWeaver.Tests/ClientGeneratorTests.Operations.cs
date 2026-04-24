@@ -170,7 +170,7 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Contains("GetAsync(int userId, int userId2, ReportCreateParams body2, string? body = default, string? cancellationToken2 = default, CancellationToken cancellationToken = default)", source);
         Assert.Contains("Get2Async(ReportCreateParams body, CancellationToken cancellationToken = default)", source);
-        Assert.Contains("request.Content = JsonContent.Create(body2, options: OpenApiClientHelpers.SerializerOptions);", source);
+        Assert.Contains("request.Content = JsonContent.Create(body2, mediaType: System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"application/json\"), options: OpenApiClientHelpers.SerializerOptions);", source);
         Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"user-id\", OpenApiClientHelpers.FormatParameter(userId));", source);
         Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"user_id\", OpenApiClientHelpers.FormatParameter(userId2));", source);
     }
@@ -574,7 +574,7 @@ public sealed partial class ClientGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("request.Content = JsonContent.Create(body, options: OpenApiClientHelpers.SerializerOptions);", source);
+        Assert.Contains("request.Content = JsonContent.Create(body, mediaType: System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"application/json\"), options: OpenApiClientHelpers.SerializerOptions);", source);
         Assert.DoesNotContain("OpenApiClientHelpers.CreateFormUrlEncodedContent(body)", source);
     }
 

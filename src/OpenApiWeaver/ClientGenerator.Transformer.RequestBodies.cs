@@ -20,6 +20,7 @@ public sealed partial class ClientGenerator
 
             return new RequestBodyInfo(
                 kind,
+                selectedContent.Key,
                 ResolveTypeUsage(selectedContent.Value.Schema, requestBody.Required),
                 AllocateUniqueName(usedParameterNames, "body", "body"),
                 requestBody.Required,
