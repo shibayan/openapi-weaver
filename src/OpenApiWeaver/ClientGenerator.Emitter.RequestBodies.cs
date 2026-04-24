@@ -17,7 +17,11 @@ public sealed partial class ClientGenerator
                     EmitMultipartFormDataContentAssignment(writer, requestBody, bodyValue);
                     break;
                 default:
-                    writer.Append("request.Content = JsonContent.Create(").Append(bodyValue).AppendLine(", options: OpenApiClientHelpers.SerializerOptions);");
+                    writer.Append("request.Content = JsonContent.Create(")
+                        .Append(bodyValue)
+                        .Append(", mediaType: System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"")
+                        .Append(EscapeStringLiteral(requestBody.ContentType))
+                        .AppendLine("\"), options: OpenApiClientHelpers.SerializerOptions);");
                     break;
             }
         }

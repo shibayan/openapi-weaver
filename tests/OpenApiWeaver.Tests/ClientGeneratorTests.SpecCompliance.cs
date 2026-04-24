@@ -222,6 +222,7 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Contains("CreatePartnerAsync(Partner body,", source);
         Assert.Contains("JsonContent.Create(body", source);
+        Assert.Contains("MediaTypeHeaderValue.Parse(\"application/vnd.api+json\")", source);
     }
 
     [Fact]
@@ -271,6 +272,62 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("public enum OrderState", source);
         Assert.Contains("Value0 = 0,", source);
         Assert.Contains("Value1 = 1,", source);
+    }
+
+    [Fact]
+    public void TypelessNumberEnum_GeneratesNumberEnumType()
+    {
+        const string openApi = """
+            openapi: 3.1.0
+            info:
+              title: Typeless Number Enum API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                ratio:
+                  enum:
+                    - 0.25
+                    - 1
+                    - 1.5
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public readonly record struct Ratio(decimal Value)", source);
+        Assert.Contains("public static readonly Ratio Value0_25 = new(0.25m);", source);
+        Assert.Contains("public static readonly Ratio Value1 = new(1m);", source);
+        Assert.Contains("public static readonly Ratio Value1_5 = new(1.5m);", source);
+        Assert.Contains("return new Ratio(reader.GetDecimal());", source);
+        Assert.DoesNotContain("public enum Ratio", source);
+    }
+
+    [Fact]
+    public void NumberEnumWithDoubleFormat_GeneratesDoubleEnumType()
+    {
+        const string openApi = """
+            openapi: 3.1.0
+            info:
+              title: Number Enum API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                ratio:
+                  type: number
+                  format: double
+                  enum:
+                    - 1
+                    - 2
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public readonly record struct Ratio(double Value)", source);
+        Assert.Contains("public static readonly Ratio Value1 = new(1d);", source);
+        Assert.Contains("public static readonly Ratio Value2 = new(2d);", source);
+        Assert.Contains("return new Ratio(reader.GetDouble());", source);
+        Assert.DoesNotContain("public enum Ratio", source);
     }
 
     [Fact]

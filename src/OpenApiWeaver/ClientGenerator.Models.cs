@@ -139,7 +139,8 @@ public sealed partial class ClientGenerator
     {
         None,
         String,
-        Integer
+        Integer,
+        Number
     }
 
     private sealed class SchemaEnumMemberDefinition(string memberName, string value)
@@ -184,6 +185,7 @@ public sealed partial class ClientGenerator
 
     private sealed class RequestBodyInfo(
         RequestBodyKind kind,
+        string contentType,
         TypeUsage type,
         string parameterName,
         bool isRequired,
@@ -191,6 +193,7 @@ public sealed partial class ClientGenerator
         IReadOnlyList<RequestBodyPropertyInfo> properties)
     {
         public RequestBodyKind Kind { get; } = kind;
+        public string ContentType { get; } = contentType;
         public TypeUsage Type { get; } = type;
         public string BodyTypeName { get; } = type.CSharpTypeName;
         public string ParameterName { get; } = parameterName;
