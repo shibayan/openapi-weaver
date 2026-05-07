@@ -24,9 +24,9 @@
 - `partial class` として生成されるため、別ファイルで拡張できます。
 - `IDisposable` を実装し、生成クライアント自身が所有する `HttpClient` のみを解放します。
 
-各タグサブクライアントには、OpenAPI ドキュメントで定義された path、query、header、cookie パラメーターに対応する非同期の操作メソッドが含まれます。
+各タグサブクライアントには、OpenAPI ドキュメントで定義された path、query、header、cookie パラメーターに対応する非同期の操作メソッドが含まれます。配列パラメーターでは、query は同じキーを繰り返し、path、header、cookie はカンマ区切りの値として送信します。
 
-セキュリティスキームは生成クライアント上に保持され、各 `HttpRequestMessage` に対して適用されます。これにより query、header、cookie、OAuth2、Bearer token の扱いが統一され、`HttpClient.DefaultRequestHeaders` を変更せずに済みます。
+セキュリティスキームは生成クライアント上に保持され、document-level または operation-level の security requirements に従って各 `HttpRequestMessage` に適用されます。これにより query、header、cookie、OAuth2、Bearer token の扱いが統一され、`HttpClient.DefaultRequestHeaders` を変更せずに済みます。
 
 各操作メソッドは `HttpResponseMessage.EnsureSuccessStatusCode()` に依存せず、非成功レスポンスを明示的に処理するため、OpenAPI の型付きエラーペイロードを例外経由で扱えます。
 

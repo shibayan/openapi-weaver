@@ -38,7 +38,7 @@ var client = new PetstoreClient(accessToken: "your-token");
 var pet = await client.Pets.GetAsync(petId: 1);
 ```
 
-You can also pass an existing `HttpClient` to the generated root client. When you do, the generated client reuses that instance, preserves an existing `BaseAddress`, and applies security headers per request instead of mutating `DefaultRequestHeaders`.
+You can also pass an existing `HttpClient` to the generated root client. When you do, the generated client reuses that instance, preserves an existing `BaseAddress`, and applies security credentials per request according to document-level or operation-level security requirements instead of mutating `DefaultRequestHeaders`.
 
 The package includes the source generator and all required analyzer assemblies, so no additional dependencies are required.
 
@@ -49,7 +49,7 @@ The package includes the source generator and all required analyzer assemblies, 
 - **Tag-based sub-clients** — groups operations by OpenAPI tags and exposes them as properties on the root client
 - **Typed request / response models** — generates classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`, including discriminator-based polymorphic models
 - **Multiple request body formats** — supports `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
-- **Security scheme support** — supports OAuth2 and bearer tokens, together with API keys in headers, query strings, and cookies
+- **Security scheme support** — supports OAuth2 and bearer tokens, together with API keys in headers, query strings, and cookies, while honoring operation-level security requirements
 - **Runtime error handling** — throws `OpenApiException`, with typed `OpenApiException<TError>` when error schemas are available
 - **OpenAPI-driven XML docs** — generates IntelliSense comments from document, tag, operation, response, and schema metadata, with HTML removed automatically
 - **Build-time diagnostics** — reports errors and warnings as standard compiler diagnostics

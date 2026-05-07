@@ -47,6 +47,8 @@ public sealed class Metadata : Dictionary<string, string>
 }
 ```
 
+When a dictionary-backed schema also declares named properties, OpenApiWeaver emits a custom JSON converter for that type. Known JSON property names populate the generated CLR properties, while additional keys remain in the dictionary. Serialization writes both the declared properties and any extra dictionary entries.
+
 If `additionalProperties` and `patternProperties` produce incompatible value types, the generated type falls back to `Dictionary<string, JsonElement>`.
 
 ## Object schemas

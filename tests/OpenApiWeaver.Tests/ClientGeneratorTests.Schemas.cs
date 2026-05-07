@@ -1,4 +1,6 @@
-﻿using Xunit;
+﻿using System.Text.Json;
+
+using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
@@ -727,6 +729,53 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Contains("public sealed class MetadataBag : Dictionary<string, string>", source);
         Assert.Contains("public required string Id { get; init; }", source);
+    }
+
+    [Fact]
+    public void PropertiesAndAdditionalPropertiesSchema_SerializesDeclaredPropertiesAndDictionaryEntries()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Hybrid Object API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                metadataBag:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: string
+                    display_name:
+                      type: string
+                  additionalProperties:
+                    type: string
+            """;
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var metadataBagType = Assert.Single(assembly.Assembly.GetTypes(), static type => type.Name == "MetadataBag");
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+
+        var metadataBag = JsonSerializer.Deserialize(
+            """{"id":"known","display_name":"Label","extra":"value"}""",
+            metadataBagType,
+            options);
+        Assert.NotNull(metadataBag);
+
+        Assert.Equal("known", metadataBagType.GetProperty("Id")?.GetValue(metadataBag));
+        Assert.Equal("Label", metadataBagType.GetProperty("DisplayName")?.GetValue(metadataBag));
+
+        var dictionary = Assert.IsAssignableFrom<IDictionary<string, string>>(metadataBag);
+        Assert.False(dictionary.ContainsKey("id"));
+        Assert.Equal("value", dictionary["extra"]);
+
+        var serialized = JsonSerializer.Serialize(metadataBag, metadataBagType, options);
+        Assert.Contains("\"id\":\"known\"", serialized);
+        Assert.Contains("\"display_name\":\"Label\"", serialized);
+        Assert.Contains("\"extra\":\"value\"", serialized);
     }
 
     [Fact]

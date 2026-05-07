@@ -11,6 +11,9 @@ public sealed partial class ClientGenerator
             var pathParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Path).ToList();
             var queryParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Query).ToList();
             var headerParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Header).ToList();
+            var cookieParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Cookie).ToList();
+            var querySecuritySchemes = GetOperationSecuritySchemes(operation, SecuritySchemeLocation.Query);
+            var cookieSecuritySchemes = GetOperationSecuritySchemes(operation, SecuritySchemeLocation.Cookie);
 
             var requiredMethodParameters = new List<string>();
             var optionalMethodParameters = new List<string>();
@@ -69,7 +72,8 @@ public sealed partial class ClientGenerator
 
             writer.AppendLine("{");
             using var _ = writer.PushIndent();
-            var usesPathBuilder = pathParameters.Count > 0 || queryParameters.Count > 0 || _querySecuritySchemes.Count > 0;
+            EmitSecurityRequirementSelection(writer, operation);
+            var usesPathBuilder = pathParameters.Count > 0 || queryParameters.Count > 0 || querySecuritySchemes.Count > 0;
             if (usesPathBuilder)
             {
                 writer.AppendLine("var pathBuilder = new StringBuilder();");
@@ -80,14 +84,14 @@ public sealed partial class ClientGenerator
                 writer.Append("var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
             }
 
-            if (queryParameters.Count > 0 || _querySecuritySchemes.Count > 0)
+            if (queryParameters.Count > 0 || querySecuritySchemes.Count > 0)
             {
                 writer.AppendLine("var hasQuery = false;");
                 foreach (var parameter in queryParameters)
                 {
                     if (parameter.Required)
                     {
-                        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                        EmitQueryParameterAppend(writer, parameter);
                     }
                     else
                     {
@@ -95,7 +99,7 @@ public sealed partial class ClientGenerator
                         writer.AppendLine("{");
                         using (writer.PushIndent())
                         {
-                            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                            EmitQueryParameterAppend(writer, parameter);
                         }
 
                         writer.AppendLine("}");
@@ -103,16 +107,12 @@ public sealed partial class ClientGenerator
                 }
             }
 
-            foreach (var securityScheme in _querySecuritySchemes)
+            foreach (var securityScheme in querySecuritySchemes)
             {
-                writer.Append("if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
-                writer.AppendLine("{");
-                using (writer.PushIndent())
+                EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
                 {
                     writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
-                }
-
-                writer.AppendLine("}");
+                });
             }
 
             if (usesPathBuilder)
@@ -122,41 +122,74 @@ public sealed partial class ClientGenerator
 
             writer.Append("using var request = new HttpRequestMessage(").Append(GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
 
+            if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
+            {
+                writer.AppendLine("var cookieBuilder = new StringBuilder();");
+            }
+
             foreach (var parameter in headerParameters)
             {
                 writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
-                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(parameter.WireName).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(parameter.WireName).Append("\", ");
+                    EmitHeaderParameterValue(writer, parameter);
+                    writer.AppendLine(");");
                 }
 
                 writer.AppendLine("}");
             }
 
-            foreach (var securityScheme in model.SecuritySchemes)
+            foreach (var parameter in cookieParameters)
             {
-                if (securityScheme.Location == SecuritySchemeLocation.Query)
+                if (parameter.Required)
                 {
+                    EmitCookieParameterAppend(writer, parameter);
+                }
+                else
+                {
+                    writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        EmitCookieParameterAppend(writer, parameter);
+                    }
+
+                    writer.AppendLine("}");
+                }
+            }
+
+            foreach (var securityScheme in GetOperationSecuritySchemesExcept(operation, SecuritySchemeLocation.Query))
+            {
+                if (securityScheme.Location == SecuritySchemeLocation.Cookie)
+                {
+                    EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+                    {
+                        writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                    });
                     continue;
                 }
 
-                writer.Append("if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
-                writer.AppendLine("{");
-                using (writer.PushIndent())
+                EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
                 {
                     if (securityScheme.IsBearerToken)
                     {
                         writer.Append("request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.FieldName).AppendLine(");");
+                        return;
                     }
-                    else if (securityScheme.Location == SecuritySchemeLocation.Cookie)
-                    {
-                        writer.Append("request.Headers.TryAddWithoutValidation(\"Cookie\", \"").Append(securityScheme.HeaderOrParameterName).Append("=\" + ").Append(securityScheme.FieldName).AppendLine(");");
-                    }
-                    else
-                    {
-                        writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
-                    }
+
+                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                });
+            }
+
+            if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
+            {
+                writer.AppendLine("if (cookieBuilder.Length > 0)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("request.Headers.TryAddWithoutValidation(\"Cookie\", cookieBuilder.ToString());");
                 }
 
                 writer.AppendLine("}");
@@ -315,9 +348,9 @@ public sealed partial class ClientGenerator
                 var parameterName = route.Substring(openBraceIndex + 1, closeBraceIndex - openBraceIndex - 1);
                 if (parameterLookup.TryGetValue(parameterName, out var parameter))
                 {
-                    writer.Append("pathBuilder.Append(Uri.EscapeDataString(OpenApiClientHelpers.FormatParameter(")
-                        .Append(parameter.ParameterName)
-                        .AppendLine(")));");
+                    writer.Append("pathBuilder.Append(Uri.EscapeDataString(");
+                    EmitParameterValue(writer, parameter);
+                    writer.AppendLine("));");
                 }
                 else
                 {
@@ -341,6 +374,147 @@ public sealed partial class ClientGenerator
         private static string NormalizeRelativeRoute(string route)
         {
             return route.TrimStart('/');
+        }
+
+        private static void EmitQueryParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
+        {
+            if (parameter.IsArray)
+            {
+                writer.Append("OpenApiClientHelpers.AppendQueryParameters(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ").Append(parameter.ParameterName).AppendLine(");");
+                return;
+            }
+
+            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+        }
+
+        private static void EmitHeaderParameterValue(IndentedStringBuilder writer, ParameterInfo parameter)
+        {
+            EmitParameterValue(writer, parameter);
+        }
+
+        private static void EmitCookieParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
+        {
+            writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ");
+            EmitParameterValue(writer, parameter);
+            writer.AppendLine(");");
+        }
+
+        private static void EmitParameterValue(IndentedStringBuilder writer, ParameterInfo parameter)
+        {
+            if (parameter.IsArray)
+            {
+                writer.Append("OpenApiClientHelpers.FormatCollectionParameter(").Append(parameter.ParameterName).Append(')');
+                return;
+            }
+
+            writer.Append("OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).Append(')');
+        }
+
+        private void EmitSecurityRequirementSelection(IndentedStringBuilder writer, OperationGroupItem operation)
+        {
+            if (operation.SecurityRequirements is not { Count: > 0 } securityRequirements
+                || !securityRequirements.Any(static requirement => requirement.Schemes.Count > 0))
+            {
+                return;
+            }
+
+            writer.AppendLine("var securityRequirementIndex = 0;");
+            for (var i = 0; i < securityRequirements.Count; i++)
+            {
+                writer.Append("if (securityRequirementIndex == 0");
+                var requirement = securityRequirements[i];
+                foreach (var scheme in requirement.Schemes)
+                {
+                    writer.Append(" && ").Append(scheme.FieldName).Append(" is not null");
+                }
+
+                writer.AppendLine(")");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.Append("securityRequirementIndex = ").Append((i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(";");
+                }
+
+                writer.AppendLine("}");
+            }
+        }
+
+        private void EmitSecuritySchemeBlock(IndentedStringBuilder writer, OperationGroupItem operation, SecuritySchemeBinding securityScheme, Action emitBody)
+        {
+            if (operation.SecurityRequirements is null)
+            {
+                writer.Append("if (").Append(securityScheme.FieldName).AppendLine(" is not null)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    emitBody();
+                }
+
+                writer.AppendLine("}");
+                return;
+            }
+
+            var matchingRequirements = new List<int>();
+            for (var i = 0; i < operation.SecurityRequirements.Count; i++)
+            {
+                if (operation.SecurityRequirements[i].Schemes.Contains(securityScheme))
+                {
+                    matchingRequirements.Add(i + 1);
+                }
+            }
+
+            if (matchingRequirements.Count == 0)
+            {
+                return;
+            }
+
+            writer.Append("if (");
+            for (var i = 0; i < matchingRequirements.Count; i++)
+            {
+                if (i > 0)
+                {
+                    writer.Append(" || ");
+                }
+
+                writer.Append("securityRequirementIndex == ").Append(matchingRequirements[i].ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            writer.AppendLine(")");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                emitBody();
+            }
+
+            writer.AppendLine("}");
+        }
+
+        private List<SecuritySchemeBinding> GetOperationSecuritySchemes(OperationGroupItem operation, SecuritySchemeLocation location)
+            => GetOperationSecuritySchemes(operation, static (scheme, state) => scheme.Location == state, location);
+
+        private List<SecuritySchemeBinding> GetOperationSecuritySchemesExcept(OperationGroupItem operation, SecuritySchemeLocation location)
+            => GetOperationSecuritySchemes(operation, static (scheme, state) => scheme.Location != state, location);
+
+        private List<SecuritySchemeBinding> GetOperationSecuritySchemes<TState>(
+            OperationGroupItem operation,
+            Func<SecuritySchemeBinding, TState, bool> predicate,
+            TState state)
+        {
+            var schemes = operation.SecurityRequirements is null
+                ? model.SecuritySchemes
+                : operation.SecurityRequirements.SelectMany(static requirement => requirement.Schemes).ToList();
+
+            var result = new List<SecuritySchemeBinding>();
+            var usedSchemeKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var scheme in schemes)
+            {
+                if (predicate(scheme, state) && usedSchemeKeys.Add(scheme.SchemeKey))
+                {
+                    result.Add(scheme);
+                }
+            }
+
+            return result;
         }
     }
 }

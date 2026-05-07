@@ -187,7 +187,8 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Contains("public TestClient(string? sessionApiKey = default)", source);
         Assert.Contains("private readonly string? _sessionApiKey;", source);
-        Assert.Contains("request.Headers.TryAddWithoutValidation(\"Cookie\", \"session_id=\" + _sessionApiKey);", source);
+        Assert.Contains("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"session_id\", _sessionApiKey);", source);
+        Assert.Contains("request.Headers.TryAddWithoutValidation(\"Cookie\", cookieBuilder.ToString());", source);
         Assert.DoesNotContain("DefaultRequestHeaders.TryAddWithoutValidation(\"Cookie\"", source);
     }
 
@@ -374,6 +375,122 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("api_key", source);
         Assert.Contains("X-API-Key", source);
         Assert.Contains("session_token", source);
+    }
+
+    [Fact]
+    public async Task OperationWithEmptySecurity_DoesNotApplyConstructorCredentials()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Public Operation API
+              version: v1
+            paths:
+              /public:
+                get:
+                  operationId: get_public
+                  security: []
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                bearer:
+                  type: http
+                  scheme: bearer
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new RecordingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com/")
+        };
+
+        var client = Activator.CreateInstance(clientType, httpClient, "secret-token");
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("GetPublicAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient.GetType().GetMethod("GetPublicAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, [CancellationToken.None]));
+        await invocation;
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Null(request.Authorization);
+        Assert.False(request.Headers.ContainsKey("Authorization"));
+    }
+
+    [Fact]
+    public async Task OperationSecurity_AppliesOnlyDeclaredSchemes()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Operation Security API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  security:
+                    - partner: []
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                bearer:
+                  type: http
+                  scheme: bearer
+                partner:
+                  type: apiKey
+                  in: header
+                  name: X-Partner-Key
+                queryKey:
+                  type: apiKey
+                  in: query
+                  name: api_key
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new RecordingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com/")
+        };
+
+        var client = Activator.CreateInstance(clientType, httpClient, "bearer-token", "partner-key", "query-value");
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("ListReportsAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, [CancellationToken.None]));
+        await invocation;
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(new Uri("https://api.example.com/reports"), request.RequestUri);
+        Assert.Null(request.Authorization);
+        Assert.Equal(["partner-key"], Assert.Contains("X-Partner-Key", request.Headers));
     }
 
     private sealed record CapturedHttpRequest(Uri? RequestUri, AuthenticationHeaderValue? Authorization, IReadOnlyDictionary<string, string[]> Headers);

@@ -209,6 +209,8 @@ OpenAPI ドキュメントで定義されたパラメーターは、その場所
 | `header` | リクエストヘッダーへ追加される |
 | `cookie` | `Cookie` ヘッダーへ追加される |
 
+配列パラメーターは OpenAPI の既定に沿ってシリアライズされます。query の配列は同じクエリキーを繰り返し、path、header、cookie の配列はカンマ区切りの値として送信されます。
+
 ## セキュリティスキームのサポート
 
 OpenAPI ドキュメントで定義されたセキュリティスキームに応じて、コンストラクター引数が自動生成されます。
@@ -222,7 +224,9 @@ OpenAPI ドキュメントで定義されたセキュリティスキームに応
 
 複数のセキュリティスキームを組み合わせることもできます。たとえば OAuth2 トークンと API キーの両方が必要な API では、コンストラクターは両方の引数を受け取ります。
 
-これらの値は生成される各 `HttpRequestMessage` に対して適用されます。header、query、cookie、OAuth2、Bearer token を一貫した方針で扱うため、外部から注入した `HttpClient` の `DefaultRequestHeaders` に認証状態を持たせる必要がありません。
+これらの値は生成クライアント上に保持され、OpenAPI の security requirements に従って各 `HttpRequestMessage` へ適用されます。operation-level の `security` は document-level の security を上書きし、`security: []` が指定された操作では資格情報を送信しません。セキュリティスキームだけが定義され、明示的な security requirements がないドキュメントでは、設定済みの資格情報を生成リクエストへ適用する従来の挙動を維持します。
+
+資格情報は `HttpClient.DefaultRequestHeaders` を変更せず、リクエストごとに適用されます。header、query、cookie、OAuth2、Bearer token を一貫した方針で扱うため、外部から注入した `HttpClient` に共有の認証状態を持たせる必要がありません。
 
 ## すべての HTTP メソッド
 

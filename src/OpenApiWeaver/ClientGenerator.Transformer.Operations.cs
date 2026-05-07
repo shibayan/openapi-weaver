@@ -10,7 +10,7 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Transformer
     {
-        private List<TagGroup> BuildTagGroups()
+        private List<TagGroup> BuildTagGroups(IReadOnlyList<SecuritySchemeBinding> securitySchemes)
         {
             var tagDescriptions = new Dictionary<string, string>(StringComparer.Ordinal);
             if (_document.Tags is not null)
@@ -40,7 +40,7 @@ public sealed partial class ClientGenerator
                         accumulators[groupName] = accumulator;
                     }
 
-                    accumulator.Operations.Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value, accumulator.UsedMethodNames));
+                    accumulator.Operations.Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value, accumulator.UsedMethodNames, securitySchemes));
                 }
             }
 
@@ -77,7 +77,13 @@ public sealed partial class ClientGenerator
             public HashSet<string> UsedMethodNames { get; } = new(StringComparer.Ordinal);
         }
 
-        private OperationGroupItem BuildOperation(string route, string operationType, IOpenApiPathItem pathItem, OpenApiOperation operation, ISet<string> usedMethodNames)
+        private OperationGroupItem BuildOperation(
+            string route,
+            string operationType,
+            IOpenApiPathItem pathItem,
+            OpenApiOperation operation,
+            ISet<string> usedMethodNames,
+            IReadOnlyList<SecuritySchemeBinding> securitySchemes)
         {
             var tagName = GetTagName(operation);
             var usedParameterNames = new HashSet<string>(StringComparer.Ordinal)
@@ -100,6 +106,7 @@ public sealed partial class ClientGenerator
             var requestBody = ResolveRequestBody(operation.RequestBody, usedParameterNames);
             var response = ResolveResponse(operation);
             var errorResponses = ResolveErrorResponses(operation);
+            var operationSecurityRequirements = ResolveOperationSecurityRequirements(operation, securitySchemes);
             var methodName = AllocateUniqueName(
                 usedMethodNames,
                 BuildOperationMethodName(operation.OperationId, operationType, route, tagName),
@@ -114,7 +121,8 @@ public sealed partial class ClientGenerator
                 parameters,
                 requestBody,
                 response,
-                errorResponses);
+                errorResponses,
+                operationSecurityRequirements);
         }
 
         private ResponseInfo ResolveResponse(OpenApiOperation operation)
@@ -335,6 +343,44 @@ public sealed partial class ClientGenerator
             return bindings;
         }
 
+        private IReadOnlyList<SecurityRequirementInfo>? ResolveOperationSecurityRequirements(
+            OpenApiOperation operation,
+            IReadOnlyList<SecuritySchemeBinding> securitySchemes)
+        {
+            var requirements = operation.Security ?? _document.Security;
+            if (requirements is null)
+            {
+                return null;
+            }
+
+            if (requirements.Count == 0)
+            {
+                return [];
+            }
+
+            var bindingsBySchemeKey = securitySchemes.ToDictionary(static scheme => scheme.SchemeKey, StringComparer.Ordinal);
+            var result = new List<SecurityRequirementInfo>(requirements.Count);
+            foreach (var requirement in requirements)
+            {
+                var schemes = new List<SecuritySchemeBinding>();
+                foreach (var item in requirement)
+                {
+                    var schemeKey = item.Key.Reference?.Id ?? item.Key.Name;
+                    if (schemeKey is not null && bindingsBySchemeKey.TryGetValue(schemeKey, out var binding))
+                    {
+                        schemes.Add(binding);
+                    }
+                }
+
+                if (requirement.Count == 0 || schemes.Count == requirement.Count)
+                {
+                    result.Add(new SecurityRequirementInfo(schemes));
+                }
+            }
+
+            return result;
+        }
+
         private static SecuritySchemeBinding? CreateSecuritySchemeBinding(string schemeKey, IOpenApiSecurityScheme scheme)
         {
             if (scheme.Type == SecuritySchemeType.OAuth2
@@ -342,6 +388,7 @@ public sealed partial class ClientGenerator
             {
                 var parameterName = SafeIdentifier(ToCamelCase(schemeKey == "oauth2" ? "access_token" : $"{schemeKey}_token"));
                 return new SecuritySchemeBinding(
+                    schemeKey,
                     parameterName,
                     $"string? {parameterName} = default",
                     "Authorization",
@@ -353,6 +400,7 @@ public sealed partial class ClientGenerator
             {
                 var parameterName = SafeIdentifier(ToCamelCase($"{schemeKey}_api_key"));
                 return new SecuritySchemeBinding(
+                    schemeKey,
                     parameterName,
                     $"string? {parameterName} = default",
                     scheme.Name ?? parameterName,

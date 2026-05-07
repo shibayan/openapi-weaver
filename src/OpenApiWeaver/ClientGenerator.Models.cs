@@ -39,7 +39,8 @@ public sealed partial class ClientGenerator
         IReadOnlyList<ParameterInfo> parameters,
         RequestBodyInfo? requestBody,
         ResponseInfo response,
-        IReadOnlyList<ErrorResponseInfo> errorResponses)
+        IReadOnlyList<ErrorResponseInfo> errorResponses,
+        IReadOnlyList<SecurityRequirementInfo>? securityRequirements)
     {
         public string Route { get; } = route;
         public string OperationType { get; } = operationType;
@@ -50,6 +51,7 @@ public sealed partial class ClientGenerator
         public RequestBodyInfo? RequestBody { get; } = requestBody;
         public ResponseInfo Response { get; } = response;
         public IReadOnlyList<ErrorResponseInfo> ErrorResponses { get; } = errorResponses;
+        public IReadOnlyList<SecurityRequirementInfo>? SecurityRequirements { get; } = securityRequirements;
         public bool HasParameters { get; } = parameters.Count > 0;
     }
 
@@ -57,6 +59,11 @@ public sealed partial class ClientGenerator
     {
         public string StatusCodePattern { get; } = statusCodePattern;
         public ResponseInfo Response { get; } = response;
+    }
+
+    private sealed class SecurityRequirementInfo(IReadOnlyList<SecuritySchemeBinding> schemes)
+    {
+        public IReadOnlyList<SecuritySchemeBinding> Schemes { get; } = schemes;
     }
 
     private enum TypeShape
@@ -92,6 +99,7 @@ public sealed partial class ClientGenerator
         public string ParameterName { get; } = parameterName;
         public TypeUsage Type { get; } = type;
         public string ParameterTypeName { get; } = type.CSharpTypeName;
+        public bool IsArray { get; } = type.Shape == TypeShape.Array;
         public bool Required { get; } = required;
         public ParameterLocation Location { get; } = location;
         public string? Description { get; } = description;
@@ -166,8 +174,9 @@ public sealed partial class ClientGenerator
         public string? Description { get; } = description;
     }
 
-    private sealed class SecuritySchemeBinding(string parameterName, string parameterDeclaration, string headerOrParameterName, SecuritySchemeLocation location, bool isBearerToken)
+    private sealed class SecuritySchemeBinding(string schemeKey, string parameterName, string parameterDeclaration, string headerOrParameterName, SecuritySchemeLocation location, bool isBearerToken)
     {
+        public string SchemeKey { get; } = schemeKey;
         public string ParameterName { get; } = parameterName;
         public string ParameterDeclaration { get; } = parameterDeclaration;
         public string HeaderOrParameterName { get; } = headerOrParameterName;

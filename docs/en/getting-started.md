@@ -74,7 +74,7 @@ var pet = await client.Pets.GetAsync(petId: 1);
 
 The generated client can either create its own `HttpClient` or accept one through constructor injection. When the generated client creates the instance, it sets `BaseAddress` from the first OpenAPI `servers` entry. When an existing `HttpClient` is injected, its current `BaseAddress` is preserved unless it is `null`. All generated methods are asynchronous and accept an optional `CancellationToken`.
 
-Security credentials are stored on the generated client and applied to each `HttpRequestMessage`, so injected `HttpClient` instances do not need authentication state in `DefaultRequestHeaders`.
+Security credentials are stored on the generated client and applied to each `HttpRequestMessage` according to document-level or operation-level security requirements, so injected `HttpClient` instances do not need authentication state in `DefaultRequestHeaders`.
 
 The root client class implements `IDisposable`. If it created the underlying `HttpClient`, `Dispose()` releases it. Injected `HttpClient` instances are not disposed by the generated client. The root client is also generated as a `partial class`, so you can extend it in a separate file.
 
