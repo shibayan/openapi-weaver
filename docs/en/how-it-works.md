@@ -24,9 +24,9 @@ The root client class:
 - Is generated as a `partial class`, which allows extension in a separate file
 - Implements `IDisposable` so the underlying `HttpClient` is released only when the generated client owns it
 
-Each tag sub-client contains asynchronous operation methods, with parameters mapped from the path, query, header, and cookie parameters defined in the OpenAPI document.
+Each tag sub-client contains asynchronous operation methods, with parameters mapped from the path, query, header, and cookie parameters defined in the OpenAPI document. Array parameters use repeated query keys for query parameters and comma-separated values for path, header, and cookie parameters.
 
-Security schemes are stored on the generated client and applied to each `HttpRequestMessage`. This keeps authentication behavior consistent across query, header, cookie, OAuth2, and bearer token schemes, and avoids mutating `HttpClient.DefaultRequestHeaders`.
+Security schemes are stored on the generated client and applied to each `HttpRequestMessage` according to document-level or operation-level security requirements. This keeps authentication behavior consistent across query, header, cookie, OAuth2, and bearer token schemes, and avoids mutating `HttpClient.DefaultRequestHeaders`.
 
 Each generated operation also includes explicit non-success handling instead of relying on `HttpResponseMessage.EnsureSuccessStatusCode()`, which allows typed OpenAPI error payloads to flow through exceptions.
 

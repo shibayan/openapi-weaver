@@ -47,6 +47,8 @@ public sealed class Metadata : Dictionary<string, string>
 }
 ```
 
+Dictionary ベースのスキーマが名前付きプロパティも宣言している場合、OpenApiWeaver はその型専用の JSON converter を生成します。既知の JSON プロパティ名は生成された CLR プロパティへ入り、それ以外のキーは dictionary entry として保持されます。シリアライズ時には宣言済みプロパティと追加の dictionary entry の両方が出力されます。
+
 `additionalProperties` と `patternProperties` から導かれる値型が両立しない場合、生成型は `Dictionary<string, JsonElement>` へフォールバックします。
 
 ## オブジェクトスキーマ

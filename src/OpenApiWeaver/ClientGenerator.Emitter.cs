@@ -6,11 +6,6 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Emitter(ClientModel model)
     {
-        private readonly List<SecuritySchemeBinding> _querySecuritySchemes =
-            model.SecuritySchemes
-                .Where(static scheme => scheme.Location == SecuritySchemeLocation.Query)
-                .ToList();
-
         public string Emit()
         {
             var builder = new StringBuilder();

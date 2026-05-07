@@ -74,7 +74,7 @@ var pet = await client.Pets.GetAsync(petId: 1);
 
 生成されたクライアントは、自身で `HttpClient` を作成することも、コンストラクター経由で受け取ることもできます。生成側で作成した場合は最初の OpenAPI `servers` エントリをもとに `BaseAddress` を設定します。既存の `HttpClient` を注入した場合は、`BaseAddress` が `null` でない限りその値を維持します。生成されるメソッドはすべて非同期で、任意の `CancellationToken` を受け取れます。
 
-セキュリティ資格情報は生成クライアント上に保持され、各 `HttpRequestMessage` に対して適用されます。そのため、注入した `HttpClient` の `DefaultRequestHeaders` に認証状態を持たせる必要はありません。
+セキュリティ資格情報は生成クライアント上に保持され、document-level または operation-level の security requirements に従って各 `HttpRequestMessage` に適用されます。そのため、注入した `HttpClient` の `DefaultRequestHeaders` に認証状態を持たせる必要はありません。
 
 ルートクライアントクラスは `IDisposable` を実装しており、生成クライアント自身が作成した `HttpClient` のみ `Dispose()` で解放します。外部から注入した `HttpClient` は生成クライアントでは破棄されません。また `partial class` として生成されるため、別ファイルで拡張できます。
 

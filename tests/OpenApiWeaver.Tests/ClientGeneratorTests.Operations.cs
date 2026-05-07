@@ -1143,6 +1143,127 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public async Task CookieParameter_IsSentAsCookieHeader()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Cookie Parameter API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: session_id
+                      in: cookie
+                      required: true
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new RecordingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com/")
+        };
+
+        var client = Activator.CreateInstance(clientType, httpClient);
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("ListReportsAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, ["abc 123", CancellationToken.None]));
+        await invocation;
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(["session_id=abc%20123"], Assert.Contains("Cookie", request.Headers));
+    }
+
+    [Fact]
+    public async Task ArrayParameters_UseOpenApiCompatibleSerialization()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Array Parameter API
+              version: v1
+            paths:
+              /reports/{ids}:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: ids
+                      in: path
+                      required: true
+                      schema:
+                        type: array
+                        items:
+                          type: integer
+                    - name: tags
+                      in: query
+                      required: true
+                      schema:
+                        type: array
+                        items:
+                          type: string
+                    - name: X-Scope
+                      in: header
+                      required: true
+                      schema:
+                        type: array
+                        items:
+                          type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new RecordingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com/")
+        };
+
+        var client = Activator.CreateInstance(clientType, httpClient);
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("ListReportsAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, [new[] { 1, 2 }, new[] { "red", "blue" }, new[] { "read", "write" }, CancellationToken.None]));
+        await invocation;
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(new Uri("https://api.example.com/reports/1%2C2?tags=red&tags=blue"), request.RequestUri);
+        Assert.Equal(["read,write"], Assert.Contains("X-Scope", request.Headers));
+    }
+
+    [Fact]
     public void PathAndOperationParameters_AreCombinedIntoMethodSignature()
     {
         const string openApi = """

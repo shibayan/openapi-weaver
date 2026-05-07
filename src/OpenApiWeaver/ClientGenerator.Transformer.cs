@@ -29,9 +29,9 @@ public sealed partial class ClientGenerator
             RegisterPolymorphicSchemaInfo();
             RegisterInlineSchemaNames();
 
-            var schemas = BuildSchemaDefinitions();
-            var tagGroups = BuildTagGroups();
             var securitySchemes = BuildSecuritySchemes();
+            var schemas = BuildSchemaDefinitions();
+            var tagGroups = BuildTagGroups(securitySchemes);
 
             return new ClientModel(
                 _rootNamespace,

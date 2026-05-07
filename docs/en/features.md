@@ -209,6 +209,8 @@ Parameters defined in the OpenAPI document are mapped to method parameters accor
 | `header` | Added as request headers |
 | `cookie` | Added to the `Cookie` header |
 
+Array parameters use OpenAPI-compatible defaults: query arrays are emitted as repeated query parameters, while path, header, and cookie arrays are formatted as comma-separated values.
+
 ## Security scheme support
 
 Constructor parameters are generated automatically from the security schemes defined in the OpenAPI document:
@@ -222,7 +224,9 @@ Constructor parameters are generated automatically from the security schemes def
 
 Multiple security schemes can be combined. For example, if an API requires both an OAuth2 token and an API key, the constructor accepts both parameters.
 
-Security values are applied to each generated `HttpRequestMessage`. This includes header, query, cookie, OAuth2, and bearer token schemes, and keeps injected `HttpClient` instances free from authentication state in `DefaultRequestHeaders`.
+Security values are stored on the generated client and applied to each generated `HttpRequestMessage` according to the OpenAPI security requirements. Operation-level `security` overrides document-level security, and `security: []` sends no credentials for that operation. Documents that define schemes but no explicit security requirements retain the existing behavior of applying configured credentials to generated requests.
+
+Credentials are applied per request rather than by mutating `HttpClient.DefaultRequestHeaders`. This includes header, query, cookie, OAuth2, and bearer token schemes, and keeps injected `HttpClient` instances free from shared authentication state.
 
 ## All HTTP methods
 
