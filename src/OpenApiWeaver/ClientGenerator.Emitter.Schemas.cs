@@ -42,6 +42,227 @@ public sealed partial class ClientGenerator
             }
         }
 
+        private enum JsonSerializerDirection
+        {
+            Neutral,
+            Request,
+            Response
+        }
+
+        private string GetJsonSerializerOptionsExpression(JsonSerializerDirection direction)
+        {
+            if (!model.HasDirectionalSchemaProperties || direction == JsonSerializerDirection.Neutral)
+            {
+                return "OpenApiClientHelpers.SerializerOptions";
+            }
+
+            return direction == JsonSerializerDirection.Request
+                ? $"{model.SerializerOptionsTypeName}.RequestSerializerOptions"
+                : $"{model.SerializerOptionsTypeName}.ResponseSerializerOptions";
+        }
+
+        private void EmitJsonSerializerOptions(IndentedStringBuilder writer)
+        {
+            writer.Append("internal static class ").Append(model.SerializerOptionsTypeName).AppendLine();
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                writer.AppendLine("internal static readonly JsonSerializerOptions RequestSerializerOptions = CreateRequestSerializerOptions();");
+                writer.AppendLine();
+                writer.AppendLine("internal static readonly JsonSerializerOptions ResponseSerializerOptions = CreateResponseSerializerOptions();");
+                writer.AppendLine();
+                writer.AppendLine("internal static bool IsRequestSerializerOptions(JsonSerializerOptions options)");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("=> ReferenceEquals(options, RequestSerializerOptions);");
+                }
+
+                writer.AppendLine();
+                writer.AppendLine("internal static bool IsResponseSerializerOptions(JsonSerializerOptions options)");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("=> ReferenceEquals(options, ResponseSerializerOptions);");
+                }
+
+                writer.AppendLine();
+                writer.AppendLine("private static JsonSerializerOptions CreateRequestSerializerOptions()");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    EmitJsonSerializerOptionsFactoryReturn(writer, "ApplyRequestSerializerMetadata");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.AppendLine("private static JsonSerializerOptions CreateResponseSerializerOptions()");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    EmitJsonSerializerOptionsFactoryReturn(writer, "ApplyResponseSerializerMetadata");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                EmitJsonSerializerMetadataMethod(writer, "ApplyRequestSerializerMetadata", property => property.ReadOnly, "IgnoreSerializedProperty");
+                writer.AppendLine();
+                EmitJsonSerializerMetadataMethod(
+                    writer,
+                    "ApplyResponseSerializerMetadata",
+                    property => property.WriteOnly || (property.ReadOnly && property.Required),
+                    static property => property.WriteOnly ? "IgnoreDeserializedProperty" : "RequireDeserializedProperty");
+                writer.AppendLine();
+                writer.AppendLine("private static void IgnoreSerializedProperty(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo, string propertyName)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("foreach (var property in typeInfo.Properties)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        writer.AppendLine("if (!string.Equals(property.Name, propertyName, StringComparison.Ordinal))");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.AppendLine("continue;");
+                        }
+
+                        writer.AppendLine("}");
+                        writer.AppendLine();
+                        writer.AppendLine("property.ShouldSerialize = static (_, _) => false;");
+                        writer.AppendLine("property.IsRequired = false;");
+                        writer.AppendLine("return;");
+                    }
+
+                    writer.AppendLine("}");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.AppendLine("private static void RequireDeserializedProperty(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo, string propertyName)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("foreach (var property in typeInfo.Properties)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        writer.AppendLine("if (!string.Equals(property.Name, propertyName, StringComparison.Ordinal))");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.AppendLine("continue;");
+                        }
+
+                        writer.AppendLine("}");
+                        writer.AppendLine();
+                        writer.AppendLine("property.IsRequired = true;");
+                        writer.AppendLine("return;");
+                    }
+
+                    writer.AppendLine("}");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.AppendLine("private static void IgnoreDeserializedProperty(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo, string propertyName)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("foreach (var property in typeInfo.Properties)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        writer.AppendLine("if (!string.Equals(property.Name, propertyName, StringComparison.Ordinal))");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            writer.AppendLine("continue;");
+                        }
+
+                        writer.AppendLine("}");
+                        writer.AppendLine();
+                        writer.AppendLine("property.Set = null;");
+                        writer.AppendLine("property.IsRequired = false;");
+                        writer.AppendLine("return;");
+                    }
+
+                    writer.AppendLine("}");
+                }
+
+                writer.AppendLine("}");
+            }
+
+            writer.AppendLine("}");
+        }
+
+        private static void EmitJsonSerializerOptionsFactoryReturn(IndentedStringBuilder writer, string modifierMethodName)
+        {
+            writer.AppendLine("return new JsonSerializerOptions(JsonSerializerDefaults.Web)");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                writer.AppendLine("TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("Modifiers =");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        writer.Append(modifierMethodName).AppendLine();
+                    }
+
+                    writer.AppendLine("}");
+                }
+
+                writer.AppendLine("}");
+            }
+
+            writer.AppendLine("};");
+        }
+
+        private void EmitJsonSerializerMetadataMethod(
+            IndentedStringBuilder writer,
+            string methodName,
+            Func<SchemaPropertyDefinition, bool> propertyPredicate,
+            string configureMethodName)
+            => EmitJsonSerializerMetadataMethod(writer, methodName, propertyPredicate, _ => configureMethodName);
+
+        private void EmitJsonSerializerMetadataMethod(
+            IndentedStringBuilder writer,
+            string methodName,
+            Func<SchemaPropertyDefinition, bool> propertyPredicate,
+            Func<SchemaPropertyDefinition, string> configureMethodNameSelector)
+        {
+            writer.Append("private static void ").Append(methodName).AppendLine("(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo)");
+            writer.AppendLine("{");
+            using (writer.PushIndent())
+            {
+                foreach (var schema in model.Schemas)
+                {
+                    var properties = schema.Properties.Where(propertyPredicate).ToList();
+                    if (properties.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    writer.Append("if (typeInfo.Type == typeof(").Append(schema.QualifiedTypeName).AppendLine("))");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        foreach (var property in properties)
+                        {
+                            writer.Append(configureMethodNameSelector(property)).Append("(typeInfo, \"").Append(EscapeStringLiteral(property.JsonPropertyName)).AppendLine("\");");
+                        }
+                    }
+
+                    writer.AppendLine("}");
+                }
+            }
+
+            writer.AppendLine("}");
+        }
+
         private void EmitSchemaDefinition(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             if (schema.IsEnum)
@@ -94,18 +315,25 @@ public sealed partial class ClientGenerator
             {
                 foreach (var property in schema.Properties)
                 {
-                    var requiredModifier = property.Required ? "required " : string.Empty;
+                    var usesPrivateInit = property.ReadOnly && !RequiresDictionaryConverter(schema);
+                    var requiredModifier = property.Required && !property.ReadOnly ? "required " : string.Empty;
                     EmitDocComment(
                         writer,
                         summary: property.Summary,
                         remarks: property.Description);
+                    if (property.ReadOnly)
+                    {
+                        writer.AppendLine("[JsonInclude]");
+                    }
+
                     if (!property.Required && property.Type.CanBeNullInCSharp)
                     {
                         writer.AppendLine("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]");
                     }
 
                     writer.Append("[JsonPropertyName(\"").Append(EscapeStringLiteral(property.JsonPropertyName)).AppendLine("\")]");
-                    writer.Append("public ").Append(requiredModifier).Append(property.PropertyTypeName).Append(' ').Append(property.PropertyName).AppendLine(" { get; init; }");
+                    var accessors = usesPrivateInit ? "{ get; private init; }" : "{ get; init; }";
+                    writer.Append("public ").Append(requiredModifier).Append(property.PropertyTypeName).Append(' ').Append(property.PropertyName).Append(' ').Append(accessors).AppendLine();
                 }
 
                 if (_nestedSchemasByParent.TryGetValue(schema.QualifiedTypeName, out var nestedSchemas))
@@ -130,7 +358,7 @@ public sealed partial class ClientGenerator
         private static bool RequiresDictionaryConverter(SchemaDefinition schema)
             => schema.DictionaryValueType is not null && schema.Properties.Count > 0;
 
-        private static void EmitDictionarySchemaConverter(IndentedStringBuilder writer, SchemaDefinition schema)
+        private void EmitDictionarySchemaConverter(IndentedStringBuilder writer, SchemaDefinition schema)
         {
             var converterName = schema.DeclaredTypeName + "JsonConverter";
             var dictionaryValueType = schema.DictionaryValueType!;
@@ -226,8 +454,40 @@ public sealed partial class ClientGenerator
                                 writer.Append("case \"").Append(EscapeStringLiteral(property.JsonPropertyName)).AppendLine("\":");
                                 using (writer.PushIndent())
                                 {
+                                    if (property.ReadOnly || property.WriteOnly)
+                                    {
+                                        writer.Append("if (");
+                                        var hasCondition = false;
+                                        if (property.ReadOnly)
+                                        {
+                                            writer.Append(model.SerializerOptionsTypeName).Append(".IsRequestSerializerOptions(options)");
+                                            hasCondition = true;
+                                        }
+
+                                        if (property.WriteOnly)
+                                        {
+                                            if (hasCondition)
+                                            {
+                                                writer.Append(" || ");
+                                            }
+
+                                            writer.Append(model.SerializerOptionsTypeName).Append(".IsResponseSerializerOptions(options)");
+                                        }
+
+                                        writer.AppendLine(")");
+                                        writer.AppendLine("{");
+                                        using (writer.PushIndent())
+                                        {
+                                            writer.AppendLine("reader.Skip();");
+                                            writer.AppendLine("break;");
+                                        }
+
+                                        writer.AppendLine("}");
+                                        writer.AppendLine();
+                                    }
+
                                     writer.Append("property").Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                        .Append(" = JsonSerializer.Deserialize<").Append(property.PropertyTypeName).AppendLine(">(ref reader, OpenApiClientHelpers.SerializerOptions);");
+                                        .Append(" = JsonSerializer.Deserialize<").Append(property.PropertyTypeName).AppendLine(">(ref reader, options);");
                                     writer.Append("hasProperty").Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(" = true;");
                                     writer.AppendLine("break;");
                                 }
@@ -236,7 +496,7 @@ public sealed partial class ClientGenerator
                             writer.AppendLine("default:");
                             using (writer.PushIndent())
                             {
-                                writer.Append("additionalProperties[propertyName] = JsonSerializer.Deserialize<").Append(dictionaryValueType).AppendLine(">(ref reader, OpenApiClientHelpers.SerializerOptions)!;");
+                                writer.Append("additionalProperties[propertyName] = JsonSerializer.Deserialize<").Append(dictionaryValueType).AppendLine(">(ref reader, options)!;");
                                 writer.AppendLine("break;");
                             }
                         }
@@ -292,7 +552,7 @@ public sealed partial class ClientGenerator
 
                         writer.AppendLine();
                         writer.AppendLine("writer.WritePropertyName(item.Key);");
-                        writer.AppendLine("JsonSerializer.Serialize(writer, item.Value, OpenApiClientHelpers.SerializerOptions);");
+                        writer.AppendLine("JsonSerializer.Serialize(writer, item.Value, options);");
                     }
 
                     writer.AppendLine("}");
@@ -306,10 +566,28 @@ public sealed partial class ClientGenerator
             writer.AppendLine("}");
         }
 
-        private static void EmitDictionaryConverterPropertyWrite(IndentedStringBuilder writer, SchemaPropertyDefinition property)
+        private void EmitDictionaryConverterPropertyWrite(IndentedStringBuilder writer, SchemaPropertyDefinition property)
+        {
+            if (property.ReadOnly)
+            {
+                writer.Append("if (!").Append(model.SerializerOptionsTypeName).AppendLine(".IsRequestSerializerOptions(options))");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    EmitDictionaryConverterPropertyWriteCore(writer, property);
+                }
+
+                writer.AppendLine("}");
+                return;
+            }
+
+            EmitDictionaryConverterPropertyWriteCore(writer, property);
+        }
+
+        private static void EmitDictionaryConverterPropertyWriteCore(IndentedStringBuilder writer, SchemaPropertyDefinition property)
         {
             writer.Append("writer.WritePropertyName(\"").Append(EscapeStringLiteral(property.JsonPropertyName)).AppendLine("\");");
-            writer.Append("JsonSerializer.Serialize(writer, value.").Append(property.PropertyName).AppendLine(", OpenApiClientHelpers.SerializerOptions);");
+            writer.Append("JsonSerializer.Serialize(writer, value.").Append(property.PropertyName).AppendLine(", options);");
         }
 
         private static string GetDictionaryConverterLocalType(SchemaPropertyDefinition property)
@@ -319,10 +597,22 @@ public sealed partial class ClientGenerator
                 : property.PropertyTypeName;
         }
 
-        private static string BuildRequiredDictionaryConverterPropertyExpression(SchemaPropertyDefinition property, int index)
+        private string BuildRequiredDictionaryConverterPropertyExpression(SchemaPropertyDefinition property, int index)
         {
             var propertyVariable = $"property{index.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             var missingExpression = $"throw new JsonException(\"Required property '{EscapeStringLiteral(property.JsonPropertyName)}' was not found.\")";
+            var optionalInDirectionExpression = property switch
+            {
+                { ReadOnly: true, WriteOnly: true } => $"{model.SerializerOptionsTypeName}.IsRequestSerializerOptions(options) || {model.SerializerOptionsTypeName}.IsResponseSerializerOptions(options)",
+                { ReadOnly: true } => $"{model.SerializerOptionsTypeName}.IsRequestSerializerOptions(options)",
+                { WriteOnly: true } => $"{model.SerializerOptionsTypeName}.IsResponseSerializerOptions(options)",
+                _ => null
+            };
+            if (optionalInDirectionExpression is not null)
+            {
+                missingExpression = $"{optionalInDirectionExpression} ? default! : {missingExpression}";
+            }
+
             if (!property.Type.CanBeNullInCSharp && IsReferenceLikeType(property.Type.Shape))
             {
                 var nullExpression = $"throw new JsonException(\"Required property '{EscapeStringLiteral(property.JsonPropertyName)}' was null.\")";

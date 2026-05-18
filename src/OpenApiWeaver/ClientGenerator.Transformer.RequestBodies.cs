@@ -56,6 +56,11 @@ public sealed partial class ClientGenerator
             var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in properties)
             {
+                if (property.ReadOnly)
+                {
+                    continue;
+                }
+
                 result.Add(CreateRequestBodyPropertyInfo(schemaName, requestBodyKind, property, usedPropertyNames));
             }
 

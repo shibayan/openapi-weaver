@@ -94,6 +94,89 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void SerializerOptionsHelperName_DoesNotRenameComponentSchema()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Naming API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                testClientJsonSerializerOptions:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class TestClientJsonSerializerOptions", source);
+        Assert.DoesNotContain("internal static class TestClientJsonSerializerOptions", source);
+        Assert.DoesNotContain("public sealed class TestClientJsonSerializerOptions2", source);
+    }
+
+    [Fact]
+    public void SerializerOptionsHelperName_IsSuffixedWhenDirectionalSchemaCollides()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Naming API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                testClientJsonSerializerOptions:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      readOnly: true
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class TestClientJsonSerializerOptions", source);
+        Assert.Contains("internal static class TestClientJsonSerializerOptions2", source);
+        Assert.DoesNotContain("public sealed class TestClientJsonSerializerOptions2", source);
+    }
+
+    [Fact]
+    public void DirectionalSerializerMetadata_UsesQualifiedMetadataTypes()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Metadata Collision API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                jsonTypeInfo:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      readOnly: true
+                defaultJsonTypeInfoResolver:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class JsonTypeInfo", source);
+        Assert.Contains("public sealed class DefaultJsonTypeInfoResolver", source);
+        Assert.Contains("System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo", source);
+        Assert.Contains("new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver", source);
+    }
+
+    [Fact]
     public void EnumSchema_GeneratesEnumType()
     {
         const string openApi = """

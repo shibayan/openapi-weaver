@@ -30,6 +30,12 @@ public sealed partial class ClientGenerator
             }
 
             EmitSchemas(writer);
+            if (model.HasDirectionalSchemaProperties)
+            {
+                EmitJsonSerializerOptions(writer);
+                writer.AppendLine();
+            }
+
             EmitTagClients(writer);
             EmitClient(writer);
             return builder.ToString();

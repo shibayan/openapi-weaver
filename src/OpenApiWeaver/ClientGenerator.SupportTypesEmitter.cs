@@ -277,11 +277,20 @@ public sealed partial class ClientGenerator
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
+                    writer.AppendLine("return DeserializeResponseContent<T>(responseContent, SerializerOptions);");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.AppendLine("internal static T? DeserializeResponseContent<T>(string? responseContent, JsonSerializerOptions options)");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
                     writer.AppendLine("return string.IsNullOrWhiteSpace(responseContent)");
                     using (writer.PushIndent())
                     {
                         writer.AppendLine("? default");
-                        writer.AppendLine(": JsonSerializer.Deserialize<T>(responseContent, SerializerOptions);");
+                        writer.AppendLine(": JsonSerializer.Deserialize<T>(responseContent, options);");
                     }
                 }
 

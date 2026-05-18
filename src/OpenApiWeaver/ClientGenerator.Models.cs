@@ -5,6 +5,7 @@ public sealed partial class ClientGenerator
     private sealed class ClientModel(
         string rootNamespace,
         string clientName,
+        string serializerOptionsTypeName,
         string summary,
         string? description,
         string? serverUrl,
@@ -14,12 +15,14 @@ public sealed partial class ClientGenerator
     {
         public string RootNamespace { get; } = rootNamespace;
         public string ClientName { get; } = clientName;
+        public string SerializerOptionsTypeName { get; } = serializerOptionsTypeName;
         public string Summary { get; } = summary;
         public string? Description { get; } = description;
         public string? ServerUrl { get; } = serverUrl;
         public IReadOnlyList<SchemaDefinition> Schemas { get; } = schemas;
         public IReadOnlyList<TagGroup> TagGroups { get; } = tagGroups;
         public IReadOnlyList<SecuritySchemeBinding> SecuritySchemes { get; } = securitySchemes;
+        public bool HasDirectionalSchemaProperties { get; } = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
     }
 
     private sealed class TagGroup(string propertyName, string className, string? description, IReadOnlyList<OperationGroupItem> operations)
@@ -162,6 +165,8 @@ public sealed partial class ClientGenerator
         string propertyName,
         TypeUsage type,
         bool required,
+        bool readOnly,
+        bool writeOnly,
         string summary,
         string? description)
     {
@@ -170,6 +175,8 @@ public sealed partial class ClientGenerator
         public TypeUsage Type { get; } = type;
         public string PropertyTypeName { get; } = type.CSharpTypeName;
         public bool Required { get; } = required;
+        public bool ReadOnly { get; } = readOnly;
+        public bool WriteOnly { get; } = writeOnly;
         public string Summary { get; } = summary;
         public string? Description { get; } = description;
     }

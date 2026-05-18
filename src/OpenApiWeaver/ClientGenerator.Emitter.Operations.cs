@@ -238,7 +238,7 @@ public sealed partial class ClientGenerator
             }
             else if (operation.Response.Type?.RequiresNonNullJsonResponse == true)
             {
-                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false)");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetJsonSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false)");
                 using (writer.PushIndent())
                 {
                     writer.AppendLine("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);");
@@ -246,13 +246,13 @@ public sealed partial class ClientGenerator
             }
             else
             {
-                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).AppendLine(">(OpenApiClientHelpers.SerializerOptions, cancellationToken).ConfigureAwait(false);");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetJsonSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false);");
             }
 
             writer.AppendLine("}");
         }
 
-        private static void EmitErrorResponseHandling(IndentedStringBuilder writer, OperationGroupItem operation)
+        private void EmitErrorResponseHandling(IndentedStringBuilder writer, OperationGroupItem operation)
         {
             writer.AppendLine("var statusCode = (int)response.StatusCode;");
             writer.AppendLine("var contentType = response.Content?.Headers?.ContentType?.MediaType;");
@@ -278,7 +278,7 @@ public sealed partial class ClientGenerator
             writer.AppendLine("throw new OpenApiException(statusCode, response.ReasonPhrase, contentType, responseContent);");
         }
 
-        private static void EmitTypedErrorResponseHandling(IndentedStringBuilder writer, ResponseInfo response)
+        private void EmitTypedErrorResponseHandling(IndentedStringBuilder writer, ResponseInfo response)
         {
             var errorTypeName = response.Type?.NonNullableCSharpTypeName ?? string.Empty;
             switch (response.Kind)
@@ -292,7 +292,14 @@ public sealed partial class ClientGenerator
                         writer.AppendLine("{");
                         using (writer.PushIndent())
                         {
-                            writer.Append("var error = OpenApiClientHelpers.DeserializeResponseContent<").Append(errorTypeName).AppendLine(">(responseContent);");
+                            var serializerOptions = GetJsonSerializerOptionsExpression(JsonSerializerDirection.Response);
+                            writer.Append("var error = OpenApiClientHelpers.DeserializeResponseContent<").Append(errorTypeName).Append(">(responseContent");
+                            if (!string.Equals(serializerOptions, "OpenApiClientHelpers.SerializerOptions", StringComparison.Ordinal))
+                            {
+                                writer.Append(", ").Append(serializerOptions);
+                            }
+
+                            writer.AppendLine(");");
                             writer.Append("throw new OpenApiException<").Append(errorTypeName).AppendLine(">(statusCode, response.ReasonPhrase, contentType, responseContent, error);");
                         }
 

@@ -21,7 +21,9 @@ public sealed partial class ClientGenerator
                         .Append(bodyValue)
                         .Append(", mediaType: System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"")
                         .Append(EscapeStringLiteral(requestBody.ContentType))
-                        .AppendLine("\"), options: OpenApiClientHelpers.SerializerOptions);");
+                        .Append("\"), options: ")
+                        .Append(GetJsonSerializerOptionsExpression(JsonSerializerDirection.Request))
+                        .AppendLine(");");
                     break;
             }
         }
