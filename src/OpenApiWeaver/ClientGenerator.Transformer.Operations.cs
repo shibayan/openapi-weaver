@@ -10,7 +10,7 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Transformer
     {
-        private List<TagGroup> BuildTagGroups(IReadOnlyList<SecuritySchemeBinding> securitySchemes)
+        private List<TagGroup> BuildTagGroups(IReadOnlyList<SecuritySchemeBinding> securitySchemes, string serializerOptionsTypeName)
         {
             var tagDescriptions = new Dictionary<string, string>(StringComparer.Ordinal);
             if (_document.Tags is not null)
@@ -45,12 +45,18 @@ public sealed partial class ClientGenerator
             }
 
             var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
+            var reservedClassNames = _schemaNames.Values
+                .Concat(_inlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
+                .Append(_clientName)
+                .Append("OpenApiClientHelpers")
+                .Append("OpenApiException");
+            if (!string.IsNullOrWhiteSpace(serializerOptionsTypeName))
+            {
+                reservedClassNames = reservedClassNames.Append(serializerOptionsTypeName);
+            }
+
             var usedClassNames = new HashSet<string>(
-                _schemaNames.Values
-                    .Concat(_inlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
-                    .Append(_clientName)
-                    .Append("OpenApiClientHelpers")
-                    .Append("OpenApiException"),
+                reservedClassNames,
                 StringComparer.Ordinal);
 
             return [..

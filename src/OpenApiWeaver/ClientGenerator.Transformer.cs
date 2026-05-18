@@ -31,11 +31,15 @@ public sealed partial class ClientGenerator
 
             var securitySchemes = BuildSecuritySchemes();
             var schemas = BuildSchemaDefinitions();
-            var tagGroups = BuildTagGroups(securitySchemes);
+            var serializerOptionsTypeName = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly))
+                ? AllocateTypeName(parentTypeName: null, _clientName + "JsonSerializerOptions")
+                : string.Empty;
+            var tagGroups = BuildTagGroups(securitySchemes, serializerOptionsTypeName);
 
             return new ClientModel(
                 _rootNamespace,
                 _clientName,
+                serializerOptionsTypeName,
                 !string.IsNullOrWhiteSpace(_document.Info.Title) ? _document.Info.Title! : _clientName,
                 _document.Info.Description,
                 _document.Servers?.FirstOrDefault()?.Url,

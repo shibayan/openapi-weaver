@@ -213,6 +213,8 @@ public sealed partial class ClientGenerator
                     propertyName,
                     ResolveTypeUsage(property.Schema, property.Required),
                     property.Required,
+                    property.ReadOnly,
+                    property.WriteOnly,
                     property.Schema.Title ?? propertyName,
                     property.Schema.Description));
             }
@@ -645,7 +647,9 @@ public sealed partial class ClientGenerator
                     var item = new SchemaPropertyInfo(
                         property.Key,
                         property.Value,
-                        schema.Required?.Contains(property.Key) == true);
+                        schema.Required?.Contains(property.Key) == true,
+                        property.Value.ReadOnly,
+                        property.Value.WriteOnly);
 
                     if (indices.TryGetValue(property.Key, out var index))
                     {
@@ -1167,11 +1171,13 @@ public sealed partial class ClientGenerator
             public string DiscriminatorPropertyName { get; } = discriminatorPropertyName;
         }
 
-        private sealed class SchemaPropertyInfo(string name, IOpenApiSchema schema, bool required)
+        private sealed class SchemaPropertyInfo(string name, IOpenApiSchema schema, bool required, bool readOnly, bool writeOnly)
         {
             public string Name { get; } = name;
             public IOpenApiSchema Schema { get; } = schema;
             public bool Required { get; } = required;
+            public bool ReadOnly { get; } = readOnly;
+            public bool WriteOnly { get; } = writeOnly;
         }
     }
 }
