@@ -13,6 +13,7 @@ public sealed partial class ClientGenerator
         private readonly Dictionary<string, InlineSchemaInfo> _inlineSchemasByIdentity = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PolymorphicSchemaInfo> _polymorphicSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, SchemaDefinition> _schemaDefinitionsByTypeName = new(StringComparer.Ordinal);
         private readonly HashSet<string> _usedSchemaTypeNames = new(StringComparer.Ordinal);
         private readonly List<InlineSchemaInfo> _inlineSchemas = [];
 

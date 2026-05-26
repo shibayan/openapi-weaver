@@ -166,13 +166,17 @@ public sealed partial class ClientGenerator
                 foreach (var schema in _document.Components.Schemas)
                 {
                     var schemaName = _schemaNames[schema.Key];
-                    schemas.Add(CreateSchemaDefinition(schemaName, schemaName, parentTypeName: null, schema.Value));
+                    var definition = CreateSchemaDefinition(schemaName, schemaName, parentTypeName: null, schema.Value);
+                    schemas.Add(definition);
+                    _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
                 }
             }
 
             foreach (var inlineSchema in _inlineSchemas)
             {
-                schemas.Add(CreateSchemaDefinition(inlineSchema.TypeName, inlineSchema.DeclaredTypeName, inlineSchema.ParentTypeName, inlineSchema.Schema));
+                var definition = CreateSchemaDefinition(inlineSchema.TypeName, inlineSchema.DeclaredTypeName, inlineSchema.ParentTypeName, inlineSchema.Schema);
+                schemas.Add(definition);
+                _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
             }
 
             return schemas;
