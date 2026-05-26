@@ -376,6 +376,44 @@ public sealed partial class ClientGeneratorTests
         AssertNoClientSource(result);
     }
 
+    [Fact]
+    public void SchemaPropertyMarkedReadOnlyAndWriteOnly_ReportsUnsupportedDiagnostic()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: RO/WO API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/Report'
+            components:
+              schemas:
+                Report:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      readOnly: true
+                      writeOnly: true
+            """;
+
+        var result = RunGenerator(openApi);
+
+        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW004");
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains("both readOnly and writeOnly", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
     private static void AssertNoClientSource(GeneratorTestResult result)
     {
         Assert.DoesNotContain(result.GeneratedSources, static source => source.Contains(": IDisposable"));
