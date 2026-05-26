@@ -380,7 +380,7 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("[JsonPropertyName(\"company_id\")]", source);
         Assert.DoesNotContain("PropertyCache<TBody>", source);
         Assert.Contains("var content = new MultipartFormDataContent();", source);
-        Assert.Contains("content.Add(new ByteArrayContent(body.Receipt), \"receipt\", \"receipt\");", source);
+        Assert.Contains("content.Add(new ByteArrayContent(body.Receipt), \"receipt\");", source);
         Assert.Contains("content.Add(new StringContent(OpenApiClientHelpers.FormatParameter(body.CompanyId)), \"company_id\");", source);
         Assert.Contains("request.Content = content;", source);
     }
@@ -1725,7 +1725,7 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("public required byte[] File", source);
         Assert.Contains("public string? Description", source);
         Assert.Contains("var content = new MultipartFormDataContent();", source);
-        Assert.Contains("content.Add(new ByteArrayContent(body.File), \"file\", \"file\");", source);
+        Assert.Contains("content.Add(new ByteArrayContent(body.File), \"file\");", source);
         Assert.Contains("if (body.Description is not null)", source);
         Assert.Contains("content.Add(new StringContent(OpenApiClientHelpers.FormatParameter(body.Description)), \"description\");", source);
     }
