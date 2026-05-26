@@ -204,6 +204,12 @@ public sealed partial class ClientGenerator
             var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in GetSchemaProperties(schema, ignoredPropertyNames, ignoredSchemaReferences))
             {
+                if (property.ReadOnly && property.WriteOnly)
+                {
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{typeName}' property '{property.Name}' is marked both readOnly and writeOnly, which is not supported.");
+                }
+
                 var propertyName = AllocateUniqueName(
                     usedPropertyNames,
                     NormalizePascalIdentifier(property.Name, "Value"),
