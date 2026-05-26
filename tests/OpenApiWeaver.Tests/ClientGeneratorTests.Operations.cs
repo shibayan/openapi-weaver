@@ -431,6 +431,52 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void FormUrlEncodedRequestBody_WithReadOnlyShadowingWritableProperty_AlignsPropertyNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Form API
+              version: v1
+            paths:
+              /reports:
+                post:
+                  operationId: create_report
+                  requestBody:
+                    required: true
+                    content:
+                      application/x-www-form-urlencoded:
+                        schema:
+                          $ref: '#/components/schemas/ReportForm'
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                ReportForm:
+                  type: object
+                  properties:
+                    Foo:
+                      type: string
+                      readOnly: true
+                    foo:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        // Schema emits both properties: readonly Foo and writable Foo2 (collision resolved via suffix).
+        Assert.Contains("public string? Foo { get; private init; }", source);
+        Assert.Contains("public string? Foo2 { get; init; }", source);
+
+        // form-urlencoded body must reference the *writable* Foo2 (mapped from JSON name "foo"),
+        // not the read-only Foo. Before the fix the RequestBody property name was independently
+        // allocated as "Foo", causing the body to be wired to the read-only property.
+        Assert.Contains("values.Add(new KeyValuePair<string, string>(\"foo\", OpenApiClientHelpers.FormatParameter(body.Foo2)));", source);
+        Assert.DoesNotContain("values.Add(new KeyValuePair<string, string>(\"foo\", OpenApiClientHelpers.FormatParameter(body.Foo))", source);
+    }
+
+    [Fact]
     public void NoContentResponse_GeneratesNonGenericTask()
     {
         const string openApi = """

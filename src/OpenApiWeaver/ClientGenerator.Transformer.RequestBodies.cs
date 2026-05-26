@@ -51,9 +51,12 @@ public sealed partial class ClientGenerator
                 throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
 
+            var propertyNameByJsonName = _schemaDefinitionsByTypeName.TryGetValue(schemaName, out var schemaDefinition)
+                ? schemaDefinition.Properties.ToDictionary(static p => p.JsonPropertyName, static p => p.PropertyName, StringComparer.Ordinal)
+                : new Dictionary<string, string>(StringComparer.Ordinal);
+
             var properties = GetSchemaProperties(resolvedSchema);
             var result = new List<RequestBodyPropertyInfo>(properties.Count);
-            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in properties)
             {
                 if (property.ReadOnly)
@@ -61,18 +64,19 @@ public sealed partial class ClientGenerator
                     continue;
                 }
 
-                result.Add(CreateRequestBodyPropertyInfo(schemaName, requestBodyKind, property, usedPropertyNames));
+                if (!propertyNameByJsonName.TryGetValue(property.Name, out var propertyName))
+                {
+                    propertyName = NormalizePascalIdentifier(property.Name, "Value");
+                }
+
+                result.Add(CreateRequestBodyPropertyInfo(schemaName, requestBodyKind, property, propertyName));
             }
 
             return result;
         }
 
-        private RequestBodyPropertyInfo CreateRequestBodyPropertyInfo(string schemaName, RequestBodyKind requestBodyKind, SchemaPropertyInfo property, ISet<string> usedPropertyNames)
+        private RequestBodyPropertyInfo CreateRequestBodyPropertyInfo(string schemaName, RequestBodyKind requestBodyKind, SchemaPropertyInfo property, string propertyName)
         {
-            var propertyName = AllocateUniqueName(
-                usedPropertyNames,
-                NormalizePascalIdentifier(property.Name, "Value"),
-                "Value");
             var propertyType = ResolveTypeUsage(property.Schema, property.Required);
             var valueKind = ClassifyRequestBodyValueKind(schemaName, property.Name, requestBodyKind, property.Schema, out var elementKind);
             var isNullable = propertyType.CanBeNullInCSharp;
