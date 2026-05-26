@@ -129,16 +129,21 @@ public sealed partial class ClientGenerator
 
             foreach (var parameter in headerParameters)
             {
-                writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                writer.AppendLine("{");
-                using (writer.PushIndent())
+                if (parameter.Required)
                 {
-                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(parameter.WireName).Append("\", ");
-                    EmitHeaderParameterValue(writer, parameter);
-                    writer.AppendLine(");");
+                    EmitHeaderParameterAppend(writer, parameter);
                 }
+                else
+                {
+                    writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        EmitHeaderParameterAppend(writer, parameter);
+                    }
 
-                writer.AppendLine("}");
+                    writer.AppendLine("}");
+                }
             }
 
             foreach (var parameter in cookieParameters)
@@ -394,9 +399,11 @@ public sealed partial class ClientGenerator
             writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
         }
 
-        private static void EmitHeaderParameterValue(IndentedStringBuilder writer, ParameterInfo parameter)
+        private static void EmitHeaderParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
         {
+            writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ");
             EmitParameterValue(writer, parameter);
+            writer.AppendLine(");");
         }
 
         private static void EmitCookieParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
