@@ -392,7 +392,7 @@ public sealed partial class ClientGenerator
             if (scheme.Type == SecuritySchemeType.OAuth2
                 || (scheme.Type == SecuritySchemeType.Http && string.Equals(scheme.Scheme, "bearer", StringComparison.OrdinalIgnoreCase)))
             {
-                var parameterName = SafeIdentifier(ToCamelCase(schemeKey == "oauth2" ? "access_token" : $"{schemeKey}_token"));
+                var parameterName = SafeIdentifier(ToCamelCase(scheme.Type == SecuritySchemeType.OAuth2 ? "access_token" : $"{schemeKey}_token"));
                 return new SecuritySchemeBinding(
                     schemeKey,
                     parameterName,

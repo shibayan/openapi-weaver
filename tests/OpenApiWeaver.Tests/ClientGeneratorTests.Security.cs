@@ -122,6 +122,42 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void OAuth2SecurityScheme_WithCustomKey_UsesAccessTokenParameter()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Custom OAuth2 API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                googleOAuth:
+                  type: oauth2
+                  flows:
+                    authorizationCode:
+                      authorizationUrl: https://example.com/auth
+                      tokenUrl: https://example.com/token
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("string? accessToken = default", source);
+        Assert.Contains("private readonly string? _accessToken;", source);
+        Assert.DoesNotContain("googleOAuthToken", source);
+    }
+
+    [Fact]
     public void HeaderApiKeySecurityScheme_GeneratesDefaultHeaderInitialization()
     {
         const string openApi = """
