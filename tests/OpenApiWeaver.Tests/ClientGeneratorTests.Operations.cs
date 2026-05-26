@@ -1015,6 +1015,72 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void RequiredHeaderParameter_OmitsNullGuard()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Header API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: X-Request-Id
+                      in: header
+                      required: true
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("request.Headers.TryAddWithoutValidation(\"X-Request-Id\"", source);
+        Assert.DoesNotContain("if (xRequestId is not null)", source);
+    }
+
+    [Fact]
+    public void RequiredHeaderParameter_WithValueType_DoesNotEmitNullCheck()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Header API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: X-Page-Number
+                      in: header
+                      required: true
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("int xPageNumber,", source);
+        Assert.DoesNotContain("if (xPageNumber is not null)", source);
+    }
+
+    [Fact]
     public void ServerUrl_SetsBaseAddress()
     {
         const string openApi = """
