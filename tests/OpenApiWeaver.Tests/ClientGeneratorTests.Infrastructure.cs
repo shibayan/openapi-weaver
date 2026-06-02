@@ -44,14 +44,7 @@ public sealed partial class ClientGeneratorTests
         bool isOpenApiWeaverDocument = true)
     {
         var generator = new ClientGenerator();
-        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview)
-            .WithPreprocessorSymbols(
-                "NET",
-                "NET6_0_OR_GREATER",
-                "NET7_0_OR_GREATER",
-                "NET8_0_OR_GREATER",
-                "NET9_0_OR_GREATER",
-                "NET10_0_OR_GREATER");
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
         var syntaxTree = CSharpSyntaxTree.ParseText("public sealed class Marker {}", parseOptions);
 
         var compilation = CSharpCompilation.Create(
