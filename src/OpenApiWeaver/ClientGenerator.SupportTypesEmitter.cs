@@ -141,8 +141,10 @@ public sealed partial class ClientGenerator
                         writer.AppendLine("bool boolean => boolean ? \"true\" : \"false\",");
                         writer.AppendLine("DateTimeOffset dateTimeOffset => dateTimeOffset.ToString(\"o\", CultureInfo.InvariantCulture),");
                         writer.AppendLine("DateTime dateTime => dateTime.ToString(\"o\", CultureInfo.InvariantCulture),");
+                        writer.AppendLine("#if NET6_0_OR_GREATER");
                         writer.AppendLine("DateOnly dateOnly => dateOnly.ToString(\"yyyy-MM-dd\", CultureInfo.InvariantCulture),");
                         writer.AppendLine("TimeOnly timeOnly => timeOnly.ToString(\"HH:mm:ss.FFFFFFF\", CultureInfo.InvariantCulture),");
+                        writer.AppendLine("#endif");
                         writer.AppendLine("IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),");
                         writer.AppendLine("_ => value.ToString() ?? string.Empty");
                     }
@@ -162,8 +164,10 @@ public sealed partial class ClientGenerator
                     {
                         writer.AppendLine("DateTimeOffset dateTimeOffset => dateTimeOffset.ToString(\"o\", CultureInfo.InvariantCulture),");
                         writer.AppendLine("DateTime dateTime => dateTime.ToString(\"o\", CultureInfo.InvariantCulture),");
+                        writer.AppendLine("#if NET6_0_OR_GREATER");
                         writer.AppendLine("DateOnly dateOnly => dateOnly.ToString(\"yyyy-MM-dd\", CultureInfo.InvariantCulture),");
                         writer.AppendLine("TimeOnly timeOnly => timeOnly.ToString(\"HH:mm:ss.FFFFFFF\", CultureInfo.InvariantCulture),");
+                        writer.AppendLine("#endif");
                         writer.AppendLine("_ => value.ToString(null, CultureInfo.InvariantCulture)");
                     }
 

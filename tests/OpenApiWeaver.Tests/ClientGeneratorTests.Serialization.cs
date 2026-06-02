@@ -225,6 +225,11 @@ public sealed partial class ClientGeneratorTests
                       description: ok
             """;
 
+        // DateOnly/TimeOnly only exist on net6.0+, so the date/time arms must be guarded to keep the
+        // helper compilable on older target frameworks that never produce those values.
+        var source = GenerateSource(openApi);
+        Assert.Contains("#if NET6_0_OR_GREATER", source);
+
         using var assembly = LoadGeneratedAssembly(openApi);
         var helpersType = assembly.Assembly.GetType("GeneratorTests.OpenApiClientHelpers");
         Assert.NotNull(helpersType);
