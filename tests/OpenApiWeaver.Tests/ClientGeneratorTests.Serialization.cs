@@ -192,4 +192,67 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("\"region\":\"jp\"", requestJson);
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("""{"region":"jp"}""", mapType, responseOptions));
     }
+
+    [Fact]
+    public void FormatParameter_UsesWireFormatForBooleanAndDateTimeValues()
+    {
+        const string openApi = """
+            openapi: 3.0.0
+            info:
+              title: Format API
+              version: v1
+            paths:
+              /items:
+                get:
+                  operationId: listItems
+                  parameters:
+                    - name: active
+                      in: query
+                      schema:
+                        type: boolean
+                    - name: since
+                      in: query
+                      schema:
+                        type: string
+                        format: date-time
+                    - name: day
+                      in: query
+                      schema:
+                        type: string
+                        format: date
+                  responses:
+                    '200':
+                      description: ok
+            """;
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var helpersType = assembly.Assembly.GetType("GeneratorTests.OpenApiClientHelpers");
+        Assert.NotNull(helpersType);
+
+        // bool binds to the dedicated overload and must use the JSON/HTTP wire form, not "True"/"False".
+        var boolMethod = helpersType!.GetMethod(
+            "FormatParameter",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            binder: null,
+            types: [typeof(bool)],
+            modifiers: null);
+        Assert.NotNull(boolMethod);
+        Assert.Equal("true", boolMethod!.Invoke(null, [true]));
+        Assert.Equal("false", boolMethod.Invoke(null, [false]));
+
+        // DateTimeOffset/DateOnly bind to the generic FormatParameter<T>(T) overload at the call site.
+        var genericMethod = helpersType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .Single(static method => method.Name == "FormatParameter"
+                && method.IsGenericMethodDefinition
+                && method.GetParameters() is { Length: 1 } parameters
+                && parameters[0].ParameterType.IsGenericMethodParameter);
+
+        var dateTimeOffset = new DateTimeOffset(2026, 6, 1, 13, 5, 9, TimeSpan.Zero);
+        var dateTimeResult = genericMethod.MakeGenericMethod(typeof(DateTimeOffset)).Invoke(null, [dateTimeOffset]);
+        Assert.Equal("2026-06-01T13:05:09.0000000+00:00", dateTimeResult);
+
+        var dateOnly = new DateOnly(2026, 6, 1);
+        var dateResult = genericMethod.MakeGenericMethod(typeof(DateOnly)).Invoke(null, [dateOnly]);
+        Assert.Equal("2026-06-01", dateResult);
+    }
 }
