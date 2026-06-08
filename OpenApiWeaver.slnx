@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/OpenApiWeaver.Benchmarks/OpenApiWeaver.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/SampleApp/SampleApp.csproj" />
   </Folder>

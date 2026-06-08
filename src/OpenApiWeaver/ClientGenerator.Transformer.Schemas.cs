@@ -496,7 +496,7 @@ public sealed partial class ClientGenerator
             return new InlineSchemaInfo(typeName, declaredTypeName, parentTypeName, schema);
         }
 
-        private static string BuildInlineSchemaTypeName(string nestedNamePrefix, string childName, IOpenApiSchema schema)
+        private string BuildInlineSchemaTypeName(string nestedNamePrefix, string childName, IOpenApiSchema schema)
         {
             var suffix = childName switch
             {
@@ -548,6 +548,19 @@ public sealed partial class ClientGenerator
                 return new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: !required);
             }
 
+            var cache = required ? _requiredTypeUsagesBySchema : _optionalTypeUsagesBySchema;
+            if (cache.TryGetValue(schema, out var cachedTypeUsage))
+            {
+                return cachedTypeUsage;
+            }
+
+            var typeUsage = CreateTypeUsage(schema, required);
+            cache[schema] = typeUsage;
+            return typeUsage;
+        }
+
+        private TypeUsage CreateTypeUsage(IOpenApiSchema schema, bool required)
+        {
             if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
                 && _schemaNames.TryGetValue(referenceHolder.Reference.Id, out var schemaName))
             {
@@ -757,20 +770,39 @@ public sealed partial class ClientGenerator
         private bool TryGetDictionaryValueType(IOpenApiSchema schema, out string valueType)
         {
             valueType = string.Empty;
+            if (_dictionaryValueTypesBySchema.TryGetValue(schema, out var cachedValueType))
+            {
+                if (cachedValueType is null)
+                {
+                    return false;
+                }
+
+                valueType = cachedValueType;
+                return true;
+            }
+
             var dictionaryValueTypes = new HashSet<string>(StringComparer.Ordinal);
             CollectDictionaryValueTypes(schema, dictionaryValueTypes, new HashSet<string>(StringComparer.Ordinal));
             if (dictionaryValueTypes.Count == 0)
             {
+                _dictionaryValueTypesBySchema[schema] = null;
                 return false;
             }
 
             if (dictionaryValueTypes.Count > 1)
             {
                 valueType = "JsonElement";
+                _dictionaryValueTypesBySchema[schema] = valueType;
                 return true;
             }
 
-            valueType = dictionaryValueTypes.Single();
+            foreach (var dictionaryValueType in dictionaryValueTypes)
+            {
+                valueType = dictionaryValueType;
+                break;
+            }
+
+            _dictionaryValueTypesBySchema[schema] = valueType;
             return true;
         }
 
@@ -821,6 +853,18 @@ public sealed partial class ClientGenerator
         private TypeShape GetTypeShape(IOpenApiSchema schema)
         {
             var resolvedSchema = ResolveSchemaReference(schema);
+            if (_typeShapesBySchema.TryGetValue(resolvedSchema, out var cachedTypeShape))
+            {
+                return cachedTypeShape;
+            }
+
+            var typeShape = CreateTypeShape(resolvedSchema);
+            _typeShapesBySchema[resolvedSchema] = typeShape;
+            return typeShape;
+        }
+
+        private TypeShape CreateTypeShape(IOpenApiSchema resolvedSchema)
+        {
             if (IsEnumSchema(resolvedSchema))
             {
                 return TypeShape.Enum;
@@ -848,6 +892,18 @@ public sealed partial class ClientGenerator
         }
 
         private bool SchemaAllowsNull(IOpenApiSchema schema)
+        {
+            if (_schemaNullabilityBySchema.TryGetValue(schema, out var cachedNullability))
+            {
+                return cachedNullability;
+            }
+
+            var allowsNull = CalculateSchemaAllowsNull(schema);
+            _schemaNullabilityBySchema[schema] = allowsNull;
+            return allowsNull;
+        }
+
+        private bool CalculateSchemaAllowsNull(IOpenApiSchema schema)
         {
             if (HasSchemaType(schema, JsonSchemaType.Null) || SchemaCompositionsAllowNull(schema))
             {
@@ -886,12 +942,24 @@ public sealed partial class ClientGenerator
                 && (schema.OneOf?.Count ?? 0) == 0;
         }
 
-        private static bool IsEnumSchema(IOpenApiSchema schema)
+        private bool IsEnumSchema(IOpenApiSchema schema)
         {
             return GetSchemaEnumKind(schema) != SchemaEnumKind.None;
         }
 
-        private static SchemaEnumKind GetSchemaEnumKind(IOpenApiSchema schema)
+        private SchemaEnumKind GetSchemaEnumKind(IOpenApiSchema schema)
+        {
+            if (_schemaEnumKindsBySchema.TryGetValue(schema, out var cachedKind))
+            {
+                return cachedKind;
+            }
+
+            var kind = CalculateSchemaEnumKind(schema);
+            _schemaEnumKindsBySchema[schema] = kind;
+            return kind;
+        }
+
+        private static SchemaEnumKind CalculateSchemaEnumKind(IOpenApiSchema schema)
         {
             var hasEnum = schema.Enum is { Count: > 0 };
             var hasConst = !string.IsNullOrEmpty(schema.Const);
