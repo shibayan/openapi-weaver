@@ -41,7 +41,7 @@ public sealed partial class ClientGenerator
             _isStartOfLine = true;
         }
 
-        public IDisposable PushIndent()
+        public IndentScope PushIndent()
         {
             _indentLevel++;
             return new IndentScope(this);
@@ -58,7 +58,7 @@ public sealed partial class ClientGenerator
             _isStartOfLine = false;
         }
 
-        private sealed class IndentScope(IndentedStringBuilder writer) : IDisposable
+        public readonly struct IndentScope(IndentedStringBuilder writer) : IDisposable
         {
             public void Dispose()
             {

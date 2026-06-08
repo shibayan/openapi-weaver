@@ -8,10 +8,10 @@ public sealed partial class ClientGenerator
         {
             var route = NormalizeRelativeRoute(operation.Route);
             var parameterDocumentation = new List<KeyValuePair<string, string?>>();
-            var pathParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Path).ToList();
-            var queryParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Query).ToList();
-            var headerParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Header).ToList();
-            var cookieParameters = operation.Parameters.Where(static parameter => parameter.Location == ParameterLocation.Cookie).ToList();
+            var pathParameters = new List<ParameterInfo>();
+            var queryParameters = new List<ParameterInfo>();
+            var headerParameters = new List<ParameterInfo>();
+            var cookieParameters = new List<ParameterInfo>();
             var querySecuritySchemes = GetOperationSecuritySchemes(operation, SecuritySchemeLocation.Query);
             var cookieSecuritySchemes = GetOperationSecuritySchemes(operation, SecuritySchemeLocation.Cookie);
 
@@ -20,6 +20,22 @@ public sealed partial class ClientGenerator
 
             foreach (var parameter in operation.Parameters)
             {
+                switch (parameter.Location)
+                {
+                    case ParameterLocation.Path:
+                        pathParameters.Add(parameter);
+                        break;
+                    case ParameterLocation.Header:
+                        headerParameters.Add(parameter);
+                        break;
+                    case ParameterLocation.Cookie:
+                        cookieParameters.Add(parameter);
+                        break;
+                    default:
+                        queryParameters.Add(parameter);
+                        break;
+                }
+
                 var parameterDeclaration = $"{parameter.ParameterTypeName} {parameter.ParameterName}";
                 if (parameter.Required)
                 {
@@ -48,10 +64,10 @@ public sealed partial class ClientGenerator
                 parameterDocumentation.Add(new KeyValuePair<string, string?>(operation.RequestBody.ParameterName, operation.RequestBody.Description));
             }
 
-            var methodParameters = requiredMethodParameters
-                .Concat(optionalMethodParameters)
-                .Append("CancellationToken cancellationToken = default")
-                .ToList();
+            var methodParameters = new List<string>(requiredMethodParameters.Count + optionalMethodParameters.Count + 1);
+            methodParameters.AddRange(requiredMethodParameters);
+            methodParameters.AddRange(optionalMethodParameters);
+            methodParameters.Add("CancellationToken cancellationToken = default");
             parameterDocumentation.Add(new KeyValuePair<string, string?>("cancellationToken", "A cancellation token that can be used to cancel the operation."));
 
             EmitDocComment(

@@ -14,6 +14,12 @@ public sealed partial class ClientGenerator
         private readonly Dictionary<string, PolymorphicSchemaInfo> _polymorphicSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, SchemaDefinition> _schemaDefinitionsByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<IOpenApiSchema, TypeUsage> _requiredTypeUsagesBySchema = new(ReferenceEqualityComparer<IOpenApiSchema>.Instance);
+        private readonly Dictionary<IOpenApiSchema, TypeUsage> _optionalTypeUsagesBySchema = new(ReferenceEqualityComparer<IOpenApiSchema>.Instance);
+        private readonly Dictionary<IOpenApiSchema, string?> _dictionaryValueTypesBySchema = new(ReferenceEqualityComparer<IOpenApiSchema>.Instance);
+        private readonly Dictionary<IOpenApiSchema, TypeShape> _typeShapesBySchema = new(ReferenceEqualityComparer<IOpenApiSchema>.Instance);
+        private readonly Dictionary<IOpenApiSchema, bool> _schemaNullabilityBySchema = new(ReferenceEqualityComparer<IOpenApiSchema>.Instance);
+        private readonly Dictionary<IOpenApiSchema, SchemaEnumKind> _schemaEnumKindsBySchema = new(ReferenceEqualityComparer<IOpenApiSchema>.Instance);
         private readonly HashSet<string> _usedSchemaTypeNames = new(StringComparer.Ordinal);
         private readonly List<InlineSchemaInfo> _inlineSchemas = [];
 
@@ -47,6 +53,22 @@ public sealed partial class ClientGenerator
                 schemas,
                 tagGroups,
                 securitySchemes);
+        }
+
+        private sealed class ReferenceEqualityComparer<T> : IEqualityComparer<T>
+            where T : class
+        {
+            public static ReferenceEqualityComparer<T> Instance { get; } = new();
+
+            private ReferenceEqualityComparer()
+            {
+            }
+
+            public bool Equals(T? x, T? y)
+                => ReferenceEquals(x, y);
+
+            public int GetHashCode(T obj)
+                => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
         }
     }
 }
