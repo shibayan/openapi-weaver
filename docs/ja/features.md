@@ -1,5 +1,21 @@
 # 機能
 
+## 他ツールとの比較
+
+OpenApiWeaver と、他の代表的な OpenAPI → C# クライアント生成ツールとの比較です。
+
+| | OpenApiWeaver | Kiota | NSwag | Refitter |
+|---|---|---|---|---|
+| 生成方式 | Roslyn インクリメンタル ソースジェネレーター | CLI (`kiota generate`) | CLI / MSBuild | Refit インターフェース生成 (ソースジェネレーター / CLI) |
+| コード生成 | ビルド時に自動・増分 | 手動実行 / `kiota update` | 手動 または MSBuild | 自動 (ソースジェネレーター) |
+| 生成コードのコミット | 不要 (メモリ内で生成) | リポジトリへコミット | リポジトリへコミット | 不要 (ソースジェネレーター) |
+| ランタイム依存 | なし (標準の `HttpClient` のみ) | `Microsoft.Kiota.*` パッケージ | JSON ライブラリ (例: Newtonsoft.Json) | Refit ランタイム |
+| ランタイムリフレクション | なし | なし | なし | なし (Refit ソースジェネレーター) |
+| 配布形態 | 単一 NuGet (`PrivateAssets="all"`) | dotnet tool + ランタイムパッケージ | dotnet tool / NuGet | NuGet + Refit |
+| 対応言語 | C# | C#, Java, Go, TypeScript, Python, … | C#, TypeScript | C# |
+
+**OpenApiWeaver が向いているケース**: 毎ビルドでクライアントを自動再生成し、生成コードをコミットせず、ランタイム依存もなく、単一の NuGet パッケージだけで完結させたい場合です。別途 CLI ステップを実行したり、生成ファイルを保守したりする必要がありません。多言語生成や成熟した大規模エコシステムが必要な場合は、Kiota や NSwag が有力な選択肢になります。
+
 ## 増分ソース生成
 
 OpenApiWeaver は Roslyn のインクリメンタル ジェネレーター パイプラインを利用し、キャッシュを活用した効率的な再ビルドを実現します。変更されたドキュメントのみを再処理するため、複数の OpenAPI ファイルを含む大規模なソリューションでも効率的です。
