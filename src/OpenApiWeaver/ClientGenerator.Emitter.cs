@@ -8,6 +8,7 @@ public sealed partial class ClientGenerator
     {
         private readonly SchemaEmitter _schemaEmitter = new(model);
         private readonly JsonSerializerOptionsEmitter _jsonSerializerOptionsEmitter = new(model);
+        private readonly OperationEmitter _operationEmitter = new(model);
 
         public string Emit()
         {
@@ -105,7 +106,7 @@ public sealed partial class ClientGenerator
                 foreach (var operation in tagGroup.Operations)
                 {
                     writer.AppendLine();
-                    EmitOperation(writer, operation);
+                    _operationEmitter.Emit(writer, operation);
                 }
             }
 
