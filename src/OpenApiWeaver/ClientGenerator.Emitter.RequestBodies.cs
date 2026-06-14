@@ -20,9 +20,9 @@ public sealed partial class ClientGenerator
                     writer.Append("request.Content = JsonContent.Create(")
                         .Append(bodyValue)
                         .Append(", mediaType: System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"")
-                        .Append(EscapeStringLiteral(requestBody.ContentType))
+                        .Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(requestBody.ContentType))
                         .Append("\"), options: ")
-                        .Append(GetJsonSerializerOptionsExpression(JsonSerializerDirection.Request))
+                        .Append(_jsonSerializerOptionsEmitter.GetOptionsExpression(JsonSerializerDirection.Request))
                         .AppendLine(");");
                     break;
             }
@@ -79,7 +79,7 @@ public sealed partial class ClientGenerator
         {
             writer
                 .Append("values.Add(new KeyValuePair<string, string>(\"")
-                .Append(EscapeStringLiteral(name))
+                .Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(name))
                 .Append("\", OpenApiClientHelpers.FormatParameter(")
                 .Append(valueExpression)
                 .AppendLine(")));");
@@ -92,11 +92,11 @@ public sealed partial class ClientGenerator
             {
                 case RequestBodyValueKind.Binary:
                     writer.Append("new ByteArrayContent(").Append(valueExpression).Append(")")
-                        .Append(", \"").Append(EscapeStringLiteral(name)).AppendLine("\");");
+                        .Append(", \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(name)).AppendLine("\");");
                     break;
                 case RequestBodyValueKind.Scalar:
                     writer.Append("new StringContent(OpenApiClientHelpers.FormatParameter(").Append(valueExpression).Append("))")
-                        .Append(", \"").Append(EscapeStringLiteral(name)).AppendLine("\");");
+                        .Append(", \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(name)).AppendLine("\");");
                     break;
                 default:
                     throw new InvalidOperationException("Unsupported multipart value kind.");
