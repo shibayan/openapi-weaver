@@ -70,7 +70,7 @@ public sealed partial class ClientGenerator
             methodParameters.Add("CancellationToken cancellationToken = default");
             parameterDocumentation.Add(new KeyValuePair<string, string?>("cancellationToken", "A cancellation token that can be used to cancel the operation."));
 
-            EmitDocComment(
+            CSharpCodeEmissionUtilities.EmitDocComment(
                 writer,
                 summary: operation.Summary,
                 remarks: operation.Remarks,
@@ -97,7 +97,7 @@ public sealed partial class ClientGenerator
             }
             else
             {
-                writer.Append("var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
+                writer.Append("var path = \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(route)).AppendLine("\";");
             }
 
             if (queryParameters.Count > 0 || querySecuritySchemes.Count > 0)
@@ -127,7 +127,7 @@ public sealed partial class ClientGenerator
             {
                 EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
                 {
-                    writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                    writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
                 });
             }
 
@@ -136,7 +136,7 @@ public sealed partial class ClientGenerator
                 writer.AppendLine("var path = pathBuilder.ToString();");
             }
 
-            writer.Append("using var request = new HttpRequestMessage(").Append(GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
+            writer.Append("using var request = new HttpRequestMessage(").Append(CSharpCodeEmissionUtilities.GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
 
             if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
             {
@@ -187,7 +187,7 @@ public sealed partial class ClientGenerator
                 {
                     EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
                     {
-                        writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                        writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
                     });
                     continue;
                 }
@@ -259,7 +259,7 @@ public sealed partial class ClientGenerator
             }
             else if (operation.Response.Type?.RequiresNonNullJsonResponse == true)
             {
-                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetJsonSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false)");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(_jsonSerializerOptionsEmitter.GetOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false)");
                 using (writer.PushIndent())
                 {
                     writer.AppendLine("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);");
@@ -267,7 +267,7 @@ public sealed partial class ClientGenerator
             }
             else
             {
-                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetJsonSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false);");
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(_jsonSerializerOptionsEmitter.GetOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false);");
             }
 
             writer.AppendLine("}");
@@ -286,7 +286,7 @@ public sealed partial class ClientGenerator
 
             foreach (var errorResponse in operation.ErrorResponses)
             {
-                writer.Append("if (OpenApiClientHelpers.ResponseMatchesStatusCode(statusCode, \"").Append(EscapeStringLiteral(errorResponse.StatusCodePattern)).AppendLine("\"))");
+                writer.Append("if (OpenApiClientHelpers.ResponseMatchesStatusCode(statusCode, \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(errorResponse.StatusCodePattern)).AppendLine("\"))");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
@@ -313,7 +313,7 @@ public sealed partial class ClientGenerator
                         writer.AppendLine("{");
                         using (writer.PushIndent())
                         {
-                            var serializerOptions = GetJsonSerializerOptionsExpression(JsonSerializerDirection.Response);
+                            var serializerOptions = _jsonSerializerOptionsEmitter.GetOptionsExpression(JsonSerializerDirection.Response);
                             writer.Append("var error = OpenApiClientHelpers.DeserializeResponseContent<").Append(errorTypeName).Append(">(responseContent");
                             if (!string.Equals(serializerOptions, "OpenApiClientHelpers.SerializerOptions", StringComparison.Ordinal))
                             {
@@ -396,7 +396,7 @@ public sealed partial class ClientGenerator
                 return;
             }
 
-            writer.Append("pathBuilder.Append(\"").Append(EscapeStringLiteral(segment)).AppendLine("\");");
+            writer.Append("pathBuilder.Append(\"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(segment)).AppendLine("\");");
         }
 
         private static string NormalizeRelativeRoute(string route)
@@ -408,23 +408,23 @@ public sealed partial class ClientGenerator
         {
             if (parameter.IsArray)
             {
-                writer.Append("OpenApiClientHelpers.AppendQueryParameters(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ").Append(parameter.ParameterName).AppendLine(");");
+                writer.Append("OpenApiClientHelpers.AppendQueryParameters(pathBuilder, ref hasQuery, \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(parameter.WireName)).Append("\", ").Append(parameter.ParameterName).AppendLine(");");
                 return;
             }
 
-            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+            writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
         }
 
         private static void EmitHeaderParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
         {
-            writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ");
+            writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(parameter.WireName)).Append("\", ");
             EmitParameterValue(writer, parameter);
             writer.AppendLine(");");
         }
 
         private static void EmitCookieParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
         {
-            writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ");
+            writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(parameter.WireName)).Append("\", ");
             EmitParameterValue(writer, parameter);
             writer.AppendLine(");");
         }

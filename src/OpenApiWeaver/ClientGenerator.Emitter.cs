@@ -6,6 +6,9 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Emitter(ClientModel model)
     {
+        private readonly SchemaEmitter _schemaEmitter = new(model);
+        private readonly JsonSerializerOptionsEmitter _jsonSerializerOptionsEmitter = new(model);
+
         public string Emit()
         {
             var builder = new StringBuilder();
@@ -29,10 +32,10 @@ public sealed partial class ClientGenerator
                 writer.AppendLine();
             }
 
-            EmitSchemas(writer);
+            _schemaEmitter.Emit(writer);
             if (model.HasDirectionalSchemaProperties)
             {
-                EmitJsonSerializerOptions(writer);
+                _jsonSerializerOptionsEmitter.Emit(writer);
                 writer.AppendLine();
             }
 
@@ -67,7 +70,7 @@ public sealed partial class ClientGenerator
 
         private void EmitTagClient(IndentedStringBuilder writer, TagGroup tagGroup)
         {
-            EmitDocComment(
+            CSharpCodeEmissionUtilities.EmitDocComment(
                 writer,
                 summary: $"{tagGroup.PropertyName} operations.",
                 remarks: tagGroup.Description);
@@ -117,7 +120,7 @@ public sealed partial class ClientGenerator
             var ownedConstructorArguments = string.Join(", ", new[] { "new HttpClient()", "true" }.Concat(model.SecuritySchemes.Select(static scheme => scheme.ParameterName)));
             var injectedConstructorArguments = string.Join(", ", new[] { "httpClient", "false" }.Concat(model.SecuritySchemes.Select(static scheme => scheme.ParameterName)));
 
-            EmitDocComment(
+            CSharpCodeEmissionUtilities.EmitDocComment(
                 writer,
                 summary: model.Summary,
                 remarks: model.Description);
@@ -157,7 +160,7 @@ public sealed partial class ClientGenerator
                         writer.AppendLine("{");
                         using (writer.PushIndent())
                         {
-                            writer.Append("_httpClient.BaseAddress = new Uri(\"").Append(EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute);");
+                            writer.Append("_httpClient.BaseAddress = new Uri(\"").Append(CSharpCodeEmissionUtilities.EscapeStringLiteral(NormalizeBaseAddress(model.ServerUrl!))).AppendLine("\", UriKind.Absolute);");
                         }
 
                         writer.AppendLine("}");
@@ -182,7 +185,7 @@ public sealed partial class ClientGenerator
 
                 foreach (var tagGroup in model.TagGroups)
                 {
-                    EmitDocComment(
+                    CSharpCodeEmissionUtilities.EmitDocComment(
                         writer,
                         summary: $"{tagGroup.PropertyName} operations.",
                         remarks: tagGroup.Description);
