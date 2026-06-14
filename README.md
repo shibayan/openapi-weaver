@@ -54,6 +54,22 @@ The package includes the source generator and all required analyzer assemblies, 
 - **OpenAPI-driven XML docs** — generates IntelliSense comments from document, tag, operation, response, and schema metadata, with HTML removed automatically
 - **Build-time diagnostics** — reports errors and warnings as standard compiler diagnostics
 
+## Comparison
+
+How OpenApiWeaver compares to other popular OpenAPI-to-C# client generators:
+
+| | OpenApiWeaver | Kiota | NSwag | Refitter |
+|---|---|---|---|---|
+| Mechanism | Roslyn incremental source generator | CLI (`kiota generate`) | CLI / MSBuild | Refit interface generator (source generator / CLI) |
+| Code generation | Automatic on build, incremental | Manual re-run / `kiota update` | Manual or MSBuild | Automatic (source generator) |
+| Generated files in repo | Not needed (emitted in-memory) | Committed to the repo | Committed to the repo | Not needed (source generator) |
+| Runtime dependencies | None (plain `HttpClient`) | `Microsoft.Kiota.*` packages | JSON library (e.g. Newtonsoft.Json) | Refit runtime |
+| Runtime reflection | None | None | None | None (Refit source generator) |
+| Distribution | Single NuGet (`PrivateAssets="all"`) | dotnet tool + runtime packages | dotnet tool / NuGet | NuGet + Refit |
+| Languages | C# | C#, Java, Go, TypeScript, Python, … | C#, TypeScript | C# |
+
+**Choose OpenApiWeaver when** you want clients to regenerate automatically on every build with no committed code, no runtime dependencies, and a single NuGet package — without a separate CLI step or generated files to maintain. For multi-language generation or a large, mature ecosystem, Kiota and NSwag remain strong choices.
+
 ## Requirements
 
 - .NET SDK 10.0 or later
