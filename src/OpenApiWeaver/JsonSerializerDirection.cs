@@ -1,4 +1,4 @@
-namespace OpenApiWeaver;
+﻿namespace OpenApiWeaver;
 
 internal enum JsonSerializerDirection
 {
