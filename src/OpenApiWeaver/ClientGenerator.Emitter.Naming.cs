@@ -23,7 +23,7 @@ public sealed partial class ClientGenerator
 
         private static string GetHttpMethodExpression(string operationType)
         {
-            var pascalCase = ToPascalCase(operationType.ToLowerInvariant());
+            var pascalCase = CSharpUtilities.ToPascalCase(operationType.ToLowerInvariant());
             return s_wellKnownHttpMethods.Contains(pascalCase)
                 ? $"HttpMethod.{pascalCase}"
                 : $"new HttpMethod(\"{EscapeStringLiteral(operationType.ToUpperInvariant())}\")";

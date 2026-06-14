@@ -10,16 +10,16 @@ public sealed partial class ClientGenerator
     private sealed partial class Transformer
     {
         private static string NormalizePascalIdentifier(string value, string fallback = "Value")
-            => NormalizeIdentifier(value, fallback, ToPascalCase, "value");
+            => NormalizeIdentifier(value, fallback, CSharpUtilities.ToPascalCase, "value");
 
         private static string NormalizeCamelIdentifier(string value, string fallback = "value")
-            => NormalizeIdentifier(value, fallback, ToCamelCase, "value");
+            => NormalizeIdentifier(value, fallback, CSharpUtilities.ToCamelCase, "value");
 
         private static string NormalizeIdentifier(string value, string fallback, Func<string, string> transform, string defaultPlaceholder)
         {
-            var normalized = SafeIdentifier(transform(value));
+            var normalized = CSharpUtilities.SafeIdentifier(transform(value));
             return normalized == defaultPlaceholder && !string.Equals(value, defaultPlaceholder, StringComparison.OrdinalIgnoreCase)
-                ? SafeIdentifier(transform(fallback))
+                ? CSharpUtilities.SafeIdentifier(transform(fallback))
                 : normalized;
         }
 
@@ -82,7 +82,7 @@ public sealed partial class ClientGenerator
                 return canonicalGetName;
             }
 
-            return NormalizePascalIdentifier(string.Concat(filteredTokens.Select(static token => ToPascalCase(token ?? string.Empty))), "Operation");
+            return NormalizePascalIdentifier(string.Concat(filteredTokens.Select(static token => CSharpUtilities.ToPascalCase(token ?? string.Empty))), "Operation");
         }
 
         private static string BuildOperationSchemaTypeName(string? operationId, string operationType, string route)
@@ -100,7 +100,7 @@ public sealed partial class ClientGenerator
                 tokens.Add("Operation");
             }
 
-            return NormalizePascalIdentifier(string.Concat(tokens.Select(static token => ToPascalCase(token ?? string.Empty))), "Operation");
+            return NormalizePascalIdentifier(string.Concat(tokens.Select(static token => CSharpUtilities.ToPascalCase(token ?? string.Empty))), "Operation");
         }
 
         private static string? TryBuildCanonicalGetMethodName(string route, string? tagName, IReadOnlyList<string> filteredTokens)

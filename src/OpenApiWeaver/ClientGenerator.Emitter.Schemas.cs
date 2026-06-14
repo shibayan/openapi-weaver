@@ -593,7 +593,7 @@ public sealed partial class ClientGenerator
         private static string GetDictionaryConverterLocalType(SchemaPropertyDefinition property)
         {
             return !property.Type.CanBeNullInCSharp && IsReferenceLikeType(property.Type.Shape)
-                ? MakeNullableTypeName(property.PropertyTypeName)
+                ? CSharpUtilities.MakeNullableTypeName(property.PropertyTypeName)
                 : property.PropertyTypeName;
         }
 

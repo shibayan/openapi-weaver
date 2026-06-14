@@ -51,8 +51,8 @@ public sealed partial class ClientGenerator
             }
 
             var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
-            var reservedClassNames = _schemaNames.Values
-                .Concat(_inlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
+            var reservedClassNames = _schemaCatalog.ComponentTypeNames
+                .Concat(_schemaCatalog.InlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
                 .Append(_clientName)
                 .Append("OpenApiClientHelpers")
                 .Append("OpenApiException");
@@ -109,7 +109,7 @@ public sealed partial class ClientGenerator
                         usedParameterNames,
                         NormalizeCamelIdentifier(parameter.Name ?? string.Empty, "value"),
                         "value"),
-                    ResolveTypeUsage(parameter.Schema, parameter.Required),
+                    _schemaTypeResolver.ResolveTypeUsage(parameter.Schema, parameter.Required),
                     parameter.Required,
                     MapParameterLocation(parameter.In ?? OpenApiParameterLocation.Query),
                     parameter.Description))
@@ -128,7 +128,7 @@ public sealed partial class ClientGenerator
                 route,
                 operationType,
                 methodName,
-                operation.Summary ?? operation.Description ?? $"{ToPascalCase(operationType.ToLowerInvariant())} {route}.",
+                operation.Summary ?? operation.Description ?? $"{CSharpUtilities.ToPascalCase(operationType.ToLowerInvariant())} {route}.",
                 operation.Summary is not null && !string.IsNullOrWhiteSpace(operation.Description) ? operation.Description : null,
                 parameters,
                 requestBody,
@@ -206,7 +206,7 @@ public sealed partial class ClientGenerator
         {
             var resolvedType = schema is null
                 ? new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: false)
-                : ResolveTypeUsage(schema, required: true);
+                : _schemaTypeResolver.ResolveTypeUsage(schema, required: true);
             var kind = ResolveResponseKind(contentType, resolvedType);
 
             if (kind == ResponseKind.Binary)
@@ -397,7 +397,7 @@ public sealed partial class ClientGenerator
             if (scheme.Type == SecuritySchemeType.OAuth2
                 || (scheme.Type == SecuritySchemeType.Http && string.Equals(scheme.Scheme, "bearer", StringComparison.OrdinalIgnoreCase)))
             {
-                var parameterName = SafeIdentifier(ToCamelCase(scheme.Type == SecuritySchemeType.OAuth2 ? "access_token" : $"{schemeKey}_token"));
+                var parameterName = CSharpUtilities.SafeIdentifier(CSharpUtilities.ToCamelCase(scheme.Type == SecuritySchemeType.OAuth2 ? "access_token" : $"{schemeKey}_token"));
                 return new SecuritySchemeBinding(
                     schemeKey,
                     parameterName,
@@ -409,7 +409,7 @@ public sealed partial class ClientGenerator
 
             if (scheme.Type == SecuritySchemeType.ApiKey)
             {
-                var parameterName = SafeIdentifier(ToCamelCase($"{schemeKey}_api_key"));
+                var parameterName = CSharpUtilities.SafeIdentifier(CSharpUtilities.ToCamelCase($"{schemeKey}_api_key"));
                 return new SecuritySchemeBinding(
                     schemeKey,
                     parameterName,

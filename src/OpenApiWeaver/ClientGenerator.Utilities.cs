@@ -2,7 +2,7 @@
 
 namespace OpenApiWeaver;
 
-public sealed partial class ClientGenerator
+internal static class CSharpUtilities
 {
     private static readonly HashSet<string> s_reservedIdentifiers = new(StringComparer.Ordinal)
     {
@@ -16,7 +16,7 @@ public sealed partial class ClientGenerator
         "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"
     };
 
-    private static string SafeIdentifier(string value)
+    public static string SafeIdentifier(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -43,7 +43,7 @@ public sealed partial class ClientGenerator
         return s_reservedIdentifiers.Contains(sanitized) ? $"@{sanitized}" : sanitized;
     }
 
-    private static string ToPascalCase(string value)
+    public static string ToPascalCase(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -100,7 +100,7 @@ public sealed partial class ClientGenerator
         return result.ToString();
     }
 
-    private static string ToCamelCase(string value)
+    public static string ToCamelCase(string value)
     {
         var pascal = ToPascalCase(value);
         return string.IsNullOrEmpty(pascal) ? "value" : char.ToLowerInvariant(pascal[0]) + pascal.Substring(1);
@@ -111,12 +111,12 @@ public sealed partial class ClientGenerator
         return ch == '_' || char.IsLetter(ch);
     }
 
-    private static string MakeNullableTypeName(string typeName)
+    public static string MakeNullableTypeName(string typeName)
     {
         return typeName.EndsWith("?", StringComparison.Ordinal) ? typeName : $"{typeName}?";
     }
 
-    private static string TrimNullableTypeName(string typeName)
+    public static string TrimNullableTypeName(string typeName)
     {
         return typeName.EndsWith("?", StringComparison.Ordinal) ? typeName.Substring(0, typeName.Length - 1) : typeName;
     }
