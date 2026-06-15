@@ -4,7 +4,7 @@ namespace OpenApiWeaver;
 
 internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 {
-    public string GetOptionsExpression(JsonSerializerDirection direction)
+    public static string GetOptionsExpression(ClientModel model, JsonSerializerDirection direction)
     {
         if (!model.HasDirectionalSchemaProperties || direction == JsonSerializerDirection.Neutral)
         {
