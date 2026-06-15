@@ -79,19 +79,29 @@ internal enum TypeShape
     JsonElement
 }
 
-internal sealed class TypeUsage(string nonNullableCSharpTypeName, TypeShape shape, bool schemaAllowsNull, bool isOptional)
+internal sealed class TypeUsage
 {
-    public string NonNullableCSharpTypeName { get; } = nonNullableCSharpTypeName;
-    public TypeShape Shape { get; } = shape;
-    public bool SchemaAllowsNull { get; } = schemaAllowsNull;
-    public bool IsOptional { get; } = isOptional;
-    public bool CanBeNullInCSharp { get; } = schemaAllowsNull || isOptional;
-    public string CSharpTypeName { get; } = schemaAllowsNull || isOptional
-        ? CSharpUtilities.MakeNullableTypeName(nonNullableCSharpTypeName)
-        : nonNullableCSharpTypeName;
-    public bool RequiresNonNullJsonResponse { get; } = !schemaAllowsNull
-        && !isOptional
-        && shape is TypeShape.String or TypeShape.Object or TypeShape.Array or TypeShape.Dictionary;
+    private TypeUsage(CSharpTypeReference csharpType, bool schemaAllowsNull, bool isOptional)
+    {
+        CSharpType = csharpType;
+        SchemaAllowsNull = schemaAllowsNull;
+        IsOptional = isOptional;
+    }
+
+    public CSharpTypeReference CSharpType { get; }
+    public string NonNullableCSharpTypeName => CSharpType.NonNullableName;
+    public TypeShape Shape => CSharpType.Shape;
+    public bool SchemaAllowsNull { get; }
+    public bool IsOptional { get; }
+    public bool CanBeNullInCSharp => CSharpType.CanBeNull;
+    public string CSharpTypeName => CSharpType.Name;
+    public bool RequiresNonNullJsonResponse => CSharpType.RequiresNonNullJsonResponse;
+
+    public static TypeUsage Create(string nonNullableCSharpTypeName, TypeShape shape, bool schemaAllowsNull, bool isOptional)
+        => new(
+            new CSharpTypeReference(nonNullableCSharpTypeName, shape, schemaAllowsNull || isOptional),
+            schemaAllowsNull,
+            isOptional);
 }
 
 internal sealed class ParameterInfo(string wireName, string parameterName, TypeUsage type, bool required, ParameterLocation location, string? description)

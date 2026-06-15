@@ -35,12 +35,12 @@ public sealed partial class ClientGenerator
                 throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request bodies must declare a schema.");
             }
 
-            if (_schemaTypeResolver.TryResolveSchemaReferenceName(schema) is not { } schemaName)
+            if (_schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not { } schemaName)
             {
                 throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request bodies must reference a named component schema for compile-time code generation.");
             }
 
-            var resolvedSchema = _schemaTypeResolver.ResolveSchemaReference(schema);
+            var resolvedSchema = _schemaReferenceResolver.ResolveSchemaReference(schema);
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
                 throw new UnsupportedGenerationException($"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses oneOf/anyOf, which is not supported for compile-time code generation.");
@@ -81,7 +81,7 @@ public sealed partial class ClientGenerator
             var valueKind = ClassifyRequestBodyValueKind(schemaName, property.Name, requestBodyKind, property.Schema, out var elementKind);
             var isNullable = propertyType.CanBeNullInCSharp;
             var elementNullable = valueKind == RequestBodyValueKind.Collection
-                && _schemaTypeResolver.ResolveTypeUsage(_schemaTypeResolver.ResolveSchemaReference(property.Schema).Items, required: true).CanBeNullInCSharp;
+                && _schemaTypeResolver.ResolveTypeUsage(_schemaReferenceResolver.ResolveSchemaReference(property.Schema).Items, required: true).CanBeNullInCSharp;
 
             return new RequestBodyPropertyInfo(
                 property.Name,
@@ -100,7 +100,7 @@ public sealed partial class ClientGenerator
 
         private RequestBodyValueKind ClassifyValueKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema, bool isArrayItem, out RequestBodyValueKind? elementKind)
         {
-            var resolvedSchema = _schemaTypeResolver.ResolveSchemaReference(schema);
+            var resolvedSchema = _schemaReferenceResolver.ResolveSchemaReference(schema);
             elementKind = null;
 
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
@@ -117,7 +117,7 @@ public sealed partial class ClientGenerator
                     arrayItemReason: "has array items using additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
 
-            if (_schemaTypeResolver.IsEnumSchema(resolvedSchema))
+            if (_schemaEnumResolver.IsEnumSchema(resolvedSchema))
             {
                 return RequestBodyValueKind.Scalar;
             }
@@ -125,7 +125,7 @@ public sealed partial class ClientGenerator
             var schemaType = resolvedSchema.Type & ~JsonSchemaType.Null;
             if (schemaType == 0 && resolvedSchema.AllOf is { Count: > 0 })
             {
-                var nonNullMembers = resolvedSchema.AllOf.Where(static s => !SchemaTypeResolver.IsNullOnlySchema(s)).ToList();
+                var nonNullMembers = resolvedSchema.AllOf.Where(static s => !SchemaReferenceResolver.IsNullOnlySchema(s)).ToList();
                 if (nonNullMembers.Count == 1)
                 {
                     return ClassifyValueKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0], isArrayItem, out elementKind);
