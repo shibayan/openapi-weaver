@@ -11,6 +11,8 @@ public sealed partial class ClientGenerator
         private readonly string _clientName;
         private readonly SchemaCatalog _schemaCatalog = new();
         private readonly SchemaAnalysisCache _schemaAnalysisCache = new();
+        private readonly SchemaReferenceResolver _schemaReferenceResolver;
+        private readonly SchemaEnumResolver _schemaEnumResolver;
         private readonly SchemaTypeResolver _schemaTypeResolver;
         private readonly Dictionary<string, PolymorphicSchemaInfo> _polymorphicSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
@@ -21,7 +23,9 @@ public sealed partial class ClientGenerator
             _rootNamespace = rootNamespace;
             _document = document;
             _clientName = BuildClientName(documentPath, document, clientNameOverride);
-            _schemaTypeResolver = new SchemaTypeResolver(document, _schemaCatalog, _schemaAnalysisCache);
+            _schemaReferenceResolver = new SchemaReferenceResolver(document, _schemaCatalog);
+            _schemaEnumResolver = new SchemaEnumResolver(_schemaAnalysisCache);
+            _schemaTypeResolver = new SchemaTypeResolver(_schemaCatalog, _schemaAnalysisCache, _schemaReferenceResolver, _schemaEnumResolver);
         }
 
         public ClientModel Transform()

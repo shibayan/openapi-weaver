@@ -23,13 +23,13 @@ internal static class SchemaPropertyCollector
         ISet<string>? ignoredPropertyNames,
         ISet<string>? ignoredSchemaReferences)
     {
-        var schemaReferenceId = SchemaTypeResolver.TryResolveSchemaReferenceId(schema);
+        var schemaReferenceId = SchemaReferenceResolver.TryResolveSchemaReferenceId(schema);
         if (schemaReferenceId is not null && ignoredSchemaReferences?.Contains(schemaReferenceId) == true)
         {
             return;
         }
 
-        var identity = SchemaTypeResolver.GetSchemaIdentity(schema);
+        var identity = SchemaReferenceResolver.GetSchemaIdentity(schema);
         if (!visited.Add(identity))
         {
             return;

@@ -1,18 +1,18 @@
-﻿using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-
 using Microsoft.OpenApi;
 
 namespace OpenApiWeaver;
 
-internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog catalog, SchemaAnalysisCache cache)
+internal sealed class SchemaTypeResolver(
+    SchemaCatalog catalog,
+    SchemaAnalysisCache cache,
+    SchemaReferenceResolver schemaReferenceResolver,
+    SchemaEnumResolver schemaEnumResolver)
 {
     public TypeUsage ResolveTypeUsage(IOpenApiSchema? schema, bool required)
     {
         if (schema is null)
         {
-            return new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: !required);
+            return TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: !required);
         }
 
         if (cache.TryGetTypeUsage(schema, required, out var cachedTypeUsage))
@@ -30,16 +30,16 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
         if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
             && catalog.TryGetComponentSchemaName(referenceHolder.Reference.Id, out var schemaName))
         {
-            return new TypeUsage(
+            return TypeUsage.Create(
                 schemaName,
-                GetTypeShape(ResolveSchemaReference(schema)),
+                GetTypeShape(schemaReferenceResolver.ResolveSchemaReference(schema)),
                 SchemaAllowsNull(schema),
                 isOptional: !required);
         }
 
-        if (catalog.TryGetInlineSchema(GetSchemaIdentity(schema), out var inlineSchema))
+        if (catalog.TryGetInlineSchema(SchemaReferenceResolver.GetSchemaIdentity(schema), out var inlineSchema))
         {
-            return new TypeUsage(
+            return TypeUsage.Create(
                 inlineSchema.TypeName,
                 GetTypeShape(schema),
                 SchemaAllowsNull(schema),
@@ -54,14 +54,14 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
         if (TryGetDictionaryValueType(schema, out var dictionaryValueType))
         {
             var dictionaryType = $"IReadOnlyDictionary<string, {dictionaryValueType}>";
-            return new TypeUsage(
+            return TypeUsage.Create(
                 dictionaryType,
                 TypeShape.Dictionary,
                 SchemaAllowsNull(schema),
                 isOptional: !required);
         }
 
-        var resolvedSchema = ResolveSchemaReference(schema);
+        var resolvedSchema = schemaReferenceResolver.ResolveSchemaReference(schema);
         var baseType = resolvedSchema.Type & ~JsonSchemaType.Null;
         var (typeName, typeShape) = baseType switch
         {
@@ -81,22 +81,11 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
             _ => ("JsonElement", TypeShape.JsonElement)
         };
 
-        return new TypeUsage(
+        return TypeUsage.Create(
             typeName,
             typeShape,
             SchemaAllowsNull(schema),
             isOptional: !required);
-    }
-
-    public string? TryResolveSchemaReferenceName(IOpenApiSchema? schema)
-    {
-        if (TryResolveSchemaReferenceId(schema) is { } schemaReferenceId
-            && catalog.TryGetComponentSchemaName(schemaReferenceId, out var schemaName))
-        {
-            return schemaName;
-        }
-
-        return null;
     }
 
     public bool TryGetDictionaryValueType(IOpenApiSchema schema, out string valueType)
@@ -138,21 +127,9 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
         return true;
     }
 
-    public IOpenApiSchema ResolveSchemaReference(IOpenApiSchema schema)
-    {
-        if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
-            && document.Components?.Schemas is { } schemas
-            && schemas.TryGetValue(referenceHolder.Reference.Id, out var resolvedSchema))
-        {
-            return resolvedSchema;
-        }
-
-        return schema;
-    }
-
     public TypeShape GetTypeShape(IOpenApiSchema schema)
     {
-        var resolvedSchema = ResolveSchemaReference(schema);
+        var resolvedSchema = schemaReferenceResolver.ResolveSchemaReference(schema);
         if (cache.TryGetTypeShape(resolvedSchema, out var cachedTypeShape))
         {
             return cachedTypeShape;
@@ -173,103 +150,6 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
         var allowsNull = CalculateSchemaAllowsNull(schema);
         cache.SetNullability(schema, allowsNull);
         return allowsNull;
-    }
-
-    public bool IsEnumSchema(IOpenApiSchema schema)
-    {
-        return GetSchemaEnumKind(schema) != SchemaEnumKind.None;
-    }
-
-    public SchemaEnumKind GetSchemaEnumKind(IOpenApiSchema schema)
-    {
-        if (cache.TryGetEnumKind(schema, out var cachedKind))
-        {
-            return cachedKind;
-        }
-
-        var kind = CalculateSchemaEnumKind(schema);
-        cache.SetEnumKind(schema, kind);
-        return kind;
-    }
-
-    public static string GetSchemaIdentity(IOpenApiSchema schema)
-    {
-        if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder)
-        {
-            return $"ref:{referenceHolder.Reference.Id}";
-        }
-
-        return $"obj:{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(schema).ToString(CultureInfo.InvariantCulture)}";
-    }
-
-    public static string? TryResolveSchemaReferenceId(IOpenApiSchema? schema)
-    {
-        return schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
-            ? referenceHolder.Reference.Id
-            : null;
-    }
-
-    public static bool IsNullOnlySchema(IOpenApiSchema? schema)
-    {
-        return schema is not null
-            && schema.Type == JsonSchemaType.Null
-            && string.IsNullOrWhiteSpace(schema.Format)
-            && (schema.Properties?.Count ?? 0) == 0
-            && (schema.AllOf?.Count ?? 0) == 0
-            && (schema.AnyOf?.Count ?? 0) == 0
-            && (schema.OneOf?.Count ?? 0) == 0;
-    }
-
-    public static string GetNumberEnumValueType(IOpenApiSchema schema)
-    {
-        return string.Equals(schema.Format, "float", StringComparison.OrdinalIgnoreCase)
-            ? "float"
-            : string.Equals(schema.Format, "double", StringComparison.OrdinalIgnoreCase)
-                ? "double"
-                : "decimal";
-    }
-
-    public static string GetIntegerEnumUnderlyingType(IOpenApiSchema schema)
-    {
-        return string.Equals(schema.Format, "int64", StringComparison.OrdinalIgnoreCase) ? "long" : "int";
-    }
-
-    public static List<SchemaEnumMemberDefinition> CreateEnumMembers(IOpenApiSchema schema, SchemaEnumKind enumKind)
-    {
-        var members = new List<SchemaEnumMemberDefinition>();
-        var usedMemberNames = new Dictionary<string, int>(StringComparer.Ordinal);
-
-        foreach (var literalValue in EnumerateEnumLiteralValues(schema))
-        {
-            var enumValue = enumKind == SchemaEnumKind.Integer
-                ? NormalizeIntegerEnumLiteral(literalValue)
-                : literalValue;
-            if (string.IsNullOrWhiteSpace(enumValue))
-            {
-                continue;
-            }
-
-            var memberName = enumKind switch
-            {
-                SchemaEnumKind.String => CSharpUtilities.SafeIdentifier(CSharpUtilities.ToPascalCase(enumValue)),
-                SchemaEnumKind.Number => BuildNumberEnumMemberName(enumValue),
-                _ => BuildIntegerEnumMemberName(enumValue)
-            };
-
-            if (!usedMemberNames.ContainsKey(memberName))
-            {
-                usedMemberNames[memberName] = 1;
-            }
-            else
-            {
-                usedMemberNames[memberName]++;
-                memberName += usedMemberNames[memberName].ToString(CultureInfo.InvariantCulture);
-            }
-
-            members.Add(new SchemaEnumMemberDefinition(memberName, enumValue));
-        }
-
-        return members;
     }
 
     private bool TryResolveCompositeTypeUsage(IOpenApiSchema schema, bool required, out TypeUsage typeUsage)
@@ -298,7 +178,7 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
         var memberTypeNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var child in schemas)
         {
-            if (IsNullOnlySchema(child))
+            if (SchemaReferenceResolver.IsNullOnlySchema(child))
             {
                 nullable = true;
                 continue;
@@ -314,7 +194,7 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
             return false;
         }
 
-        typeUsage = new TypeUsage(
+        typeUsage = TypeUsage.Create(
             representativeUsage.NonNullableCSharpTypeName,
             representativeUsage.Shape,
             nullable || representativeUsage.SchemaAllowsNull,
@@ -324,7 +204,7 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
 
     private void CollectDictionaryValueTypes(IOpenApiSchema schema, HashSet<string> valueTypes, HashSet<string> visited)
     {
-        var identity = GetSchemaIdentity(schema);
+        var identity = SchemaReferenceResolver.GetSchemaIdentity(schema);
         if (!visited.Add(identity))
         {
             return;
@@ -356,7 +236,7 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
 
     private TypeShape CreateTypeShape(IOpenApiSchema resolvedSchema)
     {
-        if (IsEnumSchema(resolvedSchema))
+        if (schemaEnumResolver.IsEnumSchema(resolvedSchema))
         {
             return TypeShape.Enum;
         }
@@ -389,7 +269,7 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
             return true;
         }
 
-        var resolvedSchema = ResolveSchemaReference(schema);
+        var resolvedSchema = schemaReferenceResolver.ResolveSchemaReference(schema);
         if (ReferenceEquals(resolvedSchema, schema))
         {
             return false;
@@ -400,9 +280,9 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
 
     private static bool SchemaCompositionsAllowNull(IOpenApiSchema schema)
     {
-        return (schema.OneOf?.Any(IsNullOnlySchema) == true)
-            || (schema.AnyOf?.Any(IsNullOnlySchema) == true)
-            || (schema.AllOf?.Any(IsNullOnlySchema) == true);
+        return (schema.OneOf?.Any(SchemaReferenceResolver.IsNullOnlySchema) == true)
+            || (schema.AnyOf?.Any(SchemaReferenceResolver.IsNullOnlySchema) == true)
+            || (schema.AllOf?.Any(SchemaReferenceResolver.IsNullOnlySchema) == true);
     }
 
     private static bool HasSchemaType(IOpenApiSchema? schema, JsonSchemaType type)
@@ -410,220 +290,4 @@ internal sealed class SchemaTypeResolver(OpenApiDocument document, SchemaCatalog
         return schema?.Type is { } schemaType && (schemaType & type) == type;
     }
 
-    private static SchemaEnumKind CalculateSchemaEnumKind(IOpenApiSchema schema)
-    {
-        var hasEnum = schema.Enum is { Count: > 0 };
-        var hasConst = !string.IsNullOrEmpty(schema.Const);
-        if (!hasEnum && !hasConst)
-        {
-            return SchemaEnumKind.None;
-        }
-
-        if (schema.Type is { } declaredType)
-        {
-            var baseType = declaredType & ~JsonSchemaType.Null;
-            if (baseType == JsonSchemaType.String)
-            {
-                return SchemaEnumKind.String;
-            }
-
-            if (baseType == JsonSchemaType.Integer)
-            {
-                return EnumValuesMatchKind(schema, SchemaEnumKind.Integer) ? SchemaEnumKind.Integer : SchemaEnumKind.None;
-            }
-
-            if (baseType == JsonSchemaType.Number)
-            {
-                return EnumValuesMatchKind(schema, SchemaEnumKind.Number) ? SchemaEnumKind.Number : SchemaEnumKind.None;
-            }
-
-            if (baseType != 0)
-            {
-                return SchemaEnumKind.None;
-            }
-        }
-
-        return InferEnumKindFromValues(schema);
-    }
-
-    private static SchemaEnumKind InferEnumKindFromValues(IOpenApiSchema schema)
-    {
-        var kind = SchemaEnumKind.None;
-
-        if (schema.Enum is { Count: > 0 } enumValues)
-        {
-            foreach (var node in enumValues)
-            {
-                var resolved = ClassifyJsonNodeEnumKind(node);
-                if (resolved == SchemaEnumKind.None)
-                {
-                    return SchemaEnumKind.None;
-                }
-
-                if (!TryMergeInferredEnumKind(kind, resolved, out kind))
-                {
-                    return SchemaEnumKind.None;
-                }
-            }
-        }
-
-        if (!string.IsNullOrEmpty(schema.Const))
-        {
-            var resolved = ClassifyStringValueEnumKind(schema.Const!);
-            if (resolved == SchemaEnumKind.None)
-            {
-                return SchemaEnumKind.None;
-            }
-
-            if (!TryMergeInferredEnumKind(kind, resolved, out kind))
-            {
-                return SchemaEnumKind.None;
-            }
-        }
-
-        return kind;
-    }
-
-    private static SchemaEnumKind ClassifyJsonNodeEnumKind(JsonNode? node)
-    {
-        if (node is not JsonValue jsonValue)
-        {
-            return SchemaEnumKind.None;
-        }
-
-        return jsonValue.GetValueKind() switch
-        {
-            JsonValueKind.String => SchemaEnumKind.String,
-            JsonValueKind.Number => IsIntegerLiteral(node.ToString())
-                ? SchemaEnumKind.Integer
-                : IsNumberLiteral(node.ToString()) ? SchemaEnumKind.Number : SchemaEnumKind.None,
-            _ => SchemaEnumKind.None
-        };
-    }
-
-    private static SchemaEnumKind ClassifyStringValueEnumKind(string value)
-    {
-        if (IsIntegerLiteral(value))
-        {
-            return SchemaEnumKind.Integer;
-        }
-
-        return IsNumberLiteral(value)
-            ? SchemaEnumKind.Number
-            : SchemaEnumKind.String;
-    }
-
-    private static bool TryMergeInferredEnumKind(SchemaEnumKind current, SchemaEnumKind candidate, out SchemaEnumKind merged)
-    {
-        if (current == SchemaEnumKind.None)
-        {
-            merged = candidate;
-            return true;
-        }
-
-        if (current == candidate)
-        {
-            merged = current;
-            return true;
-        }
-
-        if ((current == SchemaEnumKind.Integer && candidate == SchemaEnumKind.Number)
-            || (current == SchemaEnumKind.Number && candidate == SchemaEnumKind.Integer))
-        {
-            merged = SchemaEnumKind.Number;
-            return true;
-        }
-
-        merged = SchemaEnumKind.None;
-        return false;
-    }
-
-    private static bool EnumValuesMatchKind(IOpenApiSchema schema, SchemaEnumKind expectedKind)
-    {
-        foreach (var value in EnumerateEnumLiteralValues(schema))
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            if (expectedKind == SchemaEnumKind.Integer && !IsIntegerLiteral(value))
-            {
-                return false;
-            }
-
-            if (expectedKind == SchemaEnumKind.Number
-                && !CanParseNumberLiteral(value, GetNumberEnumValueType(schema)))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool IsIntegerLiteral(string value)
-    {
-        if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-        {
-            return true;
-        }
-
-        return decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue)
-            && decimal.Truncate(decimalValue) == decimalValue;
-    }
-
-    private static bool IsNumberLiteral(string value)
-        => decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
-
-    private static bool CanParseNumberLiteral(string value, string valueType)
-    {
-        return valueType switch
-        {
-            "float" => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
-            "double" => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
-            _ => decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _)
-        };
-    }
-
-    private static string BuildNumberEnumMemberName(string value)
-        => BuildIntegerEnumMemberName(value);
-
-    private static string NormalizeIntegerEnumLiteral(string value)
-    {
-        return decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue)
-            ? decimal.Truncate(decimalValue).ToString(CultureInfo.InvariantCulture)
-            : value;
-    }
-
-    private static IEnumerable<string> EnumerateEnumLiteralValues(IOpenApiSchema schema)
-    {
-        if (schema.Enum is { Count: > 0 } enumValues)
-        {
-            foreach (var item in enumValues)
-            {
-                var value = item?.ToString();
-                if (!string.IsNullOrEmpty(value))
-                {
-                    yield return value!;
-                }
-            }
-        }
-
-        if (!string.IsNullOrEmpty(schema.Const))
-        {
-            yield return schema.Const!;
-        }
-    }
-
-    private static string BuildIntegerEnumMemberName(string value)
-    {
-        var digits = value.Trim();
-        if (digits.StartsWith("-", StringComparison.Ordinal))
-        {
-            digits = "Minus" + digits.Substring(1);
-        }
-
-        return CSharpUtilities.SafeIdentifier($"Value{digits}");
-    }
 }

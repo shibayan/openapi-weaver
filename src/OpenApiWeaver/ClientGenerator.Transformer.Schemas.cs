@@ -67,7 +67,7 @@ public sealed partial class ClientGenerator
             var usedDiscriminatorValues = new HashSet<string>(StringComparer.Ordinal);
             foreach (var child in schema.OneOf)
             {
-                var derivedSchemaName = SchemaTypeResolver.TryResolveSchemaReferenceId(child);
+                var derivedSchemaName = SchemaReferenceResolver.TryResolveSchemaReferenceId(child);
                 if (derivedSchemaName is null)
                 {
                     throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator with inline oneOf members, which is not supported for compile-time code generation.");
@@ -112,7 +112,7 @@ public sealed partial class ClientGenerator
             {
                 foreach (var mapping in discriminator.Mapping)
                 {
-                    if (string.Equals(SchemaTypeResolver.TryResolveSchemaReferenceId(mapping.Value), derivedSchemaName, StringComparison.Ordinal))
+                    if (string.Equals(SchemaReferenceResolver.TryResolveSchemaReferenceId(mapping.Value), derivedSchemaName, StringComparison.Ordinal))
                     {
                         return mapping.Key;
                     }
@@ -131,7 +131,7 @@ public sealed partial class ClientGenerator
 
             foreach (var mapping in discriminator.Mapping)
             {
-                var mappedSchemaName = SchemaTypeResolver.TryResolveSchemaReferenceId(mapping.Value);
+                var mappedSchemaName = SchemaReferenceResolver.TryResolveSchemaReferenceId(mapping.Value);
                 if (mappedSchemaName is null || !derivedSchemaNames.Contains(mappedSchemaName))
                 {
                     throw new UnsupportedGenerationException($"Schema '{schemaName}' discriminator mapping '{mapping.Key}' must reference a schema listed in oneOf.");
@@ -225,14 +225,14 @@ public sealed partial class ClientGenerator
                     property.Schema.Description));
             }
 
-            var enumKind = _schemaTypeResolver.GetSchemaEnumKind(schema);
+            var enumKind = _schemaEnumResolver.GetSchemaEnumKind(schema);
             var enumUnderlyingType = enumKind switch
             {
-                SchemaEnumKind.Integer => SchemaTypeResolver.GetIntegerEnumUnderlyingType(schema),
-                SchemaEnumKind.Number => SchemaTypeResolver.GetNumberEnumValueType(schema),
+                SchemaEnumKind.Integer => SchemaEnumResolver.GetIntegerEnumUnderlyingType(schema),
+                SchemaEnumKind.Number => SchemaEnumResolver.GetNumberEnumValueType(schema),
                 _ => null
             };
-            var enumMembers = enumKind == SchemaEnumKind.None ? [] : SchemaTypeResolver.CreateEnumMembers(schema, enumKind);
+            var enumMembers = enumKind == SchemaEnumKind.None ? [] : SchemaEnumResolver.CreateEnumMembers(schema, enumKind);
 
             return new SchemaDefinition(
                 typeName,
@@ -275,7 +275,7 @@ public sealed partial class ClientGenerator
 
         private void RegisterOperationParameterInlineSchema(IOpenApiParameter parameter, string operationName)
         {
-            if (parameter.Schema is null || _schemaTypeResolver.GetSchemaEnumKind(parameter.Schema) == SchemaEnumKind.None)
+            if (parameter.Schema is null || _schemaEnumResolver.GetSchemaEnumKind(parameter.Schema) == SchemaEnumKind.None)
             {
                 return;
             }
@@ -366,12 +366,12 @@ public sealed partial class ClientGenerator
 
         private void RegisterNestedInlineSchemas(IOpenApiSchema? schema, HashSet<string> visited, string? containingTypeName, string nestedNamePrefix)
         {
-            if (schema is null || _schemaTypeResolver.TryResolveSchemaReferenceName(schema) is not null)
+            if (schema is null || _schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not null)
             {
                 return;
             }
 
-            var identity = SchemaTypeResolver.GetSchemaIdentity(schema);
+            var identity = SchemaReferenceResolver.GetSchemaIdentity(schema);
             if (!visited.Add(identity))
             {
                 return;
@@ -456,7 +456,7 @@ public sealed partial class ClientGenerator
                 return null;
             }
 
-            var identity = SchemaTypeResolver.GetSchemaIdentity(schema);
+            var identity = SchemaReferenceResolver.GetSchemaIdentity(schema);
             if (_schemaCatalog.TryGetInlineSchema(identity, out var existingInlineSchema))
             {
                 return existingInlineSchema;
@@ -471,7 +471,7 @@ public sealed partial class ClientGenerator
 
         private bool CanGenerateInlineSchema(IOpenApiSchema schema)
         {
-            if (_schemaTypeResolver.TryResolveSchemaReferenceName(schema) is not null
+            if (_schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not null
                 || _schemaTypeResolver.TryGetDictionaryValueType(schema, out _)
                 || schema.OneOf is { Count: > 0 }
                 || schema.AnyOf is { Count: > 0 })
@@ -480,7 +480,7 @@ public sealed partial class ClientGenerator
             }
 
             var baseType = schema.Type & ~JsonSchemaType.Null;
-            return _schemaTypeResolver.IsEnumSchema(schema)
+            return _schemaEnumResolver.IsEnumSchema(schema)
                 || baseType == JsonSchemaType.Object
                 || schema.AllOf is { Count: > 0 }
                 || (schema.Properties?.Count ?? 0) > 0;
@@ -490,11 +490,11 @@ public sealed partial class ClientGenerator
         {
             var suffix = childName switch
             {
-                "item" when _schemaTypeResolver.GetSchemaEnumKind(schema) != SchemaEnumKind.None => nestedNamePrefix.Length == 0 ? "ItemEnum" : "Item",
+                "item" when _schemaEnumResolver.GetSchemaEnumKind(schema) != SchemaEnumKind.None => nestedNamePrefix.Length == 0 ? "ItemEnum" : "Item",
                 "item" => nestedNamePrefix.Length == 0 ? "ItemModel" : "Item",
-                "value" when _schemaTypeResolver.GetSchemaEnumKind(schema) != SchemaEnumKind.None => nestedNamePrefix.Length == 0 ? "ValueEnum" : "Value",
+                "value" when _schemaEnumResolver.GetSchemaEnumKind(schema) != SchemaEnumKind.None => nestedNamePrefix.Length == 0 ? "ValueEnum" : "Value",
                 "value" => nestedNamePrefix.Length == 0 ? "ValueModel" : "Value",
-                _ when _schemaTypeResolver.GetSchemaEnumKind(schema) != SchemaEnumKind.None => CSharpUtilities.ToPascalCase(childName) + "Enum",
+                _ when _schemaEnumResolver.GetSchemaEnumKind(schema) != SchemaEnumKind.None => CSharpUtilities.ToPascalCase(childName) + "Enum",
                 _ => CSharpUtilities.ToPascalCase(childName) + "Model"
             };
 
