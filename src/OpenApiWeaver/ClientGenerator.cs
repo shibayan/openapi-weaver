@@ -41,7 +41,7 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
     {
         if (string.IsNullOrWhiteSpace(input.Content))
         {
-            productionContext.ReportDiagnostic(Diagnostic.Create(Diagnostics.DocumentEmpty, Location.None, input.Path));
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentEmpty(input.Path));
             return;
         }
 
@@ -57,11 +57,7 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
         }
         catch (Exception exception)
         {
-            productionContext.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.DocumentInvalid,
-                Location.None,
-                input.Path,
-                exception.Message));
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentInvalid(input.Path, exception.Message));
             return;
         }
 
@@ -69,9 +65,7 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
         var diagnostic = readResult.Diagnostic;
         if (document?.Paths is null)
         {
-            productionContext.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.DocumentInvalid,
-                Location.None,
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentInvalid(
                 input.Path,
                 "The document does not contain valid paths or could not be loaded."));
             return;
@@ -79,11 +73,9 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
 
         if (diagnostic?.Errors.Count > 0)
         {
-            productionContext.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.DocumentHasWarnings,
-                Location.None,
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentHasWarnings(
                 input.Path,
-                string.Join(", ", diagnostic.Errors.Select(static error => error.Message))));
+                diagnostic.Errors.Select(static error => error.Message)));
         }
 
         try
@@ -98,19 +90,11 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
         }
         catch (UnsupportedGenerationException exception)
         {
-            productionContext.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.DocumentUnsupported,
-                Location.None,
-                input.Path,
-                exception.Message));
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentUnsupported(input.Path, exception.Message));
         }
         catch (Exception exception)
         {
-            productionContext.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.DocumentInvalid,
-                Location.None,
-                input.Path,
-                exception.Message));
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentInvalid(input.Path, exception.Message));
         }
     }
 
