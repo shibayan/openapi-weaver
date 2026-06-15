@@ -1,4 +1,4 @@
-using static OpenApiWeaver.CSharpCodeEmissionUtilities;
+﻿using static OpenApiWeaver.CSharpCodeEmissionUtilities;
 
 namespace OpenApiWeaver;
 
@@ -202,7 +202,7 @@ internal sealed class OperationEmitter(ClientModel model)
                     return;
                 }
 
-                writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(securityScheme.HeaderOrParameterName).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
             });
         }
 

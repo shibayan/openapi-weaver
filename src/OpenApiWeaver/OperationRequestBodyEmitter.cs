@@ -1,4 +1,4 @@
-using static OpenApiWeaver.CSharpCodeEmissionUtilities;
+﻿using static OpenApiWeaver.CSharpCodeEmissionUtilities;
 
 namespace OpenApiWeaver;
 

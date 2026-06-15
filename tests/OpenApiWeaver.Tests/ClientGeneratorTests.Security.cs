@@ -193,6 +193,38 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void HeaderApiKeySecurityScheme_EscapesHeaderNameInGeneratedStringLiteral()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Header Security API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                partner:
+                  type: apiKey
+                  in: header
+                  name: 'X-"Partner"\Key'
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("request.Headers.TryAddWithoutValidation(\"X-\\\"Partner\\\"\\\\Key\", _partnerApiKey);", source);
+    }
+
+    [Fact]
     public void CookieApiKeySecurityScheme_GeneratesCookieHeaderInitialization()
     {
         const string openApi = """
