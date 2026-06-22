@@ -37,7 +37,7 @@ public sealed partial class ClientGenerator
             var securitySchemes = BuildSecuritySchemes();
             var schemas = BuildSchemaDefinitions();
             var serializerOptionsTypeName = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly))
-                ? _schemaCatalog.AllocateTypeName(parentTypeName: null, _clientName + "JsonSerializerOptions")
+                ? _schemaCatalog.AllocateTypeName(parentTypeName: null, SupportTypeNames.CreateSerializerOptionsTypeName(_clientName))
                 : string.Empty;
             var tagGroups = BuildTagGroups(securitySchemes, serializerOptionsTypeName);
 

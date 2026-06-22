@@ -9,8 +9,7 @@ public sealed partial class ClientGenerator
         private void RegisterSchemaNames()
         {
             _schemaCatalog.ReserveTypeName(_clientName);
-            _schemaCatalog.ReserveTypeName("OpenApiClientHelpers");
-            _schemaCatalog.ReserveTypeName("OpenApiException");
+            SupportTypeNames.ReserveTypeNames(_schemaCatalog);
 
             if (_document.Components?.Schemas is null)
             {
