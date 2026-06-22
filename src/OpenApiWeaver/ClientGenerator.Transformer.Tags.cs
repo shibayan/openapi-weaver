@@ -48,8 +48,7 @@ public sealed partial class ClientGenerator
             var reservedClassNames = _schemaCatalog.ComponentTypeNames
                 .Concat(_schemaCatalog.InlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
                 .Append(_clientName)
-                .Append("OpenApiClientHelpers")
-                .Append("OpenApiException");
+                .Concat(SupportTypeNames.ReservedTypeNames);
             if (!string.IsNullOrWhiteSpace(serializerOptionsTypeName))
             {
                 reservedClassNames = reservedClassNames.Append(serializerOptionsTypeName);

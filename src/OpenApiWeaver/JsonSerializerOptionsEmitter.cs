@@ -8,7 +8,7 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
     {
         if (!model.HasDirectionalSchemaProperties || direction == JsonSerializerDirection.Neutral)
         {
-            return "OpenApiClientHelpers.SerializerOptions";
+            return SupportTypeNames.DefaultSerializerOptionsExpression;
         }
 
         return direction == JsonSerializerDirection.Request
