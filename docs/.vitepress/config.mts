@@ -7,6 +7,8 @@ export default defineConfig({
 
   base: '/openapi-weaver/',
 
+  cleanUrls: true,
+
   rewrites: {
     'en/:rest*': ':rest*'
   },
