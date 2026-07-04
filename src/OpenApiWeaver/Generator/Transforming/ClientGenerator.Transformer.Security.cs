@@ -16,9 +16,10 @@ public sealed partial class ClientGenerator
                 return bindings;
             }
 
+            var usedParameterNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var scheme in _document.Components.SecuritySchemes)
             {
-                var binding = CreateSecuritySchemeBinding(scheme.Key, scheme.Value);
+                var binding = CreateSecuritySchemeBinding(scheme.Key, scheme.Value, usedParameterNames);
                 if (binding is not null)
                 {
                     bindings.Add(binding);
@@ -65,12 +66,15 @@ public sealed partial class ClientGenerator
             return result;
         }
 
-        private static SecuritySchemeBinding? CreateSecuritySchemeBinding(string schemeKey, IOpenApiSecurityScheme scheme)
+        private static SecuritySchemeBinding? CreateSecuritySchemeBinding(string schemeKey, IOpenApiSecurityScheme scheme, ISet<string> usedParameterNames)
         {
             if (scheme.Type == SecuritySchemeType.OAuth2
                 || (scheme.Type == SecuritySchemeType.Http && string.Equals(scheme.Scheme, "bearer", StringComparison.OrdinalIgnoreCase)))
             {
-                var parameterName = CSharpUtilities.SafeIdentifier(CSharpUtilities.ToCamelCase(scheme.Type == SecuritySchemeType.OAuth2 ? "access_token" : $"{schemeKey}_token"));
+                var parameterName = AllocateUniqueName(
+                    usedParameterNames,
+                    CSharpUtilities.SafeIdentifier(CSharpUtilities.ToCamelCase(scheme.Type == SecuritySchemeType.OAuth2 ? "access_token" : $"{schemeKey}_token")),
+                    "token");
                 return new SecuritySchemeBinding(
                     schemeKey,
                     parameterName,
@@ -82,7 +86,10 @@ public sealed partial class ClientGenerator
 
             if (scheme.Type == SecuritySchemeType.ApiKey)
             {
-                var parameterName = CSharpUtilities.SafeIdentifier(CSharpUtilities.ToCamelCase($"{schemeKey}_api_key"));
+                var parameterName = AllocateUniqueName(
+                    usedParameterNames,
+                    CSharpUtilities.SafeIdentifier(CSharpUtilities.ToCamelCase($"{schemeKey}_api_key")),
+                    "apiKey");
                 return new SecuritySchemeBinding(
                     schemeKey,
                     parameterName,

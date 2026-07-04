@@ -368,6 +368,48 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void MultipleOAuth2SecuritySchemes_GenerateUniqueConstructorParameters()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Multiple OAuth API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              securitySchemes:
+                userAuth:
+                  type: oauth2
+                  flows:
+                    clientCredentials:
+                      tokenUrl: https://auth.example.com/token
+                      scopes: {}
+                serviceAuth:
+                  type: oauth2
+                  flows:
+                    clientCredentials:
+                      tokenUrl: https://auth.example.com/service/token
+                      scopes: {}
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("string? accessToken = default", source);
+        Assert.Contains("string? accessToken2 = default", source);
+        Assert.Contains("_accessToken2", source);
+    }
+
+    [Fact]
     public void HttpClientConstructorOverload_IsGenerated()
     {
         const string openApi = """

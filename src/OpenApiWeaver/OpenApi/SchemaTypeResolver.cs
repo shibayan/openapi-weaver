@@ -88,6 +88,35 @@ internal sealed class SchemaTypeResolver(
             isOptional: !required);
     }
 
+    public static bool IsDictionarySchema(IOpenApiSchema schema)
+        => IsDictionarySchemaCore(schema, new HashSet<string>(StringComparer.Ordinal));
+
+    private static bool IsDictionarySchemaCore(IOpenApiSchema schema, HashSet<string> visited)
+    {
+        if (!visited.Add(SchemaReferenceResolver.GetSchemaIdentity(schema)))
+        {
+            return false;
+        }
+
+        if (schema.AdditionalProperties is not null || schema.PatternProperties is { Count: > 0 })
+        {
+            return true;
+        }
+
+        if (schema.AllOf is not null)
+        {
+            foreach (var child in schema.AllOf)
+            {
+                if (IsDictionarySchemaCore(child, visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public bool TryGetDictionaryValueType(IOpenApiSchema schema, out string valueType)
     {
         valueType = string.Empty;
