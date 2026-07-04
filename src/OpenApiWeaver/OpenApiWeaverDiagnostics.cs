@@ -41,7 +41,7 @@ internal static class OpenApiWeaverDiagnostics
     public static readonly DiagnosticDescriptor RequestBodyUnsupportedDescriptor = new(
         "OAW005",
         "OpenAPI request body uses an unsupported feature",
-        "The OpenAPI document '{0}' has an unsupported request body: {1}",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -49,7 +49,7 @@ internal static class OpenApiWeaverDiagnostics
     public static readonly DiagnosticDescriptor DiscriminatorUnsupportedDescriptor = new(
         "OAW006",
         "OpenAPI discriminator uses an unsupported feature",
-        "The OpenAPI document '{0}' has an unsupported discriminator: {1}",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -57,7 +57,7 @@ internal static class OpenApiWeaverDiagnostics
     public static readonly DiagnosticDescriptor SchemaUnsupportedDescriptor = new(
         "OAW007",
         "OpenAPI schema uses an unsupported feature",
-        "The OpenAPI document '{0}' has an unsupported schema: {1}",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
