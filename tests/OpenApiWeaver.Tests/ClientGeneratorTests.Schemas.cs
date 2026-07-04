@@ -330,6 +330,68 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void AllOfSchema_RequiredOnComposedSchema_AppliesToReferencedProperties()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Composition API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                pet:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    tag:
+                      type: string
+                newPet:
+                  allOf:
+                    - $ref: '#/components/schemas/pet'
+                  required:
+                    - name
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class NewPet", source);
+        Assert.Contains("public required string Name { get; init; }", source);
+        Assert.Contains("public string? Tag { get; init; }", source);
+    }
+
+    [Fact]
+    public void NestedDictionaryProperty_UsesInlineValueModel()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Nested Dictionary API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                resource:
+                  type: object
+                  properties:
+                    labels:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        properties:
+                          color:
+                            type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public IReadOnlyDictionary<string, Resource.LabelsValue>? Labels { get; init; }", source);
+        Assert.Contains("public sealed class LabelsValue", source);
+        Assert.DoesNotContain("IReadOnlyDictionary<string, JsonElement>", source);
+    }
+
+    [Fact]
     public void DiscriminatorSchema_GeneratesPolymorphicBaseAndDerivedTypes()
     {
         const string openApi = """

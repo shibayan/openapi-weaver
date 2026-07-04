@@ -11,7 +11,18 @@ internal static class SchemaPropertyCollector
     {
         var properties = new List<SchemaPropertyInfo>();
         var indices = new Dictionary<string, int>(StringComparer.Ordinal);
-        CollectCore(schema, properties, indices, new HashSet<string>(StringComparer.Ordinal), ignoredPropertyNames, ignoredSchemaReferences);
+        var requiredNames = new HashSet<string>(StringComparer.Ordinal);
+        CollectCore(schema, properties, indices, requiredNames, new HashSet<string>(StringComparer.Ordinal), ignoredPropertyNames, ignoredSchemaReferences);
+
+        for (var i = 0; i < properties.Count; i++)
+        {
+            var property = properties[i];
+            if (!property.Required && requiredNames.Contains(property.Name))
+            {
+                properties[i] = new SchemaPropertyInfo(property.Name, property.Schema, required: true, property.ReadOnly, property.WriteOnly);
+            }
+        }
+
         return properties;
     }
 
@@ -19,6 +30,7 @@ internal static class SchemaPropertyCollector
         IOpenApiSchema schema,
         List<SchemaPropertyInfo> properties,
         Dictionary<string, int> indices,
+        HashSet<string> requiredNames,
         HashSet<string> visited,
         ISet<string>? ignoredPropertyNames,
         ISet<string>? ignoredSchemaReferences)
@@ -35,11 +47,19 @@ internal static class SchemaPropertyCollector
             return;
         }
 
+        if (schema.Required is not null)
+        {
+            foreach (var requiredName in schema.Required)
+            {
+                requiredNames.Add(requiredName);
+            }
+        }
+
         if (schema.AllOf is not null)
         {
             foreach (var child in schema.AllOf)
             {
-                CollectCore(child, properties, indices, visited, ignoredPropertyNames, ignoredSchemaReferences);
+                CollectCore(child, properties, indices, requiredNames, visited, ignoredPropertyNames, ignoredSchemaReferences);
             }
         }
 

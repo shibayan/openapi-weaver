@@ -1376,6 +1376,74 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public async Task IntegerEnumParameter_SendsNumericWireValue()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Enum Parameter API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: status
+                      in: query
+                      required: true
+                      schema:
+                        $ref: '#/components/schemas/reportStatus'
+                    - name: X-Priority
+                      in: header
+                      required: true
+                      schema:
+                        $ref: '#/components/schemas/reportStatus'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              schemas:
+                reportStatus:
+                  type: integer
+                  enum:
+                    - 1
+                    - 7
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var enumType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "ReportStatus");
+        Assert.True(enumType.IsEnum);
+
+        var handler = new RecordingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com/")
+        };
+
+        var client = Activator.CreateInstance(clientType, httpClient);
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("ListReportsAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, [Enum.ToObject(enumType, 7), Enum.ToObject(enumType, 1), CancellationToken.None]));
+        await invocation;
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(new Uri("https://api.example.com/reports?status=7"), request.RequestUri);
+        Assert.Equal(["1"], Assert.Contains("X-Priority", request.Headers));
+    }
+
+    [Fact]
     public void PathAndOperationParameters_AreCombinedIntoMethodSignature()
     {
         const string openApi = """

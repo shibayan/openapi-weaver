@@ -42,6 +42,7 @@ public sealed partial class ClientGenerator
                 {
                     writer.AppendLine("null => string.Empty,");
                     writer.AppendLine("bool boolean => boolean ? \"true\" : \"false\",");
+                    writer.AppendLine("Enum enumValue => enumValue.ToString(\"D\"),");
                     writer.AppendLine("DateTimeOffset dateTimeOffset => dateTimeOffset.ToString(\"o\", CultureInfo.InvariantCulture),");
                     writer.AppendLine("DateTime dateTime => dateTime.ToString(\"o\", CultureInfo.InvariantCulture),");
                     writer.AppendLine("DateOnly dateOnly => dateOnly.ToString(\"yyyy-MM-dd\", CultureInfo.InvariantCulture),");
@@ -63,6 +64,7 @@ public sealed partial class ClientGenerator
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
+                    writer.AppendLine("Enum enumValue => enumValue.ToString(\"D\"),");
                     writer.AppendLine("DateTimeOffset dateTimeOffset => dateTimeOffset.ToString(\"o\", CultureInfo.InvariantCulture),");
                     writer.AppendLine("DateTime dateTime => dateTime.ToString(\"o\", CultureInfo.InvariantCulture),");
                     writer.AppendLine("DateOnly dateOnly => dateOnly.ToString(\"yyyy-MM-dd\", CultureInfo.InvariantCulture),");

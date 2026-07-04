@@ -488,7 +488,7 @@ public sealed partial class ClientGenerator
         private bool CanGenerateInlineSchema(IOpenApiSchema schema)
         {
             if (_schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not null
-                || _schemaTypeResolver.TryGetDictionaryValueType(schema, out _)
+                || SchemaTypeResolver.IsDictionarySchema(schema)
                 || schema.OneOf is { Count: > 0 }
                 || schema.AnyOf is { Count: > 0 })
             {
