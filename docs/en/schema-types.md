@@ -137,7 +137,7 @@ When a component schema declares `discriminator` and `oneOf` references named co
 
 To keep System.Text.Json polymorphic serialization consistent, the discriminator property is not emitted as a normal CLR property on the generated types.
 
-This feature currently requires all discriminator members to be `$ref` entries in `oneOf`. Using `anyOf`, inline `oneOf` members, duplicate discriminator values, or mappings that point outside `oneOf` is rejected with `OAW004`.
+This feature currently requires all discriminator members to be `$ref` entries in `oneOf`. Using `anyOf`, inline `oneOf` members, duplicate discriminator values, or mappings that point outside `oneOf` is rejected with `OAW006`.
 
 ## Nullable type arrays (OpenAPI 3.2)
 

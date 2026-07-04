@@ -85,7 +85,10 @@ public sealed partial class ClientGeneratorTests
             .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
                 && diagnostic.Id != "OAW001"
                 && diagnostic.Id != "OAW003"
-                && diagnostic.Id != "OAW004")
+                && diagnostic.Id != "OAW004"
+                && diagnostic.Id != "OAW005"
+                && diagnostic.Id != "OAW006"
+                && diagnostic.Id != "OAW007")
             .ToArray();
 
         Assert.True(compilationErrors.Length == 0, string.Join(Environment.NewLine, compilationErrors.Select(static error => error.ToString())));

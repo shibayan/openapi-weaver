@@ -139,7 +139,7 @@ public sealed class Dog : Animal
 
 discriminator 用のプロパティ自体は通常の CLR プロパティとしては生成されません。これにより、ポリモーフィックシリアライズ時の重複した JSON 出力を避けます。
 
-未対応の discriminator パターンは `OAW004` で生成失敗になります。対象には、`anyOf` と組み合わせた discriminator、`oneOf` を持たない discriminator、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` に含まれないスキーマを参照する mapping が含まれます。
+未対応の discriminator パターンは `OAW006` で生成失敗になります。対象には、`anyOf` と組み合わせた discriminator、`oneOf` を持たない discriminator、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` に含まれないスキーマを参照する mapping が含まれます。
 
 ## レスポンス型
 
@@ -200,7 +200,7 @@ OpenApiWeaver はリクエストボディで次のコンテンツタイプをサ
 
 ### フォーム / マルチパートのコンパイル時専用ポリシー
 
-`application/x-www-form-urlencoded` および `multipart/form-data` のリクエストボディは、必要なコードをすべてコンパイル時に生成できなければなりません。生成できない場合は `OAW004` でエラーになります。
+`application/x-www-form-urlencoded` および `multipart/form-data` のリクエストボディは、必要なコードをすべてコンパイル時に生成できなければなりません。生成できない場合は `OAW005` でエラーになります。
 
 サポートされるフォーム / マルチパートリクエストボディの要件：
 
@@ -258,6 +258,9 @@ OpenApiWeaver は、コンパイル中に標準のコンパイラ診断として
 | OAW002 | Warning | OpenAPI ドキュメントに検証警告があります |
 | OAW003 | Error | OpenAPI ドキュメントが不正です (例: JSON/YAML の構文不正) |
 | OAW004 | Error | OpenAPI ドキュメントで未対応機能が使われています |
+| OAW005 | Error | OpenAPI リクエストボディで未対応機能が使われています |
+| OAW006 | Error | OpenAPI discriminator で未対応機能が使われています |
+| OAW007 | Error | OpenAPI スキーマで未対応機能が使われています |
 
 これらの診断は、Visual Studio の Error List、`dotnet build` の出力、CI ログに他のコンパイラ診断と同様に表示されます。
 

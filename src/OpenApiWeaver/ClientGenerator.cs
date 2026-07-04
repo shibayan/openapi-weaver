@@ -90,7 +90,7 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
         }
         catch (UnsupportedGenerationException exception)
         {
-            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentUnsupported(input.Path, exception.Message));
+            productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateDocumentUnsupported(input.Path, exception.Kind, exception.Message));
         }
         catch (Exception exception)
         {
@@ -101,5 +101,8 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
     private static string SanitizeHintName(string value)
         => value.Replace('<', '_').Replace('>', '_').Replace('.', '_').Replace('\\', '_').Replace('/', '_').Replace(':', '_');
 
-    private sealed class UnsupportedGenerationException(string message) : Exception(message);
+    private sealed class UnsupportedGenerationException(string message, UnsupportedFeatureKind kind = UnsupportedFeatureKind.General) : Exception(message)
+    {
+        public UnsupportedFeatureKind Kind { get; } = kind;
+    }
 }

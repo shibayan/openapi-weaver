@@ -137,7 +137,7 @@ public sealed class Order
 
 System.Text.Json のポリモーフィックシリアライズと整合させるため、discriminator プロパティ自体は生成型の通常の CLR プロパティとしては出力されません。
 
-この機能では、discriminator の各メンバーが `oneOf` 内の `$ref` であることが必要です。`anyOf`、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` 外を指す mapping は `OAW004` で拒否されます。
+この機能では、discriminator の各メンバーが `oneOf` 内の `$ref` であることが必要です。`anyOf`、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` 外を指す mapping は `OAW006` で拒否されます。
 
 ## Nullable 型配列（OpenAPI 3.2）
 
