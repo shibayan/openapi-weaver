@@ -22,16 +22,21 @@ public sealed partial class ClientGenerator
                 "cancellationToken"
             };
             var parameters = CollectParameters(pathItem, operation)
-                .Select(parameter => new ParameterInfo(
-                    parameter.Name ?? string.Empty,
-                    AllocateUniqueName(
-                        usedParameterNames,
-                        NormalizeCamelIdentifier(parameter.Name ?? string.Empty, "value"),
-                        "value"),
-                    _schemaTypeResolver.ResolveTypeUsage(parameter.Schema, parameter.Required),
-                    parameter.Required,
-                    MapParameterLocation(parameter.In ?? OpenApiParameterLocation.Query),
-                    parameter.Description))
+                .Select(parameter =>
+                {
+                    var typeUsage = _schemaTypeResolver.ResolveTypeUsage(parameter.Schema, parameter.Required);
+                    ValidateParameterSerialization(parameter, typeUsage);
+                    return new ParameterInfo(
+                        parameter.Name ?? string.Empty,
+                        AllocateUniqueName(
+                            usedParameterNames,
+                            NormalizeCamelIdentifier(parameter.Name ?? string.Empty, "value"),
+                            "value"),
+                        typeUsage,
+                        parameter.Required,
+                        MapParameterLocation(parameter.In ?? OpenApiParameterLocation.Query),
+                        parameter.Description);
+                })
                 .ToList();
 
             var requestBody = ResolveRequestBody(operation.RequestBody, usedParameterNames);

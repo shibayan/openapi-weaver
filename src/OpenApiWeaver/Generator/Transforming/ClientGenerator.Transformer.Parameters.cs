@@ -84,6 +84,33 @@ public sealed partial class ClientGenerator
                 || string.Equals(name, "Authorization", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static void ValidateParameterSerialization(IOpenApiParameter parameter, TypeUsage typeUsage)
+        {
+            var location = parameter.In ?? OpenApiParameterLocation.Query;
+            var style = parameter.Style;
+            var supportedStyle = location switch
+            {
+                OpenApiParameterLocation.Query or OpenApiParameterLocation.Cookie => style is null or ParameterStyle.Form,
+                _ => style is null or ParameterStyle.Simple,
+            };
+
+            if (!supportedStyle)
+            {
+                throw new UnsupportedGenerationException(
+                    $"Parameter '{parameter.Name}' uses style '{style}', which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.Parameter);
+            }
+
+            if (location == OpenApiParameterLocation.Query
+                && typeUsage.Shape == TypeShape.Array
+                && !parameter.Explode)
+            {
+                throw new UnsupportedGenerationException(
+                    $"Parameter '{parameter.Name}' uses explode: false with an array schema, which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.Parameter);
+            }
+        }
+
         private static ModelParameterLocation MapParameterLocation(OpenApiParameterLocation location)
         {
             return location switch

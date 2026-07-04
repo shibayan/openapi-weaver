@@ -34,7 +34,10 @@ internal static class DictionarySchemaConverterEmitter
                 {
                     var property = schema.Properties[i];
                     writer.Append(GetLocalType(property)).Append(" property").Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(" = default;");
-                    writer.Append("var hasProperty").Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(" = false;");
+                    if (property.Required)
+                    {
+                        writer.Append("var hasProperty").Append(i.ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(" = false;");
+                    }
                 }
 
                 writer.Append("var additionalProperties = new Dictionary<string, ").Append(dictionaryValueType).AppendLine(">(StringComparer.Ordinal);");
@@ -192,7 +195,11 @@ internal static class DictionarySchemaConverterEmitter
 
         writer.Append("property").Append(index.ToString(System.Globalization.CultureInfo.InvariantCulture))
             .Append(" = JsonSerializer.Deserialize<").Append(property.PropertyTypeName).AppendLine(">(ref reader, options);");
-        writer.Append("hasProperty").Append(index.ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(" = true;");
+        if (property.Required)
+        {
+            writer.Append("hasProperty").Append(index.ToString(System.Globalization.CultureInfo.InvariantCulture)).AppendLine(" = true;");
+        }
+
         writer.AppendLine("break;");
     }
 

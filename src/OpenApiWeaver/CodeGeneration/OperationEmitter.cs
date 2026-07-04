@@ -130,7 +130,7 @@ internal sealed partial class OperationEmitter(ClientModel model)
         {
             EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
             {
-                writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(securityScheme.HeaderOrParameterName))).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
             });
         }
 
@@ -190,7 +190,7 @@ internal sealed partial class OperationEmitter(ClientModel model)
             {
                 EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
                 {
-                    writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                    writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(securityScheme.HeaderOrParameterName))).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
                 });
                 continue;
             }

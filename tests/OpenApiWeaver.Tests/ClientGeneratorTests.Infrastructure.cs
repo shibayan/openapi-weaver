@@ -24,6 +24,7 @@ public sealed partial class ClientGeneratorTests
     private const string RequestBodyUnsupportedDiagnosticId = "OAW005";
     private const string DiscriminatorUnsupportedDiagnosticId = "OAW006";
     private const string SchemaUnsupportedDiagnosticId = "OAW007";
+    private const string ParameterUnsupportedDiagnosticId = "OAW008";
 
     private static readonly ImmutableHashSet<string> s_knownGeneratorDiagnosticIds = ImmutableHashSet.Create(
         StringComparer.Ordinal,
@@ -33,7 +34,8 @@ public sealed partial class ClientGeneratorTests
         DocumentUnsupportedDiagnosticId,
         RequestBodyUnsupportedDiagnosticId,
         DiscriminatorUnsupportedDiagnosticId,
-        SchemaUnsupportedDiagnosticId);
+        SchemaUnsupportedDiagnosticId,
+        ParameterUnsupportedDiagnosticId);
 
     private static string GenerateSource(string openApi)
     {

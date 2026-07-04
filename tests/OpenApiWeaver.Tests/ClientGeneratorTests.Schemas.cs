@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 using Xunit;
 
@@ -389,6 +389,90 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("public IReadOnlyDictionary<string, Resource.LabelsValue>? Labels { get; init; }", source);
         Assert.Contains("public sealed class LabelsValue", source);
         Assert.DoesNotContain("IReadOnlyDictionary<string, JsonElement>", source);
+    }
+
+    [Fact]
+    public void DictionaryConverter_WithOptionalProperty_DoesNotEmitUnusedVariableWarnings()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Hybrid Object API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                metadataBag:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: string
+                    display_name:
+                      type: string
+                  additionalProperties:
+                    type: string
+            """;
+
+        var result = RunGenerator(openApi);
+
+        AssertNoErrorDiagnostics(result);
+        Assert.DoesNotContain(
+            result.Compilation.GetDiagnostics(TestContext.Current.CancellationToken),
+            static diagnostic => string.Equals(diagnostic.Id, "CS0219", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EnumValuesAndDescriptions_WithUnicodeLineSeparators_GenerateValidSource()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Unicode API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                orderKind:
+                  type: string
+                  description: "line1\u2028line2"
+                  enum:
+                    - "alpha\u2028beta"
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("new(\"alpha\\u2028beta\")", source);
+        Assert.Contains("/// line1", source);
+        Assert.Contains("/// line2", source);
+    }
+
+    [Fact]
+    public void InlineSchemaNameCollidingWithParentType_GetsUniqueName()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Error Envelope API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                errorModel:
+                  type: object
+                  properties:
+                    error:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public sealed class ErrorModel2", source);
+        Assert.Contains("public ErrorModel.ErrorModel2? Error { get; init; }", source);
     }
 
     [Fact]

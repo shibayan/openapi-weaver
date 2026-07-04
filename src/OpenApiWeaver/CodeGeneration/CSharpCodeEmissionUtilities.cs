@@ -4,6 +4,12 @@ namespace OpenApiWeaver.CodeGeneration;
 
 internal static class CSharpCodeEmissionUtilities
 {
+    // U+0085, U+2028 and U+2029 are line terminators for the C# lexer and must not appear raw
+    // inside emitted string literals or single-line doc comments.
+    private const char NextLineCharacter = (char)0x0085;
+    private const char LineSeparatorCharacter = (char)0x2028;
+    private const char ParagraphSeparatorCharacter = (char)0x2029;
+
     private static readonly HashSet<string> s_wellKnownHttpMethods = new(StringComparer.OrdinalIgnoreCase)
     {
         "Get", "Put", "Post", "Delete", "Head", "Options", "Trace", "Patch"
@@ -18,6 +24,9 @@ internal static class CSharpCodeEmissionUtilities
             '\r' => "\\r",
             '\t' => "\\t",
             '\0' => "\\0",
+            NextLineCharacter => "\\u0085",
+            LineSeparatorCharacter => "\\u2028",
+            ParagraphSeparatorCharacter => "\\u2029",
             _ => null
         });
 
@@ -96,6 +105,9 @@ internal static class CSharpCodeEmissionUtilities
         return text
             .Replace("\r\n", "\n")
             .Replace('\r', '\n')
+            .Replace(NextLineCharacter, '\n')
+            .Replace(LineSeparatorCharacter, '\n')
+            .Replace(ParagraphSeparatorCharacter, '\n')
             .Split('\n')
             .Select(static line => line.Trim());
     }
