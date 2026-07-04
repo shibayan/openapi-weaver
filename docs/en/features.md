@@ -139,7 +139,7 @@ public sealed class Dog : Animal
 
 The discriminator property itself is not generated as a normal CLR property on the base or derived types, which avoids duplicate JSON output during polymorphic serialization.
 
-Unsupported discriminator patterns fail generation with `OAW004`. This includes `discriminator` used with `anyOf`, `discriminator` without `oneOf`, inline `oneOf` members, duplicate discriminator values, and mappings that reference schemas not listed in `oneOf`.
+Unsupported discriminator patterns fail generation with `OAW006`. This includes `discriminator` used with `anyOf`, `discriminator` without `oneOf`, inline `oneOf` members, duplicate discriminator values, and mappings that reference schemas not listed in `oneOf`.
 
 ## Response types
 
@@ -200,7 +200,7 @@ If a request body declares multiple supported media types, JSON is used when ava
 
 ### Compile-time-only policy for form / multipart
 
-For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all required code must be generated entirely at compile time. If that is not possible, generation fails with `OAW004`.
+For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all required code must be generated entirely at compile time. If that is not possible, generation fails with `OAW005`.
 
 Supported form and multipart request bodies require:
 
@@ -258,6 +258,9 @@ OpenApiWeaver reports errors and warnings as standard compiler diagnostics durin
 | OAW002 | Warning | OpenAPI document has validation warnings |
 | OAW003 | Error | OpenAPI document is invalid (e.g. malformed JSON/YAML) |
 | OAW004 | Error | OpenAPI document uses an unsupported feature |
+| OAW005 | Error | OpenAPI request body uses an unsupported feature |
+| OAW006 | Error | OpenAPI discriminator uses an unsupported feature |
+| OAW007 | Error | OpenAPI schema uses an unsupported feature |
 
 These diagnostics appear in the Visual Studio Error List, `dotnet build` output, and CI logs, just like any other compiler diagnostic.
 

@@ -45,18 +45,24 @@ public sealed partial class ClientGenerator
         {
             if (schema.AnyOf is { Count: > 0 })
             {
-                throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator with anyOf, which is not supported for compile-time code generation.");
+                throw new UnsupportedGenerationException(
+                    $"Schema '{schemaName}' uses discriminator with anyOf, which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.Discriminator);
             }
 
             if (schema.OneOf is not { Count: > 0 })
             {
-                throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator without oneOf, which is not supported for compile-time code generation.");
+                throw new UnsupportedGenerationException(
+                    $"Schema '{schemaName}' uses discriminator without oneOf, which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.Discriminator);
             }
 
             var discriminatorPropertyName = schema.Discriminator?.PropertyName;
             if (string.IsNullOrWhiteSpace(discriminatorPropertyName))
             {
-                throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator without a propertyName, which is not supported for compile-time code generation.");
+                throw new UnsupportedGenerationException(
+                    $"Schema '{schemaName}' uses discriminator without a propertyName, which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.Discriminator);
             }
 
             var baseTypeName = _schemaCatalog.GetComponentSchemaName(schemaName);
@@ -69,26 +75,34 @@ public sealed partial class ClientGenerator
                 var derivedSchemaName = SchemaReferenceResolver.TryResolveSchemaReferenceId(child);
                 if (derivedSchemaName is null)
                 {
-                    throw new UnsupportedGenerationException($"Schema '{schemaName}' uses discriminator with inline oneOf members, which is not supported for compile-time code generation.");
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{schemaName}' uses discriminator with inline oneOf members, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Discriminator);
                 }
 
                 derivedSchemaNames.Add(derivedSchemaName);
 
                 if (!_schemaCatalog.TryGetComponentSchemaName(derivedSchemaName, out var derivedTypeName))
                 {
-                    throw new UnsupportedGenerationException($"Schema '{schemaName}' discriminator references unknown schema '{derivedSchemaName}'.");
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{schemaName}' discriminator references unknown schema '{derivedSchemaName}'.",
+                        UnsupportedFeatureKind.Discriminator);
                 }
 
                 var discriminatorValue = ResolveDiscriminatorValue(schema.Discriminator!, derivedSchemaName);
                 if (!usedDiscriminatorValues.Add(discriminatorValue))
                 {
-                    throw new UnsupportedGenerationException($"Schema '{schemaName}' uses duplicate discriminator value '{discriminatorValue}', which is not supported for compile-time code generation.");
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{schemaName}' uses duplicate discriminator value '{discriminatorValue}', which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Discriminator);
                 }
 
                 if (_polymorphicDerivedSchemasByTypeName.TryGetValue(derivedTypeName, out var existingDerivedSchema)
                     && !string.Equals(existingDerivedSchema.BaseTypeName, baseTypeName, StringComparison.Ordinal))
                 {
-                    throw new UnsupportedGenerationException($"Schema '{derivedSchemaName}' is used by multiple discriminator hierarchies, which is not supported for compile-time code generation.");
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{derivedSchemaName}' is used by multiple discriminator hierarchies, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Discriminator);
                 }
 
                 pendingDerivedSchemas.Add((derivedTypeName, new PolymorphicDerivedSchemaInfo(schemaName, baseTypeName, discriminatorPropertyName!)));
@@ -133,7 +147,9 @@ public sealed partial class ClientGenerator
                 var mappedSchemaName = SchemaReferenceResolver.TryResolveSchemaReferenceId(mapping.Value);
                 if (mappedSchemaName is null || !derivedSchemaNames.Contains(mappedSchemaName))
                 {
-                    throw new UnsupportedGenerationException($"Schema '{schemaName}' discriminator mapping '{mapping.Key}' must reference a schema listed in oneOf.");
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{schemaName}' discriminator mapping '{mapping.Key}' must reference a schema listed in oneOf.",
+                        UnsupportedFeatureKind.Discriminator);
                 }
             }
         }
@@ -206,7 +222,8 @@ public sealed partial class ClientGenerator
                 if (property.ReadOnly && property.WriteOnly)
                 {
                     throw new UnsupportedGenerationException(
-                        $"Schema '{typeName}' property '{property.Name}' is marked both readOnly and writeOnly, which is not supported.");
+                        $"Schema '{typeName}' property '{property.Name}' is marked both readOnly and writeOnly, which is not supported.",
+                        UnsupportedFeatureKind.Schema);
                 }
 
                 var propertyName = AllocateUniqueName(

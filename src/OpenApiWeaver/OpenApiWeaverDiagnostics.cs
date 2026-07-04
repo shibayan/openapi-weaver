@@ -38,6 +38,30 @@ internal static class OpenApiWeaverDiagnostics
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor RequestBodyUnsupportedDescriptor = new(
+        "OAW005",
+        "OpenAPI request body uses an unsupported feature",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor DiscriminatorUnsupportedDescriptor = new(
+        "OAW006",
+        "OpenAPI discriminator uses an unsupported feature",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor SchemaUnsupportedDescriptor = new(
+        "OAW007",
+        "OpenAPI schema uses an unsupported feature",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static Diagnostic CreateDocumentEmpty(string path)
         => Diagnostic.Create(DocumentEmptyDescriptor, Location.None, path);
 
@@ -49,4 +73,24 @@ internal static class OpenApiWeaverDiagnostics
 
     public static Diagnostic CreateDocumentUnsupported(string path, string message)
         => Diagnostic.Create(DocumentUnsupportedDescriptor, Location.None, path, message);
+
+    public static Diagnostic CreateDocumentUnsupported(string path, UnsupportedFeatureKind kind, string message)
+        => Diagnostic.Create(GetUnsupportedDescriptor(kind), Location.None, path, message);
+
+    private static DiagnosticDescriptor GetUnsupportedDescriptor(UnsupportedFeatureKind kind)
+        => kind switch
+        {
+            UnsupportedFeatureKind.RequestBody => RequestBodyUnsupportedDescriptor,
+            UnsupportedFeatureKind.Discriminator => DiscriminatorUnsupportedDescriptor,
+            UnsupportedFeatureKind.Schema => SchemaUnsupportedDescriptor,
+            _ => DocumentUnsupportedDescriptor
+        };
+}
+
+internal enum UnsupportedFeatureKind
+{
+    General,
+    RequestBody,
+    Discriminator,
+    Schema
 }
