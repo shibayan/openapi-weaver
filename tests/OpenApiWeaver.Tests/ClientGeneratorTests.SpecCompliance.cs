@@ -1,6 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
-
-using Xunit;
+﻿using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
@@ -183,8 +181,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW005");
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
         Assert.Contains("application/xml", diagnostic.GetMessage());
     }
 

@@ -17,18 +17,35 @@ public sealed partial class ClientGeneratorTests
     private const string BuildMetadataAdditionalFilesNamespace = "build_metadata.AdditionalFiles.Namespace";
     private const string BuildMetadataAdditionalFilesItemKind = "build_metadata.AdditionalFiles.OpenApiWeaverItemKind";
     private const string OpenApiWeaverDocumentItemKind = "Document";
+    private const string DocumentEmptyDiagnosticId = "OAW001";
+    private const string DocumentHasWarningsDiagnosticId = "OAW002";
+    private const string DocumentInvalidDiagnosticId = "OAW003";
+    private const string DocumentUnsupportedDiagnosticId = "OAW004";
+    private const string RequestBodyUnsupportedDiagnosticId = "OAW005";
+    private const string DiscriminatorUnsupportedDiagnosticId = "OAW006";
+    private const string SchemaUnsupportedDiagnosticId = "OAW007";
+
+    private static readonly ImmutableHashSet<string> s_knownGeneratorDiagnosticIds = ImmutableHashSet.Create(
+        StringComparer.Ordinal,
+        DocumentEmptyDiagnosticId,
+        DocumentHasWarningsDiagnosticId,
+        DocumentInvalidDiagnosticId,
+        DocumentUnsupportedDiagnosticId,
+        RequestBodyUnsupportedDiagnosticId,
+        DiscriminatorUnsupportedDiagnosticId,
+        SchemaUnsupportedDiagnosticId);
 
     private static string GenerateSource(string openApi)
     {
         var result = RunGenerator(openApi);
-        Assert.DoesNotContain(result.Diagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        AssertNoErrorDiagnostics(result);
         return string.Join(Environment.NewLine, result.GeneratedSources);
     }
 
     private static string GenerateSource(string openApi, IReadOnlyDictionary<string, string> additionalFileOptions)
     {
         var result = RunGenerator(openApi, additionalFileOptions);
-        Assert.DoesNotContain(result.Diagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        AssertNoErrorDiagnostics(result);
         return string.Join(Environment.NewLine, result.GeneratedSources);
     }
 
@@ -83,12 +100,7 @@ public sealed partial class ClientGeneratorTests
         var compilationErrors = diagnostics
             .Concat(outputCompilation.GetDiagnostics())
             .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
-                && diagnostic.Id != "OAW001"
-                && diagnostic.Id != "OAW003"
-                && diagnostic.Id != "OAW004"
-                && diagnostic.Id != "OAW005"
-                && diagnostic.Id != "OAW006"
-                && diagnostic.Id != "OAW007")
+                && !s_knownGeneratorDiagnosticIds.Contains(diagnostic.Id))
             .ToArray();
 
         Assert.True(compilationErrors.Length == 0, string.Join(Environment.NewLine, compilationErrors.Select(static error => error.ToString())));
@@ -122,6 +134,35 @@ public sealed partial class ClientGeneratorTests
         }
 
         return options;
+    }
+
+    private static Diagnostic AssertSingleErrorDiagnostic(GeneratorTestResult result, string diagnosticId)
+    {
+        var diagnostic = Assert.Single(
+            result.Diagnostics,
+            diagnostic => string.Equals(diagnostic.Id, diagnosticId, StringComparison.Ordinal));
+
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        return diagnostic;
+    }
+
+    private static Diagnostic AssertOnlyErrorDiagnostic(GeneratorTestResult result, string diagnosticId)
+    {
+        var diagnostic = Assert.Single(result.Diagnostics);
+
+        Assert.Equal(diagnosticId, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        return diagnostic;
+    }
+
+    private static void AssertNoErrorDiagnostics(GeneratorTestResult result)
+    {
+        Assert.DoesNotContain(result.Diagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    private static void AssertNoClientSource(GeneratorTestResult result)
+    {
+        Assert.DoesNotContain(result.GeneratedSources, static source => source.Contains(": IDisposable", StringComparison.Ordinal));
     }
 
     private static LoadedGeneratorAssembly LoadGeneratedAssembly(string openApi)
