@@ -1,6 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
-
-using Xunit;
+﻿using Xunit;
 
 namespace OpenApiWeaver.Tests;
 
@@ -11,9 +9,7 @@ public sealed partial class ClientGeneratorTests
     {
         var result = RunGenerator("   ");
 
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OAW001", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        AssertOnlyErrorDiagnostic(result, DocumentEmptyDiagnosticId);
         AssertNoClientSource(result);
     }
 
@@ -22,9 +18,7 @@ public sealed partial class ClientGeneratorTests
     {
         var result = RunGenerator("not: [valid");
 
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OAW003", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        AssertOnlyErrorDiagnostic(result, DocumentInvalidDiagnosticId);
         AssertNoClientSource(result);
     }
 
@@ -61,9 +55,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OAW005", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
         Assert.Contains("multipart/form-data request bodies must reference a named component schema", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -103,9 +95,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OAW005", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
         Assert.Contains("additionalProperties or patternProperties", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -152,9 +142,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OAW005", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
         Assert.Contains("uses oneOf/anyOf", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -182,9 +170,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("OAW006", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertOnlyErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
         Assert.Contains("inline oneOf members", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -211,9 +197,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW006");
-        Assert.Equal("OAW006", diagnostic.Id);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
         Assert.Contains("without oneOf", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -243,8 +227,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW006");
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
         Assert.Contains("discriminator with anyOf", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -287,8 +270,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW006");
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
         Assert.Contains("duplicate discriminator value", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -328,8 +310,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW006");
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
         Assert.Contains("must reference a schema listed in oneOf", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -370,8 +351,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW006");
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
         Assert.Contains("multiple discriminator hierarchies", diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
@@ -408,14 +388,8 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = Assert.Single(result.Diagnostics, static item => item.Id == "OAW007");
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        var diagnostic = AssertSingleErrorDiagnostic(result, SchemaUnsupportedDiagnosticId);
         Assert.Contains("both readOnly and writeOnly", diagnostic.GetMessage());
         AssertNoClientSource(result);
-    }
-
-    private static void AssertNoClientSource(GeneratorTestResult result)
-    {
-        Assert.DoesNotContain(result.GeneratedSources, static source => source.Contains(": IDisposable"));
     }
 }
