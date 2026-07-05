@@ -1,4 +1,4 @@
-namespace OpenApiWeaver.Models;
+﻿namespace OpenApiWeaver.Models;
 
 internal sealed class CSharpTypeReference(string nonNullableName, TypeShape shape, bool canBeNull)
 {

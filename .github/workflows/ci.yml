@@ -50,5 +50,8 @@ jobs:
       - name: Build
         run: dotnet build OpenApiWeaver.slnx --configuration Release --no-restore
 
+      - name: Format
+        run: dotnet format OpenApiWeaver.slnx --verify-no-changes --verbosity detailed --no-restore
+
       - name: Test
         run: dotnet test OpenApiWeaver.slnx --configuration Release --no-build

@@ -1,4 +1,4 @@
-using Microsoft.OpenApi;
+﻿using Microsoft.OpenApi;
 
 using OpenApiParameterLocation = Microsoft.OpenApi.ParameterLocation;
 

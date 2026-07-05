@@ -1,4 +1,4 @@
-namespace OpenApiWeaver;
+﻿namespace OpenApiWeaver;
 
 public sealed partial class ClientGenerator
 {

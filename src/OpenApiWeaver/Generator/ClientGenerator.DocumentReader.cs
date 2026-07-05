@@ -1,4 +1,4 @@
-using Microsoft.OpenApi.Reader;
+﻿using Microsoft.OpenApi.Reader;
 using Microsoft.OpenApi.YamlReader;
 
 namespace OpenApiWeaver;
