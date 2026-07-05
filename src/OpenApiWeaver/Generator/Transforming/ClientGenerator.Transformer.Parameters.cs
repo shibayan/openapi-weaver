@@ -1,4 +1,4 @@
-using Microsoft.OpenApi;
+﻿using Microsoft.OpenApi;
 
 using ModelParameterLocation = OpenApiWeaver.Models.ParameterLocation;
 using OpenApiParameterLocation = Microsoft.OpenApi.ParameterLocation;

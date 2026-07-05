@@ -1,4 +1,4 @@
-namespace OpenApiWeaver.CodeGeneration;
+﻿namespace OpenApiWeaver.CodeGeneration;
 
 internal static class SupportTypeNames
 {

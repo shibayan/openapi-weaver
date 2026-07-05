@@ -1,4 +1,4 @@
-using Microsoft.OpenApi;
+﻿using Microsoft.OpenApi;
 
 namespace OpenApiWeaver.OpenApi;
 
