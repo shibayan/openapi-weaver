@@ -21,6 +21,7 @@
 <!-- List the commands or manual checks you ran, for example: `dotnet test OpenApiWeaver.slnx`. -->
 
 - [ ] `dotnet build OpenApiWeaver.slnx`
+- [ ] `dotnet format OpenApiWeaver.slnx --verify-no-changes --verbosity detailed --no-restore`
 - [ ] `dotnet test OpenApiWeaver.slnx`
 - [ ] Not applicable
 
