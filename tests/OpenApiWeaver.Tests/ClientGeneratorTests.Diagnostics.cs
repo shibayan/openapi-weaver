@@ -23,6 +23,113 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void PipeDelimitedQueryParameter_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Parameter Style API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: ids
+                      in: query
+                      required: true
+                      style: pipeDelimited
+                      schema:
+                        type: array
+                        items:
+                          type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
+
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertOnlyErrorDiagnostic(result, ParameterUnsupportedDiagnosticId);
+        Assert.Contains("PipeDelimited", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
+    public void NonExplodedArrayQueryParameter_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Parameter Style API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: ids
+                      in: query
+                      required: true
+                      explode: false
+                      schema:
+                        type: array
+                        items:
+                          type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
+
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertOnlyErrorDiagnostic(result, ParameterUnsupportedDiagnosticId);
+        Assert.Contains("explode: false", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
+    public void NonExplodedScalarQueryParameter_GeneratesClient()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Parameter Style API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: page
+                      in: query
+                      required: true
+                      explode: false
+                      schema:
+                        type: integer
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"page\", OpenApiClientHelpers.FormatParameter(page));", source);
+    }
+
+    [Fact]
     public void InlineMultipartRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
     {
         const string openApi = """

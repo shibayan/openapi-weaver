@@ -51,16 +51,30 @@ internal sealed class SchemaCatalog
     public string AllocateTypeName(string? parentTypeName, string suggestedTypeName)
     {
         var baseTypeName = string.IsNullOrWhiteSpace(suggestedTypeName) ? "Model" : suggestedTypeName;
+        var enclosingTypeName = GetDeclaredTypeName(parentTypeName);
         var candidate = baseTypeName;
         var suffix = 2;
 
-        while (!_usedTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate)))
+        // A nested type cannot share the name of its enclosing type (CS0542).
+        while (string.Equals(candidate, enclosingTypeName, StringComparison.Ordinal)
+            || !_usedTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate)))
         {
             candidate = baseTypeName + suffix.ToString(CultureInfo.InvariantCulture);
             suffix++;
         }
 
         return candidate;
+    }
+
+    private static string? GetDeclaredTypeName(string? parentTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(parentTypeName))
+        {
+            return null;
+        }
+
+        var lastDotIndex = parentTypeName!.LastIndexOf('.');
+        return lastDotIndex < 0 ? parentTypeName : parentTypeName.Substring(lastDotIndex + 1);
     }
 
     private static string BuildQualifiedTypeName(string? parentTypeName, string declaredTypeName)

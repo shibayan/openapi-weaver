@@ -92,7 +92,7 @@ internal sealed class OperationRequestBodyEmitter(ClientModel model)
         {
             case RequestBodyValueKind.Binary:
                 writer.Append("new ByteArrayContent(").Append(valueExpression).Append(")")
-                    .Append(", \"").Append(EscapeStringLiteral(name)).AppendLine("\");");
+                    .Append(", \"").Append(EscapeStringLiteral(name)).Append("\", \"").Append(EscapeStringLiteral(name)).AppendLine("\");");
                 break;
             case RequestBodyValueKind.Scalar:
                 writer.Append("new StringContent(OpenApiClientHelpers.FormatParameter(").Append(valueExpression).Append("))")

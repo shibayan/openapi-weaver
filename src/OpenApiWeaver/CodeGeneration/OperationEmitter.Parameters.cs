@@ -62,13 +62,14 @@ internal sealed partial class OperationEmitter
 
     private static void EmitQueryParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
     {
+        var encodedWireName = Uri.EscapeDataString(parameter.WireName);
         if (parameter.IsArray)
         {
-            writer.Append("OpenApiClientHelpers.AppendQueryParameters(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ").Append(parameter.ParameterName).AppendLine(");");
+            writer.Append("OpenApiClientHelpers.AppendQueryParameters(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(encodedWireName)).Append("\", ").Append(parameter.ParameterName).AppendLine(");");
             return;
         }
 
-        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(encodedWireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
     }
 
     private static void EmitHeaderParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
@@ -80,7 +81,7 @@ internal sealed partial class OperationEmitter
 
     private static void EmitCookieParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
     {
-        writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(parameter.WireName)).Append("\", ");
+        writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(parameter.WireName))).Append("\", ");
         EmitParameterValue(writer, parameter);
         writer.AppendLine(");");
     }

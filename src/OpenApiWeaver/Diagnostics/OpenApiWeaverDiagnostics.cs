@@ -62,6 +62,14 @@ internal static class OpenApiWeaverDiagnostics
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor ParameterUnsupportedDescriptor = new(
+        "OAW008",
+        "OpenAPI parameter uses an unsupported feature",
+        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static Diagnostic CreateDocumentEmpty(string path)
         => Diagnostic.Create(DocumentEmptyDescriptor, Location.None, path);
 
@@ -83,6 +91,7 @@ internal static class OpenApiWeaverDiagnostics
             UnsupportedFeatureKind.RequestBody => RequestBodyUnsupportedDescriptor,
             UnsupportedFeatureKind.Discriminator => DiscriminatorUnsupportedDescriptor,
             UnsupportedFeatureKind.Schema => SchemaUnsupportedDescriptor,
+            UnsupportedFeatureKind.Parameter => ParameterUnsupportedDescriptor,
             _ => DocumentUnsupportedDescriptor
         };
 }
@@ -92,5 +101,6 @@ internal enum UnsupportedFeatureKind
     General,
     RequestBody,
     Discriminator,
-    Schema
+    Schema,
+    Parameter
 }

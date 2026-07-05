@@ -380,7 +380,7 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("[JsonPropertyName(\"company_id\")]", source);
         Assert.DoesNotContain("PropertyCache<TBody>", source);
         Assert.Contains("var content = new MultipartFormDataContent();", source);
-        Assert.Contains("content.Add(new ByteArrayContent(body.Receipt), \"receipt\");", source);
+        Assert.Contains("content.Add(new ByteArrayContent(body.Receipt), \"receipt\", \"receipt\");", source);
         Assert.Contains("content.Add(new StringContent(OpenApiClientHelpers.FormatParameter(body.CompanyId)), \"company_id\");", source);
         Assert.Contains("request.Content = content;", source);
     }
@@ -1444,6 +1444,106 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public async Task ParameterNamesWithReservedCharacters_AreUrlEncoded()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Encoded Name API
+              version: v1
+            paths:
+              /reports:
+                get:
+                  operationId: list_reports
+                  parameters:
+                    - name: 'filter value&x'
+                      in: query
+                      required: true
+                      schema:
+                        type: string
+                    - name: 'session id'
+                      in: cookie
+                      required: true
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+        """;
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new RecordingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com/")
+        };
+
+        var client = Activator.CreateInstance(clientType, httpClient);
+        Assert.NotNull(client);
+
+        var operationProperty = Assert.Single(clientType.GetProperties(), static property => property.PropertyType.GetMethod("ListReportsAsync") is not null);
+        var operationClient = operationProperty.GetValue(client);
+        Assert.NotNull(operationClient);
+
+        var operationMethod = operationClient.GetType().GetMethod("ListReportsAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        var invocation = Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, ["abc", "xyz", CancellationToken.None]));
+        await invocation;
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(new Uri("https://api.example.com/reports?filter%20value%26x=abc"), request.RequestUri);
+        Assert.Equal(["session%20id=xyz"], Assert.Contains("Cookie", request.Headers));
+    }
+
+    [Fact]
+    public void MultipartBinaryPart_IncludesFileName()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Upload API
+              version: v1
+            paths:
+              /uploads:
+                post:
+                  operationId: create_upload
+                  requestBody:
+                    required: true
+                    content:
+                      multipart/form-data:
+                        schema:
+                          $ref: '#/components/schemas/uploadParams'
+                  responses:
+                    '201':
+                      description: created
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+            components:
+              schemas:
+                uploadParams:
+                  type: object
+                  required:
+                    - file
+                  properties:
+                    file:
+                      type: string
+                      format: binary
+        """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("content.Add(new ByteArrayContent(body.File), \"file\", \"file\");", source);
+    }
+
+    [Fact]
     public void PathAndOperationParameters_AreCombinedIntoMethodSignature()
     {
         const string openApi = """
@@ -1793,7 +1893,7 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("public required byte[] File", source);
         Assert.Contains("public string? Description", source);
         Assert.Contains("var content = new MultipartFormDataContent();", source);
-        Assert.Contains("content.Add(new ByteArrayContent(body.File), \"file\");", source);
+        Assert.Contains("content.Add(new ByteArrayContent(body.File), \"file\", \"file\");", source);
         Assert.Contains("if (body.Description is not null)", source);
         Assert.Contains("content.Add(new StringContent(OpenApiClientHelpers.FormatParameter(body.Description)), \"description\");", source);
     }
