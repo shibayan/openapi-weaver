@@ -9,7 +9,8 @@ internal sealed class ClientModel(
     string? serverUrl,
     IReadOnlyList<SchemaDefinition> schemas,
     IReadOnlyList<TagGroup> tagGroups,
-    IReadOnlyList<SecuritySchemeBinding> securitySchemes)
+    IReadOnlyList<SecuritySchemeBinding> securitySchemes,
+    bool hasDirectionalSchemaProperties)
 {
     public string RootNamespace { get; } = rootNamespace;
     public string ClientName { get; } = clientName;
@@ -20,7 +21,7 @@ internal sealed class ClientModel(
     public IReadOnlyList<SchemaDefinition> Schemas { get; } = schemas;
     public IReadOnlyList<TagGroup> TagGroups { get; } = tagGroups;
     public IReadOnlyList<SecuritySchemeBinding> SecuritySchemes { get; } = securitySchemes;
-    public bool HasDirectionalSchemaProperties { get; } = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
+    public bool HasDirectionalSchemaProperties { get; } = hasDirectionalSchemaProperties;
 }
 
 internal sealed class TagGroup(string propertyName, string className, string? description, IReadOnlyList<OperationGroupItem> operations)

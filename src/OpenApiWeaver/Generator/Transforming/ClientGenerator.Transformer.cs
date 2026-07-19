@@ -36,7 +36,8 @@ public sealed partial class ClientGenerator
 
             var securitySchemes = BuildSecuritySchemes();
             var schemas = BuildSchemaDefinitions();
-            var serializerOptionsTypeName = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly))
+            var hasDirectionalSchemaProperties = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
+            var serializerOptionsTypeName = hasDirectionalSchemaProperties
                 ? _schemaCatalog.AllocateTypeName(parentTypeName: null, SupportTypeNames.CreateSerializerOptionsTypeName(_clientName))
                 : string.Empty;
             var tagGroups = BuildTagGroups(securitySchemes, serializerOptionsTypeName);
@@ -50,7 +51,8 @@ public sealed partial class ClientGenerator
                 _document.Servers?.FirstOrDefault()?.Url,
                 schemas,
                 tagGroups,
-                securitySchemes);
+                securitySchemes,
+                hasDirectionalSchemaProperties);
         }
 
     }
