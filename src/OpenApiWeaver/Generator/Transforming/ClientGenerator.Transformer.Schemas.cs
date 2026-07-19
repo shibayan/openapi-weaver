@@ -301,7 +301,7 @@ public sealed partial class ClientGenerator
 
         private void RegisterRequestBodyInlineSchema(IOpenApiRequestBody? requestBody, string operationName)
         {
-            if (requestBody is null || !TrySelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority, out var selectedContent))
+            if (!TrySelectRequestBodyContent(requestBody, out var selectedContent))
             {
                 return;
             }
@@ -311,8 +311,7 @@ public sealed partial class ClientGenerator
 
         private void RegisterResponseInlineSchema(OpenApiOperation operation, string operationName)
         {
-            var response = SelectSuccessResponse(operation.Responses ?? []);
-            if (response is null || !TrySelectPreferredContent(response.Content, GetResponseContentPriority, out var selectedContent))
+            if (!TrySelectSuccessResponseContent(operation, out _, out var selectedContent))
             {
                 return;
             }
@@ -322,32 +321,9 @@ public sealed partial class ClientGenerator
 
         private void RegisterErrorResponseInlineSchemas(OpenApiOperation operation, string operationName)
         {
-            if (operation.Responses is null || operation.Responses.Count == 0)
+            foreach (var (statusPattern, _, selectedContent) in EnumerateErrorResponseContents(operation))
             {
-                return;
-            }
-
-            var hasSuccessStatus = operation.Responses.Any(static item => IsSuccessResponseStatus(item.Key));
-
-            foreach (var item in operation.Responses)
-            {
-                if (IsSuccessResponseStatus(item.Key))
-                {
-                    continue;
-                }
-
-                if (!hasSuccessStatus && string.Equals(item.Key, "default", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (!TrySelectPreferredContent(item.Value.Content, GetErrorResponseContentPriority, out var selectedContent)
-                    || !IsUsableErrorContent(selectedContent))
-                {
-                    continue;
-                }
-
-                RegisterOperationInlineSchema(selectedContent.Value.Schema, operationName, BuildErrorResponseChildName(item.Key));
+                RegisterOperationInlineSchema(selectedContent.Value.Schema, operationName, BuildErrorResponseChildName(statusPattern));
             }
         }
 
