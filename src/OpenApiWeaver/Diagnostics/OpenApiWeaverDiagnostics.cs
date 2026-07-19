@@ -79,9 +79,6 @@ internal static class OpenApiWeaverDiagnostics
     public static Diagnostic CreateDocumentInvalid(string path, string message)
         => Diagnostic.Create(DocumentInvalidDescriptor, Location.None, path, message);
 
-    public static Diagnostic CreateDocumentUnsupported(string path, string message)
-        => Diagnostic.Create(DocumentUnsupportedDescriptor, Location.None, path, message);
-
     public static Diagnostic CreateDocumentUnsupported(string path, UnsupportedFeatureKind kind, string message)
         => Diagnostic.Create(GetUnsupportedDescriptor(kind), Location.None, path, message);
 

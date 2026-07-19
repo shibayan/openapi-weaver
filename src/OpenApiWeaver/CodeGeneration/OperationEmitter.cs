@@ -7,6 +7,9 @@ internal sealed partial class OperationEmitter(ClientModel model)
     private readonly ClientModel _model = model;
     private readonly OperationRequestBodyEmitter _requestBodyEmitter = new(model);
 
+    private string GetSerializerOptionsExpression(JsonSerializerDirection direction)
+        => JsonSerializerOptionsEmitter.GetOptionsExpression(_model, direction);
+
     public void Emit(IndentedStringBuilder writer, OperationGroupItem operation)
     {
         var route = NormalizeRelativeRoute(operation.Route);
