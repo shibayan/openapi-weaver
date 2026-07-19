@@ -6,9 +6,12 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Transformer
     {
+        private static bool TrySelectRequestBodyContent(IOpenApiRequestBody requestBody, out KeyValuePair<string, IOpenApiMediaType> selectedContent)
+            => TrySelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority, out selectedContent);
+
         private RequestBodyInfo? ResolveRequestBody(IOpenApiRequestBody? requestBody, ISet<string> usedParameterNames)
         {
-            if (requestBody is null || !TrySelectPreferredContent(requestBody.Content, GetRequestBodyContentPriority, out var selectedContent))
+            if (requestBody is null || !TrySelectRequestBodyContent(requestBody, out var selectedContent))
             {
                 return null;
             }

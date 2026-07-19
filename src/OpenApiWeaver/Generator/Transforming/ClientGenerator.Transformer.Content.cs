@@ -7,25 +7,7 @@ public sealed partial class ClientGenerator
     private sealed partial class Transformer
     {
         private static int GetRequestBodyContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-        {
-            var mediaType = StripMediaTypeParameters(item.Key);
-            if (IsJsonMediaType(mediaType))
-            {
-                return 0;
-            }
-
-            if (string.Equals(mediaType, "application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
-            {
-                return 1;
-            }
-
-            if (string.Equals(mediaType, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
-            {
-                return 2;
-            }
-
-            return int.MaxValue;
-        }
+            => TryResolveRequestBodyKind(item.Key) is { } kind ? (int)kind : int.MaxValue;
 
         private int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
             => GetContentPriority(item, IsJson, IsBinary, IsText);
@@ -87,7 +69,7 @@ public sealed partial class ClientGenerator
             return true;
         }
 
-        private static bool IsUsableErrorContent(KeyValuePair<string, IOpenApiMediaType> content)
+        private static bool IsUsableContent(KeyValuePair<string, IOpenApiMediaType> content)
         {
             return content.Value.Schema is not null
                 || content.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase);

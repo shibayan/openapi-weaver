@@ -10,8 +10,7 @@ public sealed partial class ClientGenerator
     {
         private ResponseInfo ResolveResponse(OpenApiOperation operation)
         {
-            var response = SelectSuccessResponse(operation.Responses ?? []);
-            if (response is null || !TrySelectPreferredContent(response.Content, GetResponseContentPriority, out var selectedContent))
+            if (!TrySelectSuccessResponseContent(operation, out var response, out var selectedContent))
             {
                 return new ResponseInfo(ResponseKind.None, type: null, null);
             }
@@ -22,16 +21,44 @@ public sealed partial class ClientGenerator
             return new ResponseInfo(kind, type, !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Description);
         }
 
+        private bool TrySelectSuccessResponseContent(
+            OpenApiOperation operation,
+            out IOpenApiResponse response,
+            out KeyValuePair<string, IOpenApiMediaType> selectedContent)
+        {
+            var selected = SelectSuccessResponse(operation.Responses ?? []);
+            if (selected is not null && TrySelectPreferredContent(selected.Content, GetResponseContentPriority, out selectedContent))
+            {
+                response = selected;
+                return true;
+            }
+
+            response = null!;
+            selectedContent = default;
+            return false;
+        }
+
         private List<ErrorResponseInfo> ResolveErrorResponses(OpenApiOperation operation)
+        {
+            var errorResponses = new List<ErrorResponseInfo>();
+            foreach (var (statusPattern, response, selectedContent) in EnumerateErrorResponseContents(operation))
+            {
+                errorResponses.Add(new ErrorResponseInfo(statusPattern, CreateErrorResponseInfo(response, selectedContent)));
+            }
+
+            errorResponses.Sort(static (left, right) => CompareErrorResponseStatus(left.StatusCodePattern, right.StatusCodePattern));
+            return errorResponses;
+        }
+
+        private IEnumerable<(string StatusPattern, IOpenApiResponse Response, KeyValuePair<string, IOpenApiMediaType> Content)> EnumerateErrorResponseContents(OpenApiOperation operation)
         {
             if (operation.Responses is null || operation.Responses.Count == 0)
             {
-                return [];
+                yield break;
             }
 
             var hasSuccessStatus = operation.Responses.Any(static item => IsSuccessResponseStatus(item.Key));
 
-            var errorResponses = new List<ErrorResponseInfo>();
             foreach (var item in operation.Responses)
             {
                 if (IsSuccessResponseStatus(item.Key))
@@ -44,27 +71,18 @@ public sealed partial class ClientGenerator
                     continue;
                 }
 
-                var response = ResolveErrorResponse(item.Value);
-                if (response is null)
+                if (!TrySelectPreferredContent(item.Value.Content, GetErrorResponseContentPriority, out var selectedContent)
+                    || !IsUsableContent(selectedContent))
                 {
                     continue;
                 }
 
-                errorResponses.Add(new ErrorResponseInfo(item.Key, response));
+                yield return (item.Key, item.Value, selectedContent);
             }
-
-            errorResponses.Sort(static (left, right) => CompareErrorResponseStatus(left.StatusCodePattern, right.StatusCodePattern));
-            return errorResponses;
         }
 
-        private ResponseInfo? ResolveErrorResponse(IOpenApiResponse response)
+        private ResponseInfo CreateErrorResponseInfo(IOpenApiResponse response, KeyValuePair<string, IOpenApiMediaType> selectedContent)
         {
-            if (!TrySelectPreferredContent(response.Content, GetErrorResponseContentPriority, out var selectedContent)
-                || !IsUsableErrorContent(selectedContent))
-            {
-                return null;
-            }
-
             var type = ResolveResponseTypeUsage(selectedContent.Key, selectedContent.Value.Schema);
             var kind = selectedContent.Value.Schema is null && selectedContent.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
                 ? ResponseKind.String
@@ -197,7 +215,7 @@ public sealed partial class ClientGenerator
 
             foreach (var mediaType in response.Content)
             {
-                if (mediaType.Value.Schema is not null || mediaType.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+                if (IsUsableContent(mediaType))
                 {
                     return true;
                 }
