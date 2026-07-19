@@ -61,14 +61,22 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
                 _ => BuildIntegerEnumMemberName(enumValue)
             };
 
-            if (!usedMemberNames.ContainsKey(memberName))
+            if (!usedMemberNames.TryGetValue(memberName, out var counter))
             {
                 usedMemberNames[memberName] = 1;
             }
             else
             {
-                usedMemberNames[memberName]++;
-                memberName += usedMemberNames[memberName].ToString(CultureInfo.InvariantCulture);
+                string candidate;
+                do
+                {
+                    counter++;
+                    candidate = memberName + counter.ToString(CultureInfo.InvariantCulture);
+                } while (usedMemberNames.ContainsKey(candidate));
+
+                usedMemberNames[memberName] = counter;
+                usedMemberNames[candidate] = 1;
+                memberName = candidate;
             }
 
             members.Add(new SchemaEnumMemberDefinition(memberName, enumValue));

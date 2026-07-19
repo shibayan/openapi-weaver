@@ -208,6 +208,58 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void EnumSchema_CollidingMemberNames_GeneratesUniqueMembers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Enum API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                conflictStatus:
+                  type: string
+                  enum:
+                    - pending2
+                    - pending
+                    - Pending
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public static readonly ConflictStatus Pending2 = new(\"pending2\");", source);
+        Assert.Contains("public static readonly ConflictStatus Pending = new(\"pending\");", source);
+        Assert.Contains("public static readonly ConflictStatus Pending3 = new(\"Pending\");", source);
+    }
+
+    [Fact]
+    public void EnumSchema_SuffixedNameCollidingWithLaterValue_GeneratesUniqueMembers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Enum API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                conflictStatus:
+                  type: string
+                  enum:
+                    - pending
+                    - Pending
+                    - pending2
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public static readonly ConflictStatus Pending = new(\"pending\");", source);
+        Assert.Contains("public static readonly ConflictStatus Pending2 = new(\"Pending\");", source);
+        Assert.Contains("public static readonly ConflictStatus Pending22 = new(\"pending2\");", source);
+    }
+
+    [Fact]
     public void IntegerEnumSchema_GeneratesCSharpEnumType()
     {
         const string openApi = """
