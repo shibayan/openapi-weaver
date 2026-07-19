@@ -90,27 +90,68 @@ internal sealed partial class OperationEmitter(ClientModel model)
         }
 
         writer.AppendLine("{");
-        using var _ = writer.PushIndent();
-        EmitSecurityRequirementSelection(writer, operation);
-        var usesPathBuilder = pathParameters.Count > 0 || queryParameters.Count > 0 || querySecuritySchemes.Count > 0;
-        if (usesPathBuilder)
+        using (writer.PushIndent())
         {
-            writer.AppendLine("var pathBuilder = new StringBuilder();");
-            EmitRouteTemplate(writer, route, pathParameters);
-        }
-        else
-        {
-            writer.Append("var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
-        }
+            EmitSecurityRequirementSelection(writer, operation);
+            var usesPathBuilder = pathParameters.Count > 0 || queryParameters.Count > 0 || querySecuritySchemes.Count > 0;
+            if (usesPathBuilder)
+            {
+                writer.AppendLine("var pathBuilder = new StringBuilder();");
+                EmitRouteTemplate(writer, route, pathParameters);
+            }
+            else
+            {
+                writer.Append("var path = \"").Append(EscapeStringLiteral(route)).AppendLine("\";");
+            }
 
-        if (queryParameters.Count > 0 || querySecuritySchemes.Count > 0)
-        {
-            writer.AppendLine("var hasQuery = false;");
-            foreach (var parameter in queryParameters)
+            if (queryParameters.Count > 0 || querySecuritySchemes.Count > 0)
+            {
+                writer.AppendLine("var hasQuery = false;");
+                foreach (var parameter in queryParameters)
+                {
+                    if (parameter.Required)
+                    {
+                        EmitQueryParameterAppend(writer, parameter);
+                    }
+                    else
+                    {
+                        writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+                        writer.AppendLine("{");
+                        using (writer.PushIndent())
+                        {
+                            EmitQueryParameterAppend(writer, parameter);
+                        }
+
+                        writer.AppendLine("}");
+                    }
+                }
+            }
+
+            foreach (var securityScheme in querySecuritySchemes)
+            {
+                EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+                {
+                    writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(securityScheme.HeaderOrParameterName))).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                });
+            }
+
+            if (usesPathBuilder)
+            {
+                writer.AppendLine("var path = pathBuilder.ToString();");
+            }
+
+            writer.Append("using var request = new HttpRequestMessage(").Append(GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
+
+            if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
+            {
+                writer.AppendLine("var cookieBuilder = new StringBuilder();");
+            }
+
+            foreach (var parameter in headerParameters)
             {
                 if (parameter.Required)
                 {
-                    EmitQueryParameterAppend(writer, parameter);
+                    EmitHeaderParameterAppend(writer, parameter);
                 }
                 else
                 {
@@ -118,159 +159,120 @@ internal sealed partial class OperationEmitter(ClientModel model)
                     writer.AppendLine("{");
                     using (writer.PushIndent())
                     {
-                        EmitQueryParameterAppend(writer, parameter);
+                        EmitHeaderParameterAppend(writer, parameter);
                     }
 
                     writer.AppendLine("}");
                 }
             }
-        }
 
-        foreach (var securityScheme in querySecuritySchemes)
-        {
-            EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+            foreach (var parameter in cookieParameters)
             {
-                writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(securityScheme.HeaderOrParameterName))).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
-            });
-        }
-
-        if (usesPathBuilder)
-        {
-            writer.AppendLine("var path = pathBuilder.ToString();");
-        }
-
-        writer.Append("using var request = new HttpRequestMessage(").Append(GetHttpMethodExpression(operation.OperationType)).AppendLine(", new Uri(path, UriKind.Relative));");
-
-        if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
-        {
-            writer.AppendLine("var cookieBuilder = new StringBuilder();");
-        }
-
-        foreach (var parameter in headerParameters)
-        {
-            if (parameter.Required)
-            {
-                EmitHeaderParameterAppend(writer, parameter);
-            }
-            else
-            {
-                writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                writer.AppendLine("{");
-                using (writer.PushIndent())
-                {
-                    EmitHeaderParameterAppend(writer, parameter);
-                }
-
-                writer.AppendLine("}");
-            }
-        }
-
-        foreach (var parameter in cookieParameters)
-        {
-            if (parameter.Required)
-            {
-                EmitCookieParameterAppend(writer, parameter);
-            }
-            else
-            {
-                writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                writer.AppendLine("{");
-                using (writer.PushIndent())
+                if (parameter.Required)
                 {
                     EmitCookieParameterAppend(writer, parameter);
                 }
-
-                writer.AppendLine("}");
-            }
-        }
-
-        foreach (var securityScheme in GetOperationSecuritySchemesExcept(operation, SecuritySchemeLocation.Query))
-        {
-            if (securityScheme.Location == SecuritySchemeLocation.Cookie)
-            {
-                EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+                else
                 {
-                    writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(securityScheme.HeaderOrParameterName))).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
-                });
-                continue;
+                    writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        EmitCookieParameterAppend(writer, parameter);
+                    }
+
+                    writer.AppendLine("}");
+                }
             }
 
-            EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+            foreach (var securityScheme in GetOperationSecuritySchemesExcept(operation, SecuritySchemeLocation.Query))
             {
-                if (securityScheme.IsBearerToken)
+                if (securityScheme.Location == SecuritySchemeLocation.Cookie)
                 {
-                    writer.Append("request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.FieldName).AppendLine(");");
-                    return;
+                    EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+                    {
+                        writer.Append("OpenApiClientHelpers.AppendCookieParameter(cookieBuilder, \"").Append(EscapeStringLiteral(Uri.EscapeDataString(securityScheme.HeaderOrParameterName))).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                    });
+                    continue;
                 }
 
-                writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
-            });
-        }
+                EmitSecuritySchemeBlock(writer, operation, securityScheme, () =>
+                {
+                    if (securityScheme.IsBearerToken)
+                    {
+                        writer.Append("request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(\"Bearer\", ").Append(securityScheme.FieldName).AppendLine(");");
+                        return;
+                    }
 
-        if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
-        {
-            writer.AppendLine("if (cookieBuilder.Length > 0)");
-            writer.AppendLine("{");
-            using (writer.PushIndent())
-            {
-                writer.AppendLine("request.Headers.TryAddWithoutValidation(\"Cookie\", cookieBuilder.ToString());");
+                    writer.Append("request.Headers.TryAddWithoutValidation(\"").Append(EscapeStringLiteral(securityScheme.HeaderOrParameterName)).Append("\", ").Append(securityScheme.FieldName).AppendLine(");");
+                });
             }
 
-            writer.AppendLine("}");
-        }
-
-        if (operation.RequestBody is not null)
-        {
-            if (operation.RequestBody.IsRequired)
+            if (cookieParameters.Count > 0 || cookieSecuritySchemes.Count > 0)
             {
-                _requestBodyEmitter.EmitContentAssignment(writer, operation.RequestBody, nullableBody: false);
-            }
-            else
-            {
-                writer.Append("if (").Append(operation.RequestBody.ParameterName).AppendLine(" is not null)");
+                writer.AppendLine("if (cookieBuilder.Length > 0)");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
-                    _requestBodyEmitter.EmitContentAssignment(writer, operation.RequestBody, nullableBody: true);
+                    writer.AppendLine("request.Headers.TryAddWithoutValidation(\"Cookie\", cookieBuilder.ToString());");
                 }
 
                 writer.AppendLine("}");
             }
-        }
 
-        writer.AppendLine("using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);");
-        writer.AppendLine("if (!response.IsSuccessStatusCode)");
-        writer.AppendLine("{");
-        using (writer.PushIndent())
-        {
-            EmitErrorResponseHandling(writer, operation);
-        }
+            if (operation.RequestBody is not null)
+            {
+                if (operation.RequestBody.IsRequired)
+                {
+                    _requestBodyEmitter.EmitContentAssignment(writer, operation.RequestBody, nullableBody: false);
+                }
+                else
+                {
+                    writer.Append("if (").Append(operation.RequestBody.ParameterName).AppendLine(" is not null)");
+                    writer.AppendLine("{");
+                    using (writer.PushIndent())
+                    {
+                        _requestBodyEmitter.EmitContentAssignment(writer, operation.RequestBody, nullableBody: true);
+                    }
 
-        writer.AppendLine("}");
+                    writer.AppendLine("}");
+                }
+            }
 
-        if (operation.Response.Kind == ResponseKind.None)
-        {
-            writer.AppendLine("return;");
-        }
-        else if (operation.Response.Kind == ResponseKind.String)
-        {
-            writer.AppendLine("return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
-        }
-        else if (operation.Response.Kind == ResponseKind.Binary)
-        {
-            writer.AppendLine("return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);");
-        }
-        else if (operation.Response.Type?.RequiresNonNullJsonResponse == true)
-        {
-            writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false)");
+            writer.AppendLine("using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);");
+            writer.AppendLine("if (!response.IsSuccessStatusCode)");
+            writer.AppendLine("{");
             using (writer.PushIndent())
             {
-                writer.AppendLine("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);");
+                EmitErrorResponseHandling(writer, operation);
             }
-        }
-        else
-        {
-            writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false);");
+
+            writer.AppendLine("}");
+
+            if (operation.Response.Kind == ResponseKind.None)
+            {
+                writer.AppendLine("return;");
+            }
+            else if (operation.Response.Kind == ResponseKind.String)
+            {
+                writer.AppendLine("return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);");
+            }
+            else if (operation.Response.Kind == ResponseKind.Binary)
+            {
+                writer.AppendLine("return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);");
+            }
+            else if (operation.Response.Type?.RequiresNonNullJsonResponse == true)
+            {
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false)");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("?? throw new OpenApiException((int)response.StatusCode, response.ReasonPhrase, response.Content?.Headers?.ContentType?.MediaType, null);");
+                }
+            }
+            else
+            {
+                writer.Append("return await response.Content.ReadFromJsonAsync<").Append(operation.Response.ResponseTypeName).Append(">(").Append(GetSerializerOptionsExpression(JsonSerializerDirection.Response)).AppendLine(", cancellationToken).ConfigureAwait(false);");
+            }
         }
 
         writer.AppendLine("}");
