@@ -301,7 +301,7 @@ public sealed partial class ClientGenerator
 
         private void RegisterRequestBodyInlineSchema(IOpenApiRequestBody? requestBody, string operationName)
         {
-            if (!TrySelectRequestBodyContent(requestBody, out var selectedContent))
+            if (requestBody is null || !TrySelectRequestBodyContent(requestBody, out var selectedContent))
             {
                 return;
             }
