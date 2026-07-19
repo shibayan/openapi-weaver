@@ -8,11 +8,14 @@ internal sealed class SchemaTypeResolver(
     SchemaReferenceResolver schemaReferenceResolver,
     SchemaEnumResolver schemaEnumResolver)
 {
+    private static readonly TypeUsage s_requiredStringTypeUsage = TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: false);
+    private static readonly TypeUsage s_optionalStringTypeUsage = TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: true);
+
     public TypeUsage ResolveTypeUsage(IOpenApiSchema? schema, bool required)
     {
         if (schema is null)
         {
-            return TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: !required);
+            return required ? s_requiredStringTypeUsage : s_optionalStringTypeUsage;
         }
 
         if (cache.TryGetTypeUsage(schema, required, out var cachedTypeUsage))
@@ -32,7 +35,7 @@ internal sealed class SchemaTypeResolver(
         {
             return TypeUsage.Create(
                 schemaName,
-                GetTypeShape(schemaReferenceResolver.ResolveSchemaReference(schema)),
+                GetTypeShape(schema),
                 SchemaAllowsNull(schema),
                 isOptional: !required);
         }
@@ -89,7 +92,15 @@ internal sealed class SchemaTypeResolver(
     }
 
     public static bool IsDictionarySchema(IOpenApiSchema schema)
-        => IsDictionarySchemaCore(schema, new HashSet<string>(StringComparer.Ordinal));
+    {
+        if (schema.AdditionalProperties is not null || schema.PatternProperties is { Count: > 0 })
+        {
+            return true;
+        }
+
+        return schema.AllOf is { Count: > 0 }
+            && IsDictionarySchemaCore(schema, new HashSet<string>(StringComparer.Ordinal));
+    }
 
     private static bool IsDictionarySchemaCore(IOpenApiSchema schema, HashSet<string> visited)
     {
@@ -204,7 +215,6 @@ internal sealed class SchemaTypeResolver(
 
         var nullable = false;
         TypeUsage? representativeUsage = null;
-        var memberTypeNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var child in schemas)
         {
             if (SchemaReferenceResolver.IsNullOnlySchema(child))
@@ -214,11 +224,17 @@ internal sealed class SchemaTypeResolver(
             }
 
             var childUsage = ResolveTypeUsage(child, required: true);
-            representativeUsage ??= childUsage;
-            memberTypeNames.Add(childUsage.NonNullableCSharpTypeName);
+            if (representativeUsage is null)
+            {
+                representativeUsage = childUsage;
+            }
+            else if (!string.Equals(childUsage.NonNullableCSharpTypeName, representativeUsage.NonNullableCSharpTypeName, StringComparison.Ordinal))
+            {
+                return false;
+            }
         }
 
-        if (memberTypeNames.Count != 1 || representativeUsage is null)
+        if (representativeUsage is null)
         {
             return false;
         }

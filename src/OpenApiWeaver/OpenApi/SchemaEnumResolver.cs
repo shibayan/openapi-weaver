@@ -158,14 +158,21 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
             return SchemaEnumKind.None;
         }
 
-        return jsonValue.GetValueKind() switch
+        var valueKind = jsonValue.GetValueKind();
+        if (valueKind == JsonValueKind.String)
         {
-            JsonValueKind.String => SchemaEnumKind.String,
-            JsonValueKind.Number => IsIntegerLiteral(node.ToString())
-                ? SchemaEnumKind.Integer
-                : IsNumberLiteral(node.ToString()) ? SchemaEnumKind.Number : SchemaEnumKind.None,
-            _ => SchemaEnumKind.None
-        };
+            return SchemaEnumKind.String;
+        }
+
+        if (valueKind != JsonValueKind.Number)
+        {
+            return SchemaEnumKind.None;
+        }
+
+        var literal = node.ToString();
+        return IsIntegerLiteral(literal)
+            ? SchemaEnumKind.Integer
+            : IsNumberLiteral(literal) ? SchemaEnumKind.Number : SchemaEnumKind.None;
     }
 
     private static SchemaEnumKind ClassifyStringValueEnumKind(string value)
@@ -207,6 +214,8 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
 
     private static bool EnumValuesMatchKind(IOpenApiSchema schema, SchemaEnumKind expectedKind)
     {
+        var numberEnumValueType = expectedKind == SchemaEnumKind.Number ? GetNumberEnumValueType(schema) : null;
+
         foreach (var value in EnumerateEnumLiteralValues(schema))
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -219,8 +228,7 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
                 return false;
             }
 
-            if (expectedKind == SchemaEnumKind.Number
-                && !CanParseNumberLiteral(value, GetNumberEnumValueType(schema)))
+            if (numberEnumValueType is not null && !CanParseNumberLiteral(value, numberEnumValueType))
             {
                 return false;
             }

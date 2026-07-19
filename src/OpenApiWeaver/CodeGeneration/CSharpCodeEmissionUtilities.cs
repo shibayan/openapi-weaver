@@ -102,14 +102,25 @@ internal static class CSharpCodeEmissionUtilities
 
     private static IEnumerable<string> SplitDocumentationLines(string text)
     {
-        return text
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n')
-            .Replace(NextLineCharacter, '\n')
-            .Replace(LineSeparatorCharacter, '\n')
-            .Replace(ParagraphSeparatorCharacter, '\n')
-            .Split('\n')
-            .Select(static line => line.Trim());
+        var startIndex = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (ch is not ('\r' or '\n' or NextLineCharacter or LineSeparatorCharacter or ParagraphSeparatorCharacter))
+            {
+                continue;
+            }
+
+            yield return text.Substring(startIndex, i - startIndex).Trim();
+            if (ch == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+            {
+                i++;
+            }
+
+            startIndex = i + 1;
+        }
+
+        yield return text.Substring(startIndex).Trim();
     }
 
     private static string SanitizeDocumentationContent(string value)
@@ -117,6 +128,11 @@ internal static class CSharpCodeEmissionUtilities
         if (string.IsNullOrEmpty(value))
         {
             return string.Empty;
+        }
+
+        if (value.IndexOf('<') < 0)
+        {
+            return value;
         }
 
         var builder = new StringBuilder(value.Length);
