@@ -53,7 +53,6 @@ internal sealed class OperationGroupItem(
     public ResponseInfo Response { get; } = response;
     public IReadOnlyList<ErrorResponseInfo> ErrorResponses { get; } = errorResponses;
     public IReadOnlyList<SecurityRequirementInfo>? SecurityRequirements { get; } = securityRequirements;
-    public bool HasParameters { get; } = parameters.Count > 0;
 }
 
 internal sealed class ErrorResponseInfo(string statusCodePattern, ResponseInfo response)
@@ -81,18 +80,16 @@ internal enum TypeShape
 
 internal sealed class TypeUsage
 {
-    private TypeUsage(CSharpTypeReference csharpType, bool schemaAllowsNull, bool isOptional)
+    private TypeUsage(CSharpTypeReference csharpType, bool schemaAllowsNull)
     {
         CSharpType = csharpType;
         SchemaAllowsNull = schemaAllowsNull;
-        IsOptional = isOptional;
     }
 
     public CSharpTypeReference CSharpType { get; }
     public string NonNullableCSharpTypeName => CSharpType.NonNullableName;
     public TypeShape Shape => CSharpType.Shape;
     public bool SchemaAllowsNull { get; }
-    public bool IsOptional { get; }
     public bool CanBeNullInCSharp => CSharpType.CanBeNull;
     public string CSharpTypeName => CSharpType.Name;
     public bool RequiresNonNullJsonResponse => CSharpType.RequiresNonNullJsonResponse;
@@ -100,15 +97,13 @@ internal sealed class TypeUsage
     public static TypeUsage Create(string nonNullableCSharpTypeName, TypeShape shape, bool schemaAllowsNull, bool isOptional)
         => new(
             new CSharpTypeReference(nonNullableCSharpTypeName, shape, schemaAllowsNull || isOptional),
-            schemaAllowsNull,
-            isOptional);
+            schemaAllowsNull);
 }
 
 internal sealed class ParameterInfo(string wireName, string parameterName, TypeUsage type, bool required, ParameterLocation location, string? description)
 {
     public string WireName { get; } = wireName;
     public string ParameterName { get; } = parameterName;
-    public TypeUsage Type { get; } = type;
     public string ParameterTypeName { get; } = type.CSharpTypeName;
     public bool IsArray { get; } = type.Shape == TypeShape.Array;
     public bool Required { get; } = required;
@@ -218,7 +213,6 @@ internal sealed class RequestBodyInfo(
 {
     public RequestBodyKind Kind { get; } = kind;
     public string ContentType { get; } = contentType;
-    public TypeUsage Type { get; } = type;
     public string BodyTypeName { get; } = type.CSharpTypeName;
     public string ParameterName { get; } = parameterName;
     public bool IsRequired { get; } = isRequired;

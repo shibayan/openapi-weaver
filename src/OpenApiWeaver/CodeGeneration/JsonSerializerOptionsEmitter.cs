@@ -6,7 +6,7 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 {
     public static string GetOptionsExpression(ClientModel model, JsonSerializerDirection direction)
     {
-        if (!model.HasDirectionalSchemaProperties || direction == JsonSerializerDirection.Neutral)
+        if (!model.HasDirectionalSchemaProperties)
         {
             return SupportTypeNames.DefaultSerializerOptionsExpression;
         }
