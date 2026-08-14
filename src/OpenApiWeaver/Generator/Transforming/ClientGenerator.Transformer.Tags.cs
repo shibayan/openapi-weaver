@@ -36,7 +36,7 @@ public sealed partial class ClientGenerator
                     if (!accumulators.TryGetValue(groupName, out var accumulator))
                     {
                         tagDescriptions.TryGetValue(groupName, out var description);
-                        accumulator = new TagGroupAccumulator(groupName, description);
+                        accumulator = new TagGroupAccumulator(description);
                         accumulators[groupName] = accumulator;
                     }
 
@@ -64,7 +64,7 @@ public sealed partial class ClientGenerator
                     {
                         var propertyName = AllocateUniqueName(
                             usedPropertyNames,
-                            NormalizePascalIdentifier(pair.Value.GroupName, "Default"),
+                            NormalizePascalIdentifier(pair.Key, "Default"),
                             "Default");
                         var className = AllocateUniqueName(
                             usedClassNames,
@@ -74,9 +74,8 @@ public sealed partial class ClientGenerator
                     })];
         }
 
-        private sealed class TagGroupAccumulator(string groupName, string? description)
+        private sealed class TagGroupAccumulator(string? description)
         {
-            public string GroupName { get; } = groupName;
             public string? Description { get; } = description;
             public List<OperationGroupItem> Operations { get; } = [];
             public HashSet<string> UsedMethodNames { get; } = new(StringComparer.Ordinal);

@@ -8,8 +8,7 @@ public sealed partial class ClientGenerator
     private static bool IsOpenApiDocument(string path)
     {
         var extension = Path.GetExtension(path);
-        return string.Equals(extension, ".yaml", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(extension, ".yml", StringComparison.OrdinalIgnoreCase)
+        return IsYamlExtension(extension)
             || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -18,7 +17,7 @@ public sealed partial class ClientGenerator
         var location = CreateDocumentUri(path);
         var settings = new OpenApiReaderSettings();
 
-        if (IsYamlDocument(path))
+        if (IsYamlExtension(Path.GetExtension(path)))
         {
             settings.AddYamlReader();
             return new OpenApiYamlReader().Read(stream, location, settings);
@@ -28,9 +27,8 @@ public sealed partial class ClientGenerator
         return new OpenApiJsonReader().Read(stream, location, settings);
     }
 
-    private static bool IsYamlDocument(string path)
+    private static bool IsYamlExtension(string extension)
     {
-        var extension = Path.GetExtension(path);
         return string.Equals(extension, ".yaml", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".yml", StringComparison.OrdinalIgnoreCase);
     }

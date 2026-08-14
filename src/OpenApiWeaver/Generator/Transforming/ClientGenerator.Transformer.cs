@@ -51,8 +51,7 @@ public sealed partial class ClientGenerator
                 _document.Servers?.FirstOrDefault()?.Url,
                 schemas,
                 tagGroups,
-                securitySchemes,
-                hasDirectionalSchemaProperties);
+                securitySchemes);
         }
 
     }
