@@ -45,7 +45,7 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
             return;
         }
 
-        var readResult = default(ReadResult);
+        ReadResult readResult;
         try
         {
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(input.Content), writable: false);

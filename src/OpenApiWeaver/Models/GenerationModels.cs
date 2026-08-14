@@ -9,8 +9,7 @@ internal sealed class ClientModel(
     string? serverUrl,
     IReadOnlyList<SchemaDefinition> schemas,
     IReadOnlyList<TagGroup> tagGroups,
-    IReadOnlyList<SecuritySchemeBinding> securitySchemes,
-    bool hasDirectionalSchemaProperties)
+    IReadOnlyList<SecuritySchemeBinding> securitySchemes)
 {
     public string RootNamespace { get; } = rootNamespace;
     public string ClientName { get; } = clientName;
@@ -21,7 +20,7 @@ internal sealed class ClientModel(
     public IReadOnlyList<SchemaDefinition> Schemas { get; } = schemas;
     public IReadOnlyList<TagGroup> TagGroups { get; } = tagGroups;
     public IReadOnlyList<SecuritySchemeBinding> SecuritySchemes { get; } = securitySchemes;
-    public bool HasDirectionalSchemaProperties { get; } = hasDirectionalSchemaProperties;
+    public bool HasDirectionalSchemaProperties => SerializerOptionsTypeName.Length > 0;
 }
 
 internal sealed class TagGroup(string propertyName, string className, string? description, IReadOnlyList<OperationGroupItem> operations)
@@ -81,24 +80,25 @@ internal enum TypeShape
 
 internal sealed class TypeUsage
 {
-    private TypeUsage(CSharpTypeReference csharpType, bool schemaAllowsNull)
+    public TypeUsage(string nonNullableCSharpTypeName, TypeShape shape, bool schemaAllowsNull, bool isOptional)
     {
-        CSharpType = csharpType;
+        NonNullableCSharpTypeName = nonNullableCSharpTypeName;
+        Shape = shape;
         SchemaAllowsNull = schemaAllowsNull;
+        CanBeNullInCSharp = schemaAllowsNull || isOptional;
+        CSharpTypeName = CanBeNullInCSharp
+            ? CSharpUtilities.MakeNullableTypeName(nonNullableCSharpTypeName)
+            : nonNullableCSharpTypeName;
+        RequiresNonNullJsonResponse = !CanBeNullInCSharp
+            && shape is TypeShape.String or TypeShape.Object or TypeShape.Array or TypeShape.Dictionary;
     }
 
-    public CSharpTypeReference CSharpType { get; }
-    public string NonNullableCSharpTypeName => CSharpType.NonNullableName;
-    public TypeShape Shape => CSharpType.Shape;
+    public string NonNullableCSharpTypeName { get; }
+    public TypeShape Shape { get; }
     public bool SchemaAllowsNull { get; }
-    public bool CanBeNullInCSharp => CSharpType.CanBeNull;
-    public string CSharpTypeName => CSharpType.Name;
-    public bool RequiresNonNullJsonResponse => CSharpType.RequiresNonNullJsonResponse;
-
-    public static TypeUsage Create(string nonNullableCSharpTypeName, TypeShape shape, bool schemaAllowsNull, bool isOptional)
-        => new(
-            new CSharpTypeReference(nonNullableCSharpTypeName, shape, schemaAllowsNull || isOptional),
-            schemaAllowsNull);
+    public bool CanBeNullInCSharp { get; }
+    public string CSharpTypeName { get; }
+    public bool RequiresNonNullJsonResponse { get; }
 }
 
 internal sealed class ParameterInfo(string wireName, string parameterName, TypeUsage type, bool required, ParameterLocation location, string? description)
@@ -177,7 +177,7 @@ internal sealed class SchemaPropertyDefinition(
     public string JsonPropertyName { get; } = jsonPropertyName;
     public string PropertyName { get; } = propertyName;
     public TypeUsage Type { get; } = type;
-    public string PropertyTypeName { get; } = type.CSharpTypeName;
+    public string PropertyTypeName => Type.CSharpTypeName;
     public bool Required { get; } = required;
     public bool ReadOnly { get; } = readOnly;
     public bool WriteOnly { get; } = writeOnly;
@@ -225,7 +225,7 @@ internal sealed class ResponseInfo(ResponseKind kind, TypeUsage? type, string? d
 {
     public ResponseKind Kind { get; } = kind;
     public TypeUsage? Type { get; } = type;
-    public string ResponseTypeName { get; } = type?.CSharpTypeName ?? string.Empty;
+    public string ResponseTypeName => Type?.CSharpTypeName ?? string.Empty;
     public string? Documentation { get; } = documentation;
 }
 

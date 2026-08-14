@@ -94,18 +94,18 @@ public sealed partial class ClientGenerator
         private TypeUsage ResolveResponseTypeUsage(string contentType, IOpenApiSchema? schema)
         {
             var resolvedType = schema is null
-                ? TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: false)
+                ? new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: false)
                 : _schemaTypeResolver.ResolveTypeUsage(schema, required: true);
             var kind = ResolveResponseKind(contentType, resolvedType);
 
             if (kind == ResponseKind.Binary)
             {
-                return TypeUsage.Create("byte[]", TypeShape.Binary, resolvedType.SchemaAllowsNull, isOptional: false);
+                return new TypeUsage("byte[]", TypeShape.Binary, resolvedType.SchemaAllowsNull, isOptional: false);
             }
 
             if (kind == ResponseKind.String)
             {
-                return TypeUsage.Create("string", TypeShape.String, resolvedType.SchemaAllowsNull, isOptional: false);
+                return new TypeUsage("string", TypeShape.String, resolvedType.SchemaAllowsNull, isOptional: false);
             }
 
             return resolvedType;

@@ -58,7 +58,7 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 
             writer.AppendLine("}");
             writer.AppendLine();
-            EmitMetadataMethod(writer, "ApplyRequestSerializerMetadata", property => property.ReadOnly, "IgnoreSerializedProperty");
+            EmitMetadataMethod(writer, "ApplyRequestSerializerMetadata", property => property.ReadOnly, static _ => "IgnoreSerializedProperty");
             writer.AppendLine();
             EmitMetadataMethod(
                 writer,
@@ -175,13 +175,6 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 
         writer.AppendLine("};");
     }
-
-    private void EmitMetadataMethod(
-        IndentedStringBuilder writer,
-        string methodName,
-        Func<SchemaPropertyDefinition, bool> propertyPredicate,
-        string configureMethodName)
-        => EmitMetadataMethod(writer, methodName, propertyPredicate, _ => configureMethodName);
 
     private void EmitMetadataMethod(
         IndentedStringBuilder writer,

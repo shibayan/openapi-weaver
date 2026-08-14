@@ -57,7 +57,6 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
             var memberName = enumKind switch
             {
                 SchemaEnumKind.String => CSharpUtilities.SafeIdentifier(CSharpUtilities.ToPascalCase(enumValue)),
-                SchemaEnumKind.Number => BuildNumberEnumMemberName(enumValue),
                 _ => BuildIntegerEnumMemberName(enumValue)
             };
 
@@ -268,9 +267,6 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
             _ => decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _)
         };
     }
-
-    private static string BuildNumberEnumMemberName(string value)
-        => BuildIntegerEnumMemberName(value);
 
     private static string NormalizeIntegerEnumLiteral(string value)
     {

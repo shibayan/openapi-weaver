@@ -8,8 +8,8 @@ internal sealed class SchemaTypeResolver(
     SchemaReferenceResolver schemaReferenceResolver,
     SchemaEnumResolver schemaEnumResolver)
 {
-    private static readonly TypeUsage s_requiredStringTypeUsage = TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: false);
-    private static readonly TypeUsage s_optionalStringTypeUsage = TypeUsage.Create("string", TypeShape.String, schemaAllowsNull: false, isOptional: true);
+    private static readonly TypeUsage s_requiredStringTypeUsage = new("string", TypeShape.String, schemaAllowsNull: false, isOptional: false);
+    private static readonly TypeUsage s_optionalStringTypeUsage = new("string", TypeShape.String, schemaAllowsNull: false, isOptional: true);
 
     public TypeUsage ResolveTypeUsage(IOpenApiSchema? schema, bool required)
     {
@@ -33,7 +33,7 @@ internal sealed class SchemaTypeResolver(
         if (schema is IOpenApiReferenceHolder<JsonSchemaReference> { Reference.Id: not null } referenceHolder
             && catalog.TryGetComponentSchemaName(referenceHolder.Reference.Id, out var schemaName))
         {
-            return TypeUsage.Create(
+            return new TypeUsage(
                 schemaName,
                 GetTypeShape(schema),
                 SchemaAllowsNull(schema),
@@ -42,7 +42,7 @@ internal sealed class SchemaTypeResolver(
 
         if (catalog.TryGetInlineSchema(SchemaReferenceResolver.GetSchemaIdentity(schema), out var inlineSchema))
         {
-            return TypeUsage.Create(
+            return new TypeUsage(
                 inlineSchema.TypeName,
                 GetTypeShape(schema),
                 SchemaAllowsNull(schema),
@@ -57,7 +57,7 @@ internal sealed class SchemaTypeResolver(
         if (TryGetDictionaryValueType(schema, out var dictionaryValueType))
         {
             var dictionaryType = $"IReadOnlyDictionary<string, {dictionaryValueType}>";
-            return TypeUsage.Create(
+            return new TypeUsage(
                 dictionaryType,
                 TypeShape.Dictionary,
                 SchemaAllowsNull(schema),
@@ -84,7 +84,7 @@ internal sealed class SchemaTypeResolver(
             _ => ("JsonElement", TypeShape.JsonElement)
         };
 
-        return TypeUsage.Create(
+        return new TypeUsage(
             typeName,
             typeShape,
             SchemaAllowsNull(schema),
@@ -239,7 +239,7 @@ internal sealed class SchemaTypeResolver(
             return false;
         }
 
-        typeUsage = TypeUsage.Create(
+        typeUsage = new TypeUsage(
             representativeUsage.NonNullableCSharpTypeName,
             representativeUsage.Shape,
             nullable || representativeUsage.SchemaAllowsNull,
