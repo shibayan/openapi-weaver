@@ -10,28 +10,30 @@ public sealed partial class ClientGenerator
             => TryResolveRequestBodyKind(item.Key) is { } kind ? (int)kind : int.MaxValue;
 
         private int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-            => GetContentPriority(item, IsJson, IsBinary, IsText);
+            => IsJson(item) ? 0 : IsBinary(item) ? 1 : IsText(item) ? 2 : int.MaxValue;
 
         private int GetErrorResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-            => GetContentPriority(item, IsJson, IsText, IsBinary);
-
-        private int GetContentPriority(
-            KeyValuePair<string, IOpenApiMediaType> item,
-            params Func<KeyValuePair<string, IOpenApiMediaType>, bool>[] predicates)
-        {
-            for (var i = 0; i < predicates.Length; i++)
-            {
-                if (predicates[i](item))
-                {
-                    return i;
-                }
-            }
-
-            return int.MaxValue;
-        }
+            => IsJson(item) ? 0 : IsText(item) ? 1 : IsBinary(item) ? 2 : int.MaxValue;
 
         private static bool IsJson(KeyValuePair<string, IOpenApiMediaType> item)
-            => item.Key.Contains("json", StringComparison.OrdinalIgnoreCase);
+            => IsJsonMediaType(StripMediaTypeParameters(item.Key));
+
+        private static bool IsJsonMediaType(string mediaType)
+        {
+            if (string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return mediaType.StartsWith("application/", StringComparison.OrdinalIgnoreCase)
+                && mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string StripMediaTypeParameters(string contentType)
+        {
+            var separatorIndex = contentType.IndexOf(';');
+            return separatorIndex < 0 ? contentType.Trim() : contentType.Substring(0, separatorIndex).Trim();
+        }
 
         private static bool IsText(KeyValuePair<string, IOpenApiMediaType> item)
             => item.Key.StartsWith("text/", StringComparison.OrdinalIgnoreCase);

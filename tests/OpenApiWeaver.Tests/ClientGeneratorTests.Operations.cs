@@ -9,6 +9,52 @@ namespace OpenApiWeaver.Tests;
 
 public sealed partial class ClientGeneratorTests
 {
+    [Theory]
+    [InlineData("application/json", true)]
+    [InlineData("APPLICATION/JSON; charset=utf-8", true)]
+    [InlineData("application/problem+json; charset=utf-8", true)]
+    [InlineData("text/plain; profile=json", false)]
+    [InlineData("application/jsonp", false)]
+    [InlineData("application/notjson", false)]
+    public void ResponseMediaType_RecognizesJsonWithoutMatchingParametersOrPartialNames(string contentType, bool isJson)
+    {
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Media Type API
+              version: v1
+            paths:
+              /value:
+                get:
+                  operationId: get_value
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        '{{contentType}}':
+                          schema:
+                            type: string
+                    '400':
+                      description: error
+                      content:
+                        '{{contentType}}':
+                          schema:
+                            type: string
+            """;
+
+        var source = GenerateSource(openApi);
+        Assert.Equal(isJson, source.Contains("response.Content.ReadFromJsonAsync<string>", StringComparison.Ordinal));
+        Assert.Equal(!isJson, source.Contains("return await response.Content.ReadAsStringAsync", StringComparison.Ordinal));
+        Assert.Equal(isJson, source.Contains("DeserializeResponseContent<string>(responseContent)", StringComparison.Ordinal));
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var helpers = generatedAssembly.Assembly.GetType("GeneratorTests.OpenApiClientHelpers", throwOnError: true)!;
+        var hasJsonContentType = helpers.GetMethod("HasJsonContentType", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Assert.Equal(isJson, Assert.IsType<bool>(hasJsonContentType.Invoke(null, [contentType])));
+        Assert.False(Assert.IsType<bool>(hasJsonContentType.Invoke(null, [null])));
+        Assert.False(Assert.IsType<bool>(hasJsonContentType.Invoke(null, [" "])));
+    }
+
     [Fact]
     public void QueryParameter_WithInlineEnum_GeneratesEnumType()
     {
