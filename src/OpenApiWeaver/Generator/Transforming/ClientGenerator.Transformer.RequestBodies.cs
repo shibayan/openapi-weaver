@@ -232,23 +232,6 @@ public sealed partial class ClientGenerator
             return null;
         }
 
-        private static bool IsJsonMediaType(string mediaType)
-        {
-            if (string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return mediaType.StartsWith("application/", StringComparison.OrdinalIgnoreCase)
-                && mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string StripMediaTypeParameters(string contentType)
-        {
-            var separatorIndex = contentType.IndexOf(';');
-            return separatorIndex < 0 ? contentType.Trim() : contentType.Substring(0, separatorIndex).Trim();
-        }
-
         private static readonly (RequestBodyKind Kind, string ContentType)[] s_requestBodyContentTypes =
         [
             (RequestBodyKind.Json, "application/json"),

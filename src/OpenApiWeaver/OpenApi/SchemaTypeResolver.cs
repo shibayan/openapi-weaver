@@ -65,30 +65,34 @@ internal sealed class SchemaTypeResolver(
         }
 
         var resolvedSchema = schemaReferenceResolver.ResolveSchemaReference(schema);
-        var baseType = resolvedSchema.Type & ~JsonSchemaType.Null;
-        var (typeName, typeShape) = baseType switch
-        {
-            JsonSchemaType.Integer when string.Equals(resolvedSchema.Format, "int64", StringComparison.OrdinalIgnoreCase) => ("long", TypeShape.Primitive),
-            JsonSchemaType.Integer => ("int", TypeShape.Primitive),
-            JsonSchemaType.Number when string.Equals(resolvedSchema.Format, "float", StringComparison.OrdinalIgnoreCase) => ("float", TypeShape.Primitive),
-            JsonSchemaType.Number when string.Equals(resolvedSchema.Format, "double", StringComparison.OrdinalIgnoreCase) => ("double", TypeShape.Primitive),
-            JsonSchemaType.Number when string.Equals(resolvedSchema.Format, "decimal", StringComparison.OrdinalIgnoreCase) => ("decimal", TypeShape.Primitive),
-            JsonSchemaType.Number => ("decimal", TypeShape.Primitive),
-            JsonSchemaType.Boolean => ("bool", TypeShape.Primitive),
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date", StringComparison.OrdinalIgnoreCase) => ("DateOnly", TypeShape.Primitive),
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date-time", StringComparison.OrdinalIgnoreCase) => ("DateTimeOffset", TypeShape.Primitive),
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "uuid", StringComparison.OrdinalIgnoreCase) => ("Guid", TypeShape.Primitive),
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) => ("byte[]", TypeShape.Binary),
-            JsonSchemaType.Array => ($"IReadOnlyList<{ResolveTypeUsage(resolvedSchema.Items, required: true).CSharpTypeName}>", TypeShape.Array),
-            JsonSchemaType.String => ("string", TypeShape.String),
-            _ => ("JsonElement", TypeShape.JsonElement)
-        };
+        var (typeName, typeShape) = (resolvedSchema.Type & ~JsonSchemaType.Null) == JsonSchemaType.Array
+            ? ($"IReadOnlyList<{ResolveTypeUsage(resolvedSchema.Items, required: true).CSharpTypeName}>", TypeShape.Array)
+            : ResolveSimpleType(resolvedSchema);
 
         return new TypeUsage(
             typeName,
             typeShape,
             SchemaAllowsNull(schema),
             isOptional: !required);
+    }
+
+    private static (string TypeName, TypeShape Shape) ResolveSimpleType(IOpenApiSchema schema)
+    {
+        return (schema.Type & ~JsonSchemaType.Null) switch
+        {
+            JsonSchemaType.Integer when string.Equals(schema.Format, "int64", StringComparison.OrdinalIgnoreCase) => ("long", TypeShape.Primitive),
+            JsonSchemaType.Integer => ("int", TypeShape.Primitive),
+            JsonSchemaType.Number when string.Equals(schema.Format, "float", StringComparison.OrdinalIgnoreCase) => ("float", TypeShape.Primitive),
+            JsonSchemaType.Number when string.Equals(schema.Format, "double", StringComparison.OrdinalIgnoreCase) => ("double", TypeShape.Primitive),
+            JsonSchemaType.Number => ("decimal", TypeShape.Primitive),
+            JsonSchemaType.Boolean => ("bool", TypeShape.Primitive),
+            JsonSchemaType.String when string.Equals(schema.Format, "date", StringComparison.OrdinalIgnoreCase) => ("DateOnly", TypeShape.Primitive),
+            JsonSchemaType.String when string.Equals(schema.Format, "date-time", StringComparison.OrdinalIgnoreCase) => ("DateTimeOffset", TypeShape.Primitive),
+            JsonSchemaType.String when string.Equals(schema.Format, "uuid", StringComparison.OrdinalIgnoreCase) => ("Guid", TypeShape.Primitive),
+            JsonSchemaType.String when string.Equals(schema.Format, "binary", StringComparison.OrdinalIgnoreCase) => ("byte[]", TypeShape.Binary),
+            JsonSchemaType.String => ("string", TypeShape.String),
+            _ => ("JsonElement", TypeShape.JsonElement)
+        };
     }
 
     public static bool IsDictionarySchema(IOpenApiSchema schema)
@@ -294,12 +298,7 @@ internal sealed class SchemaTypeResolver(
         var baseType = resolvedSchema.Type & ~JsonSchemaType.Null;
         return baseType switch
         {
-            JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean => TypeShape.Primitive,
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "binary", StringComparison.OrdinalIgnoreCase) => TypeShape.Binary,
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date", StringComparison.OrdinalIgnoreCase) => TypeShape.Primitive,
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "date-time", StringComparison.OrdinalIgnoreCase) => TypeShape.Primitive,
-            JsonSchemaType.String when string.Equals(resolvedSchema.Format, "uuid", StringComparison.OrdinalIgnoreCase) => TypeShape.Primitive,
-            JsonSchemaType.String => TypeShape.String,
+            JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean or JsonSchemaType.String => ResolveSimpleType(resolvedSchema).Shape,
             JsonSchemaType.Array => TypeShape.Array,
             JsonSchemaType.Object => TypeShape.Object,
             _ when resolvedSchema.AllOf is { Count: > 0 } || (resolvedSchema.Properties?.Count ?? 0) > 0 => TypeShape.Object,

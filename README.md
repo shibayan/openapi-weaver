@@ -54,6 +54,8 @@ The package includes the source generator and all required analyzer assemblies, 
 - **OpenAPI-driven XML docs** — generates IntelliSense comments from document, tag, operation, response, and schema metadata, with HTML removed automatically
 - **Build-time diagnostics** — reports errors and warnings as standard compiler diagnostics
 
+JSON content is recognized as `application/json` or `application/*+json`, case-insensitively and ignoring media type parameters such as `charset=utf-8`. Other media types are not treated as JSON merely because their name or parameters contain `json`.
+
 ## Comparison
 
 How OpenApiWeaver compares to other popular OpenAPI-to-C# client generators:

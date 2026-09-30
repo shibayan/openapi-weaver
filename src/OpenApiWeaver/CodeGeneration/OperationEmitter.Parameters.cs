@@ -4,6 +4,27 @@ namespace OpenApiWeaver.CodeGeneration;
 
 internal sealed partial class OperationEmitter
 {
+    private static void EmitParameterAppend(
+        IndentedStringBuilder writer,
+        ParameterInfo parameter,
+        Action<IndentedStringBuilder, ParameterInfo> emitAppend)
+    {
+        if (parameter.Required)
+        {
+            emitAppend(writer, parameter);
+            return;
+        }
+
+        writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
+        writer.AppendLine("{");
+        using (writer.PushIndent())
+        {
+            emitAppend(writer, parameter);
+        }
+
+        writer.AppendLine("}");
+    }
+
     private void EmitRouteTemplate(IndentedStringBuilder writer, string route, IReadOnlyList<ParameterInfo> pathParameters)
     {
         var parameterLookup = pathParameters

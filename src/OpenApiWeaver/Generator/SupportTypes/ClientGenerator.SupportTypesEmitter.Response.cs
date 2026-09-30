@@ -10,7 +10,23 @@ public sealed partial class ClientGenerator
             writer.AppendLine("{");
             using (writer.PushIndent())
             {
-                writer.AppendLine("return !string.IsNullOrWhiteSpace(contentType) && contentType.Contains(\"json\", StringComparison.OrdinalIgnoreCase);");
+                writer.AppendLine("if (string.IsNullOrWhiteSpace(contentType))");
+                writer.AppendLine("{");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("return false;");
+                }
+
+                writer.AppendLine("}");
+                writer.AppendLine();
+                writer.AppendLine("var separatorIndex = contentType.IndexOf(';');");
+                writer.AppendLine("var mediaType = separatorIndex < 0 ? contentType.Trim() : contentType.Substring(0, separatorIndex).Trim();");
+                writer.AppendLine("return string.Equals(mediaType, \"application/json\", StringComparison.OrdinalIgnoreCase)");
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("|| (mediaType.StartsWith(\"application/\", StringComparison.OrdinalIgnoreCase)");
+                    writer.AppendLine("    && mediaType.EndsWith(\"+json\", StringComparison.OrdinalIgnoreCase));");
+                }
             }
 
             writer.AppendLine("}");

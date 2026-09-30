@@ -118,7 +118,7 @@ public sealed partial class ClientGenerator
                 return ResponseKind.Binary;
             }
 
-            if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+            if (IsJsonMediaType(StripMediaTypeParameters(contentType)))
             {
                 return ResponseKind.Json;
             }

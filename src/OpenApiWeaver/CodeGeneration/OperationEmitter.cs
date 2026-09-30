@@ -112,21 +112,7 @@ internal sealed partial class OperationEmitter(ClientModel model)
                 writer.AppendLine("var hasQuery = false;");
                 foreach (var parameter in queryParameters)
                 {
-                    if (parameter.Required)
-                    {
-                        EmitQueryParameterAppend(writer, parameter);
-                    }
-                    else
-                    {
-                        writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                        writer.AppendLine("{");
-                        using (writer.PushIndent())
-                        {
-                            EmitQueryParameterAppend(writer, parameter);
-                        }
-
-                        writer.AppendLine("}");
-                    }
+                    EmitParameterAppend(writer, parameter, EmitQueryParameterAppend);
                 }
             }
 
@@ -152,40 +138,12 @@ internal sealed partial class OperationEmitter(ClientModel model)
 
             foreach (var parameter in headerParameters)
             {
-                if (parameter.Required)
-                {
-                    EmitHeaderParameterAppend(writer, parameter);
-                }
-                else
-                {
-                    writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                    writer.AppendLine("{");
-                    using (writer.PushIndent())
-                    {
-                        EmitHeaderParameterAppend(writer, parameter);
-                    }
-
-                    writer.AppendLine("}");
-                }
+                EmitParameterAppend(writer, parameter, EmitHeaderParameterAppend);
             }
 
             foreach (var parameter in cookieParameters)
             {
-                if (parameter.Required)
-                {
-                    EmitCookieParameterAppend(writer, parameter);
-                }
-                else
-                {
-                    writer.Append("if (").Append(parameter.ParameterName).AppendLine(" is not null)");
-                    writer.AppendLine("{");
-                    using (writer.PushIndent())
-                    {
-                        EmitCookieParameterAppend(writer, parameter);
-                    }
-
-                    writer.AppendLine("}");
-                }
+                EmitParameterAppend(writer, parameter, EmitCookieParameterAppend);
             }
 
             foreach (var securityScheme in GetOperationSecuritySchemesExcept(operation, SecuritySchemeLocation.Query))
