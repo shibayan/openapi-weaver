@@ -193,7 +193,22 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
         writer.AppendLine("{");
         using (writer.PushIndent())
         {
-            foreach (var schema in model.Schemas)
+            // Ancestors' rules run first so a subtype's own rules (e.g. making an inherited property writeOnly) win,
+            // regardless of the order components are declared in.
+            var schemasByTypeName = model.Schemas.ToDictionary(static schema => schema.QualifiedTypeName, StringComparer.Ordinal);
+            int GetDepth(SchemaDefinition schema)
+            {
+                var depth = 0;
+                while (schema.BaseTypeName is { } baseTypeName && schemasByTypeName.TryGetValue(baseTypeName, out var baseSchema))
+                {
+                    depth++;
+                    schema = baseSchema;
+                }
+
+                return depth;
+            }
+
+            foreach (var schema in model.Schemas.OrderBy(GetDepth))
             {
                 var rules = schema.Properties
                     .Where(propertyPredicate)

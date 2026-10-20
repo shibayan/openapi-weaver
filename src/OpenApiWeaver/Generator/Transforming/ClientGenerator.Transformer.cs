@@ -18,6 +18,8 @@ public sealed partial class ClientGenerator
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, SchemaDefinition> _schemaDefinitionsByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, IOpenApiSchema> _schemaSourcesByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IOpenApiSchema> _componentSchemasByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Dictionary<string, string>> _propertyNamePlansByTypeName = new(StringComparer.Ordinal);
         private readonly List<SkippedOperation> _skippedOperations = [];
 
         public Transformer(string documentPath, string rootNamespace, string? clientNameOverride, OpenApiDocument document)

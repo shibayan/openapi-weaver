@@ -714,6 +714,73 @@ public sealed partial class ClientGeneratorTests
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("""{"nickname":"Tama"}""", petType, responseOptions));
     }
 
+    [Theory]
+    // Cat requires `password` and Siamese makes it writeOnly; components are listed subtype-first.
+    [InlineData(
+        "required: [password]",
+        "properties:\n  password:\n    type: string\n    writeOnly: true",
+        false)]
+    // Cat makes `password` writeOnly and Siamese requires it, which must not make it required in responses.
+    [InlineData(
+        "properties:\n  password:\n    type: string\n    writeOnly: true",
+        "required: [password]",
+        true)]
+    public void MultiLevelInheritance_AppliesDirectionAndRequirementRulesAncestorFirst(string catMemberYaml, string siameseMemberYaml, bool catAllowsMissingPassword)
+    {
+        static string Indent(string yaml) => string.Join("\n", yaml.Split('\n').Select(static line => "          " + line));
+
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+                    - type: object
+            {{Indent(siameseMemberYaml)}}
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+            {{Indent(catMemberYaml)}}
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                    password:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+            """;
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var siameseType = assembly.Assembly.GetType("GeneratorTests.Siamese")!;
+        var optionsType = assembly.Assembly.GetType("GeneratorTests.TestClientJsonSerializerOptions")!;
+        var responseOptions = Assert.IsType<JsonSerializerOptions>(optionsType.GetField("ResponseSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+
+        // In both shapes the password is writeOnly for Siamese, so a Siamese response without it is valid.
+        var siamese = JsonSerializer.Deserialize("""{"petType":"Siamese"}""", siameseType, responseOptions);
+        Assert.Equal(siameseType, siamese!.GetType());
+        Assert.Equal(siameseType, JsonSerializer.Deserialize("""{"petType":"Siamese"}""", petType, responseOptions)!.GetType());
+
+        if (catAllowsMissingPassword)
+        {
+            Assert.NotNull(JsonSerializer.Deserialize("""{"petType":"Cat"}""", catType, responseOptions));
+        }
+        else
+        {
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("""{"petType":"Cat"}""", catType, responseOptions));
+        }
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!

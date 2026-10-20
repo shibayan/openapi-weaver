@@ -1661,6 +1661,61 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void SubtypeNestedTypeNames_AvoidSuffixedInheritedMemberNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+                    - type: object
+                      properties:
+                        detail_model3:
+                          type: string
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        detail:
+                          type: object
+                          properties:
+                            color:
+                              type: string
+                Pet:
+                  type: object
+                  required: [petType, detail_model, detailModel]
+                  properties:
+                    petType:
+                      type: string
+                    detail_model:
+                      type: string
+                    detailModel:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+            """;
+
+        // Pet's members become DetailModel and DetailModel2, so Cat's nested type must skip both suffixed names,
+        // even when subtypes are declared before their base; GenerateSource compiles the result.
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required string DetailModel { get; init; }", source);
+        Assert.Contains("public required string DetailModel2 { get; init; }", source);
+        Assert.Contains("public Cat.DetailModel3? Detail { get; init; }", source);
+
+        // Siamese, declared first, still gets a property name that avoids every member it inherits from Pet.
+        Assert.Contains("[JsonPropertyName(\"detail_model3\")]", source);
+        Assert.Contains("public string? DetailModel3 { get; init; }", source);
+    }
+
+    [Fact]
     public void AliasComponentSchemas_ResolveToUnderlyingTypes()
     {
         const string openApi = """

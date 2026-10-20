@@ -270,12 +270,19 @@ public sealed partial class ClientGenerator
         {
             if (_document.Components?.Schemas is not null)
             {
-                ReserveInheritedMemberNames(_document.Components.Schemas);
-
-                foreach (var schema in _document.Components.Schemas)
+                // Bases are visited before their subtypes: a subtype's nested types must avoid the member names it inherits,
+                // otherwise a nested type such as `Cat.DetailModel` would hide an inherited `DetailModel` property (CS9031).
+                var components = _document.Components.Schemas.ToList();
+                foreach (var schema in components.OrderBy(component => _schemaCatalog.TryGetComponentSchemaName(component.Key, out var typeName) ? GetInheritanceDepth(typeName) : 0))
                 {
                     if (_schemaCatalog.TryGetComponentSchemaName(schema.Key, out var schemaName))
                     {
+                        _componentSchemasByTypeName[schemaName] = schema.Value;
+                        foreach (var inheritedMemberName in GetInheritedPropertyNames(schemaName).Values)
+                        {
+                            _schemaCatalog.ReserveTypeName($"{schemaName}.{inheritedMemberName}");
+                        }
+
                         RegisterNestedInlineSchemas(schema.Value, new HashSet<string>(StringComparer.Ordinal), schemaName, string.Empty);
                     }
                     else
@@ -286,25 +293,6 @@ public sealed partial class ClientGenerator
             }
 
             RegisterOperationInlineSchemaNames();
-        }
-
-        // A subtype's nested types are named before its members, so the names of members it will inherit are reserved
-        // first; otherwise a nested type such as `Cat.DetailModel` would hide an inherited `DetailModel` property (CS9031).
-        private void ReserveInheritedMemberNames(IDictionary<string, IOpenApiSchema> componentSchemas)
-        {
-            foreach (var derivedSchema in _polymorphicDerivedSchemasByTypeName)
-            {
-                if (!componentSchemas.TryGetValue(derivedSchema.Value.BaseSchemaName, out var baseSchema))
-                {
-                    continue;
-                }
-
-                // Collecting the direct base without ignored references also flattens everything it inherits.
-                foreach (var property in SchemaPropertyCollector.Collect(baseSchema))
-                {
-                    _schemaCatalog.ReserveTypeName($"{derivedSchema.Key}.{NormalizePascalIdentifier(property.Name, "Value")}");
-                }
-            }
         }
 
         private List<SchemaDefinition> BuildSchemaDefinitions()
@@ -356,52 +344,36 @@ public sealed partial class ClientGenerator
             return depth;
         }
 
-        // Members a subtype inherits through CLR inheritance, keyed by JSON name; the base definitions are already built.
-        private Dictionary<string, SchemaPropertyDefinition> CollectInheritedProperties(string? baseTypeName)
-        {
-            var inheritedProperties = new Dictionary<string, SchemaPropertyDefinition>(StringComparer.Ordinal);
-            while (baseTypeName is not null && _schemaDefinitionsByTypeName.TryGetValue(baseTypeName, out var baseDefinition))
-            {
-                foreach (var property in baseDefinition.Properties)
-                {
-                    if (!inheritedProperties.ContainsKey(property.JsonPropertyName))
-                    {
-                        inheritedProperties.Add(property.JsonPropertyName, property);
-                    }
-                }
-
-                baseTypeName = baseDefinition.BaseTypeName;
-            }
-
-            return inheritedProperties;
-        }
-
-        private SchemaDefinition CreateSchemaDefinition(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema)
+        // The discriminator is never a CLR property, and a subtype does not collect the members of the schema it extends.
+        private (HashSet<string> IgnoredPropertyNames, HashSet<string> IgnoredSchemaReferences) GetPropertyCollectionFilters(string typeName)
         {
             var ignoredPropertyNames = new HashSet<string>(StringComparer.Ordinal);
             var ignoredSchemaReferences = new HashSet<string>(StringComparer.Ordinal);
-            string? baseTypeName = null;
-            string? discriminatorPropertyName = null;
-            IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes = [];
-
             if (_polymorphicSchemasByTypeName.TryGetValue(typeName, out var polymorphicSchema))
             {
-                discriminatorPropertyName = polymorphicSchema.DiscriminatorPropertyName;
                 ignoredPropertyNames.Add(polymorphicSchema.DiscriminatorPropertyName);
-                derivedTypes = polymorphicSchema.DerivedTypes;
             }
 
             if (_polymorphicDerivedSchemasByTypeName.TryGetValue(typeName, out var polymorphicDerivedSchema))
             {
-                baseTypeName = polymorphicDerivedSchema.BaseTypeName;
                 ignoredPropertyNames.Add(polymorphicDerivedSchema.DiscriminatorPropertyName);
                 ignoredSchemaReferences.Add(polymorphicDerivedSchema.BaseSchemaName);
             }
 
-            var properties = new List<SchemaPropertyDefinition>();
-            var inheritedProperties = CollectInheritedProperties(baseTypeName);
-            var inheritedPropertyRules = new List<InheritedPropertyRule>();
-            var redeclaredWriteOnlyNames = new HashSet<string>(StringComparer.Ordinal);
+            return (ignoredPropertyNames, ignoredSchemaReferences);
+        }
+
+        // CLR names of a type's own properties keyed by JSON name. They are allocated once, after the type's nested types
+        // are named, so subtypes can reserve the exact names (including collision suffixes) they inherit.
+        private Dictionary<string, string> GetPropertyNamePlan(string typeName, string declaredTypeName, IOpenApiSchema schema)
+        {
+            if (_propertyNamePlansByTypeName.TryGetValue(typeName, out var cachedPlan))
+            {
+                return cachedPlan;
+            }
+
+            var (ignoredPropertyNames, ignoredSchemaReferences) = GetPropertyCollectionFilters(typeName);
+            var inheritedPropertyNames = GetInheritedPropertyNames(typeName);
 
             // A member cannot share the name of its enclosing type (CS0542), of a nested type (CS0102),
             // or of an inherited member it would hide (CS0108 / CS9031).
@@ -409,9 +381,99 @@ public sealed partial class ClientGenerator
                 _schemaCatalog.InlineSchemas
                     .Where(inlineSchema => string.Equals(inlineSchema.ParentTypeName, typeName, StringComparison.Ordinal))
                     .Select(static inlineSchema => inlineSchema.DeclaredTypeName)
-                    .Concat(inheritedProperties.Values.Select(static property => property.PropertyName))
+                    .Concat(inheritedPropertyNames.Values)
                     .Append(declaredTypeName),
                 StringComparer.Ordinal);
+            var plan = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var property in SchemaPropertyCollector.Collect(schema, ignoredPropertyNames, ignoredSchemaReferences))
+            {
+                // A redeclared inherited property reuses the inherited member.
+                if (!inheritedPropertyNames.ContainsKey(property.Name))
+                {
+                    plan[property.Name] = AllocateUniqueName(usedPropertyNames, NormalizePascalIdentifier(property.Name, "Value"), "Value");
+                }
+            }
+
+            _propertyNamePlansByTypeName[typeName] = plan;
+            return plan;
+        }
+
+        private Dictionary<string, string> GetInheritedPropertyNames(string typeName)
+        {
+            var inheritedPropertyNames = new Dictionary<string, string>(StringComparer.Ordinal);
+            while (_polymorphicDerivedSchemasByTypeName.TryGetValue(typeName, out var derivedInfo)
+                && _componentSchemasByTypeName.TryGetValue(derivedInfo.BaseTypeName, out var baseSchema))
+            {
+                foreach (var plannedName in GetPropertyNamePlan(derivedInfo.BaseTypeName, derivedInfo.BaseTypeName, baseSchema))
+                {
+                    if (!inheritedPropertyNames.ContainsKey(plannedName.Key))
+                    {
+                        inheritedPropertyNames.Add(plannedName.Key, plannedName.Value);
+                    }
+                }
+
+                typeName = derivedInfo.BaseTypeName;
+            }
+
+            return inheritedPropertyNames;
+        }
+
+        // Members a subtype inherits through CLR inheritance, keyed by JSON name, with the readOnly / writeOnly / required
+        // constraints every ancestor applies to them, including those added by intermediate subtypes.
+        private Dictionary<string, InheritedProperty> CollectInheritedProperties(string? baseTypeName)
+        {
+            var chain = new List<SchemaDefinition>();
+            while (baseTypeName is not null && _schemaDefinitionsByTypeName.TryGetValue(baseTypeName, out var baseDefinition))
+            {
+                chain.Add(baseDefinition);
+                baseTypeName = baseDefinition.BaseTypeName;
+            }
+
+            var rules = chain.SelectMany(static definition => definition.InheritedPropertyRules).ToList();
+            var inheritedProperties = new Dictionary<string, InheritedProperty>(StringComparer.Ordinal);
+            foreach (var property in chain.SelectMany(static definition => definition.Properties))
+            {
+                if (inheritedProperties.ContainsKey(property.JsonPropertyName))
+                {
+                    continue;
+                }
+
+                bool HasRule(InheritedPropertyRuleKind kind)
+                    => rules.Any(rule => rule.Kind == kind && string.Equals(rule.JsonPropertyName, property.JsonPropertyName, StringComparison.Ordinal));
+
+                inheritedProperties.Add(property.JsonPropertyName, new InheritedProperty(
+                    property,
+                    property.ReadOnly || HasRule(InheritedPropertyRuleKind.IgnoreInRequest),
+                    property.WriteOnly || HasRule(InheritedPropertyRuleKind.IgnoreInResponse),
+                    property.Required || HasRule(InheritedPropertyRuleKind.RequireInResponse)));
+            }
+
+            return inheritedProperties;
+        }
+
+        private SchemaDefinition CreateSchemaDefinition(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema)
+        {
+            var (ignoredPropertyNames, ignoredSchemaReferences) = GetPropertyCollectionFilters(typeName);
+            string? baseTypeName = null;
+            string? discriminatorPropertyName = null;
+            IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes = [];
+
+            if (_polymorphicSchemasByTypeName.TryGetValue(typeName, out var polymorphicSchema))
+            {
+                discriminatorPropertyName = polymorphicSchema.DiscriminatorPropertyName;
+                derivedTypes = polymorphicSchema.DerivedTypes;
+            }
+
+            if (_polymorphicDerivedSchemasByTypeName.TryGetValue(typeName, out var polymorphicDerivedSchema))
+            {
+                baseTypeName = polymorphicDerivedSchema.BaseTypeName;
+            }
+
+            var properties = new List<SchemaPropertyDefinition>();
+            var propertyNamePlan = GetPropertyNamePlan(typeName, declaredTypeName, schema);
+            var inheritedProperties = CollectInheritedProperties(baseTypeName);
+            var inheritedPropertyRules = new List<InheritedPropertyRule>();
+            var redeclaredWriteOnlyNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in SchemaPropertyCollector.Collect(schema, ignoredPropertyNames, ignoredSchemaReferences))
             {
                 if (property.ReadOnly && property.WriteOnly)
@@ -424,11 +486,12 @@ public sealed partial class ClientGenerator
                 if (inheritedProperties.TryGetValue(property.Name, out var inheritedProperty))
                 {
                     // A subtype that redeclares an inherited property reuses the inherited member.
+                    var inheritedTypeName = inheritedProperty.Property.Type.NonNullableCSharpTypeName;
                     var redeclaredTypeName = _schemaTypeResolver.ResolveTypeUsage(property.Schema, required: true).NonNullableCSharpTypeName;
-                    if (!string.Equals(redeclaredTypeName, inheritedProperty.Type.NonNullableCSharpTypeName, StringComparison.Ordinal))
+                    if (!string.Equals(redeclaredTypeName, inheritedTypeName, StringComparison.Ordinal))
                     {
                         throw new UnsupportedGenerationException(
-                            $"Schema '{typeName}' redeclares inherited property '{property.Name}' as '{redeclaredTypeName}' instead of '{inheritedProperty.Type.NonNullableCSharpTypeName}', which is not supported for compile-time code generation.",
+                            $"Schema '{typeName}' redeclares inherited property '{property.Name}' as '{redeclaredTypeName}' instead of '{inheritedTypeName}', which is not supported for compile-time code generation.",
                             UnsupportedFeatureKind.Discriminator);
                     }
 
@@ -454,10 +517,7 @@ public sealed partial class ClientGenerator
                     continue;
                 }
 
-                var propertyName = AllocateUniqueName(
-                    usedPropertyNames,
-                    NormalizePascalIdentifier(property.Name, "Value"),
-                    "Value");
+                var propertyName = propertyNamePlan[property.Name];
                 properties.Add(new SchemaPropertyDefinition(
                     property.Name,
                     propertyName,
@@ -470,7 +530,8 @@ public sealed partial class ClientGenerator
             }
 
             // A subtype can make an inherited optional property required; the inherited CLR member cannot change,
-            // so the requirement is enforced by the response serializer contract instead.
+            // so the requirement is enforced by the response serializer contract instead. A property that is
+            // writeOnly anywhere in the ancestry is never present in responses, so it is not required there.
             if (inheritedProperties.Count > 0)
             {
                 foreach (var requiredName in SchemaPropertyCollector.CollectRequiredNames(schema, ignoredSchemaReferences))
@@ -511,6 +572,16 @@ public sealed partial class ClientGenerator
                 polymorphicDerivedSchema?.DiscriminatorPropertyName,
                 polymorphicDerivedSchema?.SelfAndDescendantTypes,
                 inheritedPropertyRules);
+        }
+
+        private sealed class InheritedProperty(SchemaPropertyDefinition property, bool readOnly, bool writeOnly, bool required)
+        {
+            public SchemaPropertyDefinition Property { get; } = property;
+
+            // Effective constraints across the ancestry, which may be stricter than the CLR property's own declaration.
+            public bool ReadOnly { get; } = readOnly;
+            public bool WriteOnly { get; } = writeOnly;
+            public bool Required { get; } = required;
         }
 
         private void RegisterOperationInlineSchemaNames()
