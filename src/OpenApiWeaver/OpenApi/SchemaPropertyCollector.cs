@@ -26,6 +26,13 @@ internal static class SchemaPropertyCollector
         return properties;
     }
 
+    public static HashSet<string> CollectRequiredNames(IOpenApiSchema schema, ISet<string>? ignoredSchemaReferences = null)
+    {
+        var requiredNames = new HashSet<string>(StringComparer.Ordinal);
+        CollectCore(schema, [], new Dictionary<string, int>(StringComparer.Ordinal), requiredNames, new HashSet<string>(StringComparer.Ordinal), ignoredPropertyNames: null, ignoredSchemaReferences);
+        return requiredNames;
+    }
+
     private static void CollectCore(
         IOpenApiSchema schema,
         List<SchemaPropertyInfo> properties,

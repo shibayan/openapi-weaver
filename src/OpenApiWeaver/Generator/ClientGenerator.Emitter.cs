@@ -34,7 +34,7 @@ public sealed partial class ClientGenerator
             }
 
             _schemaEmitter.Emit(writer);
-            if (model.HasDirectionalSchemaProperties)
+            if (model.HasSerializerMetadata)
             {
                 _jsonSerializerOptionsEmitter.Emit(writer);
                 writer.AppendLine();

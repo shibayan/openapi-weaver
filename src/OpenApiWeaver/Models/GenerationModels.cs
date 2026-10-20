@@ -20,7 +20,7 @@ internal sealed class ClientModel(
     public IReadOnlyList<SchemaDefinition> Schemas { get; } = schemas;
     public IReadOnlyList<TagGroup> TagGroups { get; } = tagGroups;
     public IReadOnlyList<SecuritySchemeBinding> SecuritySchemes { get; } = securitySchemes;
-    public bool HasDirectionalSchemaProperties => SerializerOptionsTypeName.Length > 0;
+    public bool HasSerializerMetadata => SerializerOptionsTypeName.Length > 0;
 }
 
 internal sealed class TagGroup(string propertyName, string className, string? description, IReadOnlyList<OperationGroupItem> operations)
@@ -138,7 +138,8 @@ internal sealed class SchemaDefinition(
     string? enumUnderlyingType,
     IReadOnlyList<SchemaEnumMemberDefinition> enumMembers,
     string? inheritedDiscriminatorPropertyName = null,
-    IReadOnlyList<SchemaDerivedTypeDefinition>? selfAndDescendantTypes = null)
+    IReadOnlyList<SchemaDerivedTypeDefinition>? selfAndDescendantTypes = null,
+    IReadOnlyList<string>? inheritedRequiredPropertyNames = null)
 {
     public string QualifiedTypeName { get; } = typeName;
     public string DeclaredTypeName { get; } = declaredTypeName;
@@ -160,6 +161,9 @@ internal sealed class SchemaDefinition(
     // and can (de)serialize its own subtypes in multi-level hierarchies.
     public string? InheritedDiscriminatorPropertyName { get; } = inheritedDiscriminatorPropertyName;
     public IReadOnlyList<SchemaDerivedTypeDefinition>? SelfAndDescendantTypes { get; } = selfAndDescendantTypes;
+
+    // JSON names of inherited optional properties that this subtype makes required.
+    public IReadOnlyList<string> InheritedRequiredPropertyNames { get; } = inheritedRequiredPropertyNames ?? [];
 }
 
 internal sealed class SchemaDerivedTypeDefinition(string typeName, string discriminatorValue)

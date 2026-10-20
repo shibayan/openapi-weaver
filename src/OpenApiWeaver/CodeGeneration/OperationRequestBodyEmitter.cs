@@ -23,10 +23,13 @@ internal sealed class OperationRequestBodyEmitter(ClientModel model)
                     .AppendLine("\");");
                 break;
             case RequestBodyKind.Text:
-                writer.Append("request.Content = new StringContent(").Append(bodyValue).AppendLine(", Encoding.UTF8);");
-                writer.Append("request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(\"")
+                // Keep declared parameters such as `header=absent`, but the charset must match the UTF-8 bytes.
+                writer.Append("var textContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"")
                     .Append(EscapeStringLiteral(requestBody.ContentType))
-                    .AppendLine("\") { CharSet = \"utf-8\" };");
+                    .AppendLine("\");");
+                writer.AppendLine("textContentType.CharSet = \"utf-8\";");
+                writer.Append("request.Content = new StringContent(").Append(bodyValue).AppendLine(", Encoding.UTF8);");
+                writer.AppendLine("request.Content.Headers.ContentType = textContentType;");
                 break;
             default:
                 writer.Append("request.Content = JsonContent.Create(")

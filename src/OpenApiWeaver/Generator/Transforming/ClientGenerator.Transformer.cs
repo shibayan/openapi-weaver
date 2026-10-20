@@ -40,8 +40,9 @@ public sealed partial class ClientGenerator
 
             var securitySchemes = BuildSecuritySchemes();
             var schemas = BuildSchemaDefinitions();
-            var hasDirectionalSchemaProperties = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
-            var serializerOptionsTypeName = hasDirectionalSchemaProperties
+            var needsSerializerMetadata = schemas.Any(static schema => schema.InheritedRequiredPropertyNames.Count > 0
+                || schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
+            var serializerOptionsTypeName = needsSerializerMetadata
                 ? _schemaCatalog.AllocateTypeName(parentTypeName: null, SupportTypeNames.CreateSerializerOptionsTypeName(_clientName))
                 : string.Empty;
             var tagGroups = BuildTagGroups(securitySchemes, serializerOptionsTypeName);

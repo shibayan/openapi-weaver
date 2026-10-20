@@ -2581,6 +2581,8 @@ public sealed partial class ClientGeneratorTests
     [InlineData("in: query\nschema:\n  type: object\n  oneOf:\n    - $ref: '#/components/schemas/Filter'\n    - $ref: '#/components/schemas/Nested'", "object schema that has no generated model")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/FilterList'", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Cat'", "cannot be expanded into query parameters")]
+    [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Shape'", "cannot be expanded into query parameters")]
+    [InlineData("in: query\nschema:\n  type: array\n  items:\n    $ref: '#/components/schemas/Shape'", "array items with an object or array schema")]
     public void ComplexParameterShapes_ReportParameterDiagnostic(string parameterYaml, string expectedMessage)
     {
         var indentedParameter = string.Join("\n", parameterYaml.Split('\n').Select(static line => "          " + line));
@@ -2631,6 +2633,19 @@ public sealed partial class ClientGeneratorTests
                       properties:
                         name:
                           type: string
+                Shape:
+                  required: [kind]
+                  anyOf:
+                    - $ref: '#/components/schemas/Circle'
+                  discriminator:
+                    propertyName: kind
+                Circle:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                    radius:
+                      type: number
             """;
 
         var result = RunGenerator(openApi);
@@ -2821,6 +2836,46 @@ public sealed partial class ClientGeneratorTests
         var source = string.Join(Environment.NewLine, result.GeneratedSources);
         Assert.Contains("public async Task UploadAnyAsync(byte[] body, CancellationToken cancellationToken = default)", source);
         Assert.Contains("MediaTypeHeaderValue.Parse(\"application/octet-stream\")", source);
+    }
+
+    [Fact]
+    public async Task TextRequestBody_KeepsDeclaredMediaTypeParametersExceptCharset()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /reports:
+                put:
+                  operationId: putReport
+                  requestBody:
+                    required: true
+                    content:
+                      text/csv; header=absent; charset=iso-8859-1:
+                        schema:
+                          type: string
+                  responses:
+                    '204':
+                      description: ok
+            """;
+
+        var source = GenerateSource(openApi);
+        Assert.Contains("MediaTypeHeaderValue.Parse(\"text/csv; header=absent\")", source);
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new ContentCapturingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com/") };
+        var operationClient = Assert.Single(clientType.GetProperties()).GetValue(Activator.CreateInstance(clientType, httpClient));
+        Assert.NotNull(operationClient);
+
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("PutReportAsync")!.Invoke(operationClient, ["a,b", CancellationToken.None]));
+
+        // The declared `header` parameter survives; the charset matches the UTF-8 bytes actually sent.
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("text/csv; header=absent; charset=utf-8", request.ContentType);
     }
 
     [Fact]

@@ -69,6 +69,17 @@ public sealed partial class ClientGenerator
 
                 RegisterPolymorphicSchemaInfo(schema.Key, schema.Value);
             }
+
+            // A subtype that roots its own hierarchy would need two discriminator contracts on one type, which cannot round-trip.
+            foreach (var derivedTypeName in _polymorphicDerivedSchemasByTypeName.Keys)
+            {
+                if (_polymorphicSchemasByTypeName.ContainsKey(derivedTypeName))
+                {
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{derivedTypeName}' is a discriminator subtype that declares its own discriminator hierarchy, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Discriminator);
+                }
+            }
         }
 
         private void RegisterPolymorphicSchemaInfo(string schemaName, IOpenApiSchema schema)
@@ -86,6 +97,18 @@ public sealed partial class ClientGenerator
             {
                 // Nothing derives from this schema, so the discriminator is an ordinary property.
                 return;
+            }
+
+            // Dictionary-backed models are emitted as `Dictionary<,>` subclasses and cannot also take part in a class hierarchy.
+            foreach (var hierarchySchemaName in subtypes.Select(static subtype => subtype.SchemaName).Prepend(schemaName))
+            {
+                if (_document.Components!.Schemas!.TryGetValue(hierarchySchemaName, out var hierarchySchema)
+                    && SchemaTypeResolver.IsDictionarySchema(hierarchySchema))
+                {
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{hierarchySchemaName}' uses additionalProperties or patternProperties in the '{schemaName}' discriminator hierarchy, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Discriminator);
+                }
             }
 
             var baseTypeName = _schemaCatalog.GetComponentSchemaName(schemaName);
@@ -269,18 +292,24 @@ public sealed partial class ClientGenerator
 
             if (_document.Components?.Schemas is not null)
             {
+                var components = new List<(string TypeName, IOpenApiSchema Schema)>();
                 foreach (var schema in _document.Components.Schemas)
                 {
-                    if (!_schemaCatalog.TryGetComponentSchemaName(schema.Key, out var schemaName))
+                    if (_schemaCatalog.TryGetComponentSchemaName(schema.Key, out var schemaName))
                     {
-                        continue;
+                        components.Add((schemaName, schema.Value));
                     }
-
-                    var definition = CreateSchemaDefinition(schemaName, schemaName, parentTypeName: null, schema.Value);
-                    schemas.Add(definition);
-                    _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
-                    _schemaSourcesByTypeName[definition.QualifiedTypeName] = schema.Value;
                 }
+
+                // Bases are built before their subtypes so a subtype can merge the members it inherits.
+                foreach (var (typeName, schema) in components.OrderBy(component => GetInheritanceDepth(component.TypeName)))
+                {
+                    var definition = CreateSchemaDefinition(typeName, typeName, parentTypeName: null, schema);
+                    _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
+                    _schemaSourcesByTypeName[definition.QualifiedTypeName] = schema;
+                }
+
+                schemas.AddRange(components.Select(component => _schemaDefinitionsByTypeName[component.TypeName]));
             }
 
             foreach (var inlineSchema in _schemaCatalog.InlineSchemas)
@@ -292,6 +321,38 @@ public sealed partial class ClientGenerator
             }
 
             return schemas;
+        }
+
+        private int GetInheritanceDepth(string typeName)
+        {
+            var depth = 0;
+            while (_polymorphicDerivedSchemasByTypeName.TryGetValue(typeName, out var derivedInfo))
+            {
+                depth++;
+                typeName = derivedInfo.BaseTypeName;
+            }
+
+            return depth;
+        }
+
+        // Members a subtype inherits through CLR inheritance, keyed by JSON name; the base definitions are already built.
+        private Dictionary<string, SchemaPropertyDefinition> CollectInheritedProperties(string? baseTypeName)
+        {
+            var inheritedProperties = new Dictionary<string, SchemaPropertyDefinition>(StringComparer.Ordinal);
+            while (baseTypeName is not null && _schemaDefinitionsByTypeName.TryGetValue(baseTypeName, out var baseDefinition))
+            {
+                foreach (var property in baseDefinition.Properties)
+                {
+                    if (!inheritedProperties.ContainsKey(property.JsonPropertyName))
+                    {
+                        inheritedProperties.Add(property.JsonPropertyName, property);
+                    }
+                }
+
+                baseTypeName = baseDefinition.BaseTypeName;
+            }
+
+            return inheritedProperties;
         }
 
         private SchemaDefinition CreateSchemaDefinition(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema)
@@ -317,12 +378,16 @@ public sealed partial class ClientGenerator
             }
 
             var properties = new List<SchemaPropertyDefinition>();
+            var inheritedProperties = CollectInheritedProperties(baseTypeName);
+            var inheritedRequiredPropertyNames = new List<string>();
 
-            // A member cannot share the name of its enclosing type (CS0542) or of a nested type (CS0102).
+            // A member cannot share the name of its enclosing type (CS0542), of a nested type (CS0102),
+            // or of an inherited member it would hide (CS0108 / CS9031).
             var usedPropertyNames = new HashSet<string>(
                 _schemaCatalog.InlineSchemas
                     .Where(inlineSchema => string.Equals(inlineSchema.ParentTypeName, typeName, StringComparison.Ordinal))
                     .Select(static inlineSchema => inlineSchema.DeclaredTypeName)
+                    .Concat(inheritedProperties.Values.Select(static property => property.PropertyName))
                     .Append(declaredTypeName),
                 StringComparer.Ordinal);
             foreach (var property in SchemaPropertyCollector.Collect(schema, ignoredPropertyNames, ignoredSchemaReferences))
@@ -332,6 +397,20 @@ public sealed partial class ClientGenerator
                     throw new UnsupportedGenerationException(
                         $"Schema '{typeName}' property '{property.Name}' is marked both readOnly and writeOnly, which is not supported.",
                         UnsupportedFeatureKind.Schema);
+                }
+
+                if (inheritedProperties.TryGetValue(property.Name, out var inheritedProperty))
+                {
+                    // A subtype that redeclares an inherited property reuses the inherited member.
+                    var redeclaredTypeName = _schemaTypeResolver.ResolveTypeUsage(property.Schema, required: true).NonNullableCSharpTypeName;
+                    if (!string.Equals(redeclaredTypeName, inheritedProperty.Type.NonNullableCSharpTypeName, StringComparison.Ordinal))
+                    {
+                        throw new UnsupportedGenerationException(
+                            $"Schema '{typeName}' redeclares inherited property '{property.Name}' as '{redeclaredTypeName}' instead of '{inheritedProperty.Type.NonNullableCSharpTypeName}', which is not supported for compile-time code generation.",
+                            UnsupportedFeatureKind.Discriminator);
+                    }
+
+                    continue;
                 }
 
                 var propertyName = AllocateUniqueName(
@@ -347,6 +426,21 @@ public sealed partial class ClientGenerator
                     property.WriteOnly,
                     property.Schema.Title ?? propertyName,
                     property.Schema.Description));
+            }
+
+            // A subtype can make an inherited optional property required; the inherited CLR member cannot change,
+            // so the requirement is enforced by the response serializer contract instead.
+            if (inheritedProperties.Count > 0)
+            {
+                foreach (var requiredName in SchemaPropertyCollector.CollectRequiredNames(schema, ignoredSchemaReferences))
+                {
+                    if (inheritedProperties.TryGetValue(requiredName, out var inheritedProperty)
+                        && !inheritedProperty.Required
+                        && !inheritedProperty.WriteOnly)
+                    {
+                        inheritedRequiredPropertyNames.Add(requiredName);
+                    }
+                }
             }
 
             var enumKind = _schemaEnumResolver.GetSchemaEnumKind(schema);
@@ -373,7 +467,8 @@ public sealed partial class ClientGenerator
                 enumUnderlyingType,
                 enumMembers,
                 polymorphicDerivedSchema?.DiscriminatorPropertyName,
-                polymorphicDerivedSchema?.SelfAndDescendantTypes);
+                polymorphicDerivedSchema?.SelfAndDescendantTypes,
+                inheritedRequiredPropertyNames);
         }
 
         private void RegisterOperationInlineSchemaNames()

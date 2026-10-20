@@ -144,7 +144,9 @@ For each hierarchy:
 
 To keep System.Text.Json polymorphic serialization consistent, the discriminator property is not emitted as a normal CLR property on the generated types. A schema that declares `discriminator` but has no subtypes keeps the discriminator as an ordinary property.
 
-Inline `oneOf` / `anyOf` members, duplicate discriminator values, mappings that point outside the subtypes, and subtypes shared by several hierarchies are rejected with `OAW006`.
+A subtype that redeclares an inherited property with the same type reuses the inherited member, and a requirement a subtype adds to an inherited optional property is enforced when responses are deserialized.
+
+Inline `oneOf` / `anyOf` members, a schema listing itself as a member, duplicate discriminator values, mappings that point outside the subtypes, subtypes shared by several hierarchies, subtypes that declare their own discriminator hierarchy, `additionalProperties` / `patternProperties` within a hierarchy, and inherited properties redeclared with a different type are rejected with `OAW006`.
 
 ## Alias schemas
 

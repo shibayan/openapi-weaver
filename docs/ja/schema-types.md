@@ -144,7 +144,9 @@ public sealed class Order
 
 System.Text.Json のポリモーフィックシリアライズと整合させるため、discriminator プロパティ自体は生成型の通常の CLR プロパティとしては出力されません。`discriminator` を宣言していてもサブタイプがないスキーマでは、discriminator は通常のプロパティとして生成されます。
 
-インラインの `oneOf` / `anyOf` メンバー、重複した discriminator 値、サブタイプ以外を指す mapping、複数の階層で共有されるサブタイプは `OAW006` で拒否されます。
+サブタイプが継承したプロパティを同じ型で再宣言した場合は継承したメンバーがそのまま使われ、継承した省略可能なプロパティをサブタイプが必須にした場合はレスポンスのデシリアライズ時にその要件が適用されます。
+
+インラインの `oneOf` / `anyOf` メンバー、自身をメンバーに含むスキーマ、重複した discriminator 値、サブタイプ以外を指す mapping、複数の階層で共有されるサブタイプ、独自の discriminator 階層を宣言するサブタイプ、階層内での `additionalProperties` / `patternProperties`、異なる型で再宣言された継承プロパティは `OAW006` で拒否されます。
 
 ## エイリアススキーマ
 

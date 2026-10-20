@@ -6,7 +6,7 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 {
     public static string GetOptionsExpression(ClientModel model, JsonSerializerDirection direction)
     {
-        if (!model.HasDirectionalSchemaProperties)
+        if (!model.HasSerializerMetadata)
         {
             return SupportTypeNames.DefaultSerializerOptionsExpression;
         }
@@ -58,13 +58,14 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 
             writer.AppendLine("}");
             writer.AppendLine();
-            EmitMetadataMethod(writer, "ApplyRequestSerializerMetadata", property => property.ReadOnly, static _ => "IgnoreSerializedProperty");
+            EmitMetadataMethod(writer, "ApplyRequestSerializerMetadata", property => property.ReadOnly, static _ => "IgnoreSerializedProperty", includeInheritedRequirements: false);
             writer.AppendLine();
             EmitMetadataMethod(
                 writer,
                 "ApplyResponseSerializerMetadata",
                 property => property.WriteOnly || (property.ReadOnly && property.Required),
-                static property => property.WriteOnly ? "IgnoreDeserializedProperty" : "RequireDeserializedProperty");
+                static property => property.WriteOnly ? "IgnoreDeserializedProperty" : "RequireDeserializedProperty",
+                includeInheritedRequirements: true);
             writer.AppendLine();
             writer.AppendLine("private static void IgnoreSerializedProperty(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo, string propertyName)");
             writer.AppendLine("{");
@@ -175,7 +176,8 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
         IndentedStringBuilder writer,
         string methodName,
         Func<SchemaPropertyDefinition, bool> propertyPredicate,
-        Func<SchemaPropertyDefinition, string> configureMethodNameSelector)
+        Func<SchemaPropertyDefinition, string> configureMethodNameSelector,
+        bool includeInheritedRequirements)
     {
         writer.Append("private static void ").Append(methodName).AppendLine("(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo)");
         writer.AppendLine("{");
@@ -183,20 +185,28 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
         {
             foreach (var schema in model.Schemas)
             {
-                var properties = schema.Properties.Where(propertyPredicate).ToList();
-                if (properties.Count == 0)
+                var rules = schema.Properties
+                    .Where(propertyPredicate)
+                    .Select(property => (MethodName: configureMethodNameSelector(property), property.JsonPropertyName))
+                    .ToList();
+                if (includeInheritedRequirements)
+                {
+                    rules.AddRange(schema.InheritedRequiredPropertyNames.Select(static name => (MethodName: "RequireDeserializedProperty", JsonPropertyName: name)));
+                }
+
+                if (rules.Count == 0)
                 {
                     continue;
                 }
 
-                // IsAssignableFrom applies a base model's readOnly/writeOnly rules to the contracts of its derived models too.
+                // IsAssignableFrom applies a base model's rules to the contracts of its derived models too.
                 writer.Append("if (typeof(").Append(schema.QualifiedTypeName).AppendLine(").IsAssignableFrom(typeInfo.Type))");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
-                    foreach (var property in properties)
+                    foreach (var (configureMethodName, jsonPropertyName) in rules)
                     {
-                        writer.Append(configureMethodNameSelector(property)).Append("(typeInfo, \"").Append(EscapeStringLiteral(property.JsonPropertyName)).AppendLine("\");");
+                        writer.Append(configureMethodName).Append("(typeInfo, \"").Append(EscapeStringLiteral(jsonPropertyName)).AppendLine("\");");
                     }
                 }
 

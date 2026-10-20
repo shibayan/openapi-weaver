@@ -317,7 +317,8 @@ internal sealed class SchemaTypeResolver(
             JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean or JsonSchemaType.String => ResolveSimpleType(resolvedSchema).Shape,
             JsonSchemaType.Array => TypeShape.Array,
             JsonSchemaType.Object => TypeShape.Object,
-            _ when resolvedSchema.AllOf is { Count: > 0 } || (resolvedSchema.Properties?.Count ?? 0) > 0 => TypeShape.Object,
+            // A discriminator base such as `anyOf` + discriminator has no `type` but is still emitted as a class.
+            _ when resolvedSchema.Discriminator is not null || resolvedSchema.AllOf is { Count: > 0 } || (resolvedSchema.Properties?.Count ?? 0) > 0 => TypeShape.Object,
             _ => TypeShape.JsonElement
         };
     }

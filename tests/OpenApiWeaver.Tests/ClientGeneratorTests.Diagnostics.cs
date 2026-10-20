@@ -314,6 +314,93 @@ public sealed partial class ClientGeneratorTests
         AssertNoClientSource(result);
     }
 
+    [Theory]
+    [InlineData(
+        "additionalProperties:\n  type: string",
+        "uses additionalProperties or patternProperties in the 'Pet' discriminator hierarchy")]
+    [InlineData(
+        "properties:\n  name:\n    type: integer",
+        "redeclares inherited property 'name' as 'int' instead of 'string'")]
+    public void UnsupportedAllOfInheritanceShapes_ReportDiscriminatorDiagnostic(string catMemberYaml, string expectedMessage)
+    {
+        var indentedMember = string.Join("\n", catMemberYaml.Split('\n').Select(static line => "          " + line));
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, name]
+                  properties:
+                    petType:
+                      type: string
+                    name:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+            {{indentedMember}}
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+            """;
+
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains(expectedMessage, diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
+    public void NestedDiscriminatorHierarchy_ReportsUnsupportedDiagnostic()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      required: [catKind]
+                      properties:
+                        catKind:
+                          type: string
+                  discriminator:
+                    propertyName: catKind
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+            """;
+
+        // Cat would need both Pet's and its own discriminator contract, which cannot round-trip.
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains("declares its own discriminator hierarchy", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
     [Fact]
     public void DiscriminatorWithoutDerivedSchemas_KeepsDiscriminatorAsOrdinaryProperty()
     {

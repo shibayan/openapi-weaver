@@ -26,7 +26,8 @@ public sealed partial class ClientGenerator
             "contentType",
             "responseContent",
             "error",
-            "exception"
+            "exception",
+            "textContentType"
         ];
 
         private OperationGroupItem BuildOperation(

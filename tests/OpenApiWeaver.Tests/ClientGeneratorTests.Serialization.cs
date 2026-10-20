@@ -564,6 +564,82 @@ public sealed partial class ClientGeneratorTests
         }
     }
 
+    [Fact]
+    public void DiscriminatorWithAllOfInheritance_MergesRedeclaredAndRequiredInheritedProperties()
+    {
+        // Polymorphic counterpart of AllOfSchema_RequiredOnComposedSchema_AppliesToReferencedProperties.
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths:
+              /cats:
+                get:
+                  operationId: getCat
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/Cat'
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                    name:
+                      type: string
+                    tag:
+                      type: string
+                    pet_name:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      required: [name]
+                      properties:
+                        tag:
+                          type: string
+                        petName:
+                          type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        // `tag` is redeclared with the same type and reuses Pet.Tag; `petName` is a distinct JSON property whose
+        // CLR name would hide Pet.PetName, so it is renamed.
+        Assert.Equal(1, source.Split("public string? Tag { get; init; }").Length - 1);
+        Assert.Contains("public string? PetName { get; init; }", source);
+        Assert.Contains("[JsonPropertyName(\"petName\")]", source);
+        Assert.Contains("public string? PetName2 { get; init; }", source);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var optionsType = assembly.Assembly.GetType("GeneratorTests.TestClientJsonSerializerOptions")!;
+        var responseOptions = Assert.IsType<JsonSerializerOptions>(optionsType.GetField("ResponseSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+
+        // Cat makes Pet's optional `name` required, so a Cat response without it is rejected, directly or through Pet.
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("""{"petType":"Cat","tag":"x"}""", catType, responseOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("""{"petType":"Cat","tag":"x"}""", petType, responseOptions));
+
+        var cat = JsonSerializer.Deserialize("""{"petType":"Cat","name":"Tama"}""", petType, responseOptions);
+        Assert.Equal(catType, cat!.GetType());
+        Assert.Equal("Tama", petType.GetProperty("Name")!.GetValue(cat));
+
+        // Pet itself keeps `name` optional.
+        var pet = JsonSerializer.Deserialize("""{"tag":"x"}""", petType, responseOptions);
+        Assert.Equal(petType, pet!.GetType());
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!

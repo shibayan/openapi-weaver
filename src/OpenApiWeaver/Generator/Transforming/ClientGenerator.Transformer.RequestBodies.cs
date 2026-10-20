@@ -30,7 +30,7 @@ public sealed partial class ClientGenerator
                     ResolveConcreteRequestMediaType(selectedContent.Key)!,
                     new TypeUsage("byte[]", TypeShape.Binary, schemaAllowsNull: false, isOptional: !requestBody.Required)),
                 RequestBodyKind.Text => (
-                    StripMediaTypeParameters(ResolveConcreteRequestMediaType(selectedContent.Key)!),
+                    RemoveCharsetParameter(ResolveConcreteRequestMediaType(selectedContent.Key)!),
                     new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: !requestBody.Required)),
                 _ => (selectedContent.Key, _schemaTypeResolver.ResolveTypeUsage(schema, requestBody.Required))
             };
@@ -284,6 +284,13 @@ public sealed partial class ClientGenerator
             // A media type without a schema (e.g. `image/png: {}`) carries raw bytes.
             return schema is null ? RequestBodyKind.Binary : null;
         }
+
+        // Text bodies are always encoded as UTF-8, so only the declared charset is replaced; other parameters such as
+        // `header=absent` on text/csv are preserved.
+        private static string RemoveCharsetParameter(string contentType)
+            => string.Join("; ", contentType.Split(';')
+                .Select(static part => part.Trim())
+                .Where(static (part, index) => index == 0 || (part.Length > 0 && !part.StartsWith("charset=", StringComparison.OrdinalIgnoreCase))));
 
         // A media type range such as `image/*` can only be sent as a concrete type it covers; ranges without
         // a safe concrete choice return null so the request body is reported as unsupported.
