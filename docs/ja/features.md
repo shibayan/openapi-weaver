@@ -89,7 +89,7 @@ public sealed class Order
 OpenApiWeaver は、`discriminator.propertyName` を持つコンポーネントスキーマに対して OpenAPI の discriminator ベースのポリモーフィズムをサポートします。サブタイプは次のいずれかから決まります。
 
 - `oneOf` または `anyOf` (各要素が `components/schemas` 内の名前付きスキーマへの `$ref` であること。ASP.NET Core 組み込みの OpenAPI 生成は `anyOf` を使います)
-- `oneOf` / `anyOf` がない場合は、`allOf: [{ $ref: base }]` でベースを拡張しているコンポーネントスキーマ (OpenAPI 3.0 の継承パターン)
+- `oneOf` / `anyOf` がない場合は、`allOf: [{ $ref: base }]` でベースを直接、または別のサブタイプを経由して拡張しているコンポーネントスキーマ (OpenAPI 3.0 の継承パターン。例: `Pet` を拡張する `Cat` をさらに拡張する `Siamese`)
 
 生成されるベース型は、System.Text.Json のポリモーフィックシリアライズ用属性が付与された non-sealed なクラスになります。各サブタイプは派生型として出力されます。`discriminator.mapping` がある場合はそのキーが discriminator 値として使われ、ない場合はサブタイプのスキーマ名が使われます。
 
@@ -206,7 +206,7 @@ OpenApiWeaver はリクエストボディで次のコンテンツタイプをサ
 | `application/octet-stream`、`format: binary` のスキーマを持つメディアタイプ、またはスキーマのないメディアタイプ | `byte[]` 引数からの `ByteArrayContent` |
 | 文字列スキーマを持つ、またはスキーマのない `text/*` | `string` 引数からの `StringContent` (UTF-8) |
 
-1 つのリクエストボディに複数のサポート済みメディアタイプが定義されている場合は、表の順に優先されるため、利用可能であれば JSON が使われます。
+1 つのリクエストボディに複数のサポート済みメディアタイプが定義されている場合は、表の順に優先されるため、利用可能であれば JSON が使われます。メディアタイプの範囲指定は、それに含まれる具体的な型として送信されます (`*/*` と `application/*` は `application/octet-stream`、`text/*` は `text/plain`)。`image/*` などそれ以外の範囲指定は未対応です。
 
 リクエストボディやパラメーターを生成できないオペレーションは警告 (`OAW005` または `OAW008`) を出してスキップされ、クライアントの残りの部分は生成されます。ビルドを失敗させたい場合は `<WarningsAsErrors>OAW005;OAW008</WarningsAsErrors>` でエラーに格上げしてください。
 
@@ -225,6 +225,7 @@ OpenApiWeaver はリクエストボディで次のコンテンツタイプをサ
 - インラインのリクエストボディスキーマ
 - `oneOf` / `anyOf`
 - `additionalProperties` / `patternProperties`
+- discriminator ベースのポリモーフィックスキーマ
 
 ## パラメーターの場所
 
@@ -239,7 +240,7 @@ OpenAPI ドキュメントで定義されたパラメーターは、その場所
 
 配列パラメーターは OpenAPI の既定に沿ってシリアライズされます。query の配列は同じクエリキーを繰り返し、path、header、cookie の配列はカンマ区切りの値として送信されます。
 
-既定の `style: form` と `explode: true` を使うオブジェクト型の query パラメーターは展開され、各プロパティがそれぞれ独立したクエリパラメーターになります (例: `?status=open&page=2`)。query 以外の場所や `explode: false` のオブジェクトパラメーター、`additionalProperties` を使うパラメーター、オブジェクトの配列は `OAW008` でスキップされます。
+既定の `style: form` と `explode: true` を使うオブジェクト型の query パラメーターは展開され、各プロパティがそれぞれ独立したクエリパラメーターになります (例: `?status=open&page=2`)。参照スキーマとインラインのオブジェクトスキーマの両方が対象です。query 以外の場所や `explode: false` のオブジェクトパラメーター、`additionalProperties` を使うパラメーター、オブジェクトの配列は `OAW008` でスキップされます。
 
 ## セキュリティスキームのサポート
 

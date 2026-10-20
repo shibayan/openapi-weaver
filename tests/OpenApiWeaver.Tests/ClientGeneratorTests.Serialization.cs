@@ -430,6 +430,140 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("\"name\":\"Pochi\"", json);
     }
 
+    [Fact]
+    public void DiscriminatorWithAllOfInheritance_AppliesInheritedReadOnlyAndWriteOnlyRules()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths:
+              /cats:
+                post:
+                  operationId: createCat
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/Cat'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/Cat'
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, id, password]
+                  properties:
+                    petType:
+                      type: string
+                    id:
+                      type: integer
+                      readOnly: true
+                    password:
+                      type: string
+                      writeOnly: true
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        name:
+                          type: string
+            """;
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var optionsType = assembly.Assembly.GetType("GeneratorTests.TestClientJsonSerializerOptions")!;
+        var requestOptions = Assert.IsType<JsonSerializerOptions>(optionsType.GetField("RequestSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+        var responseOptions = Assert.IsType<JsonSerializerOptions>(optionsType.GetField("ResponseSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+
+        // A response omits the base's writeOnly property even though it is required.
+        var cat = JsonSerializer.Deserialize("""{"petType":"Cat","id":7,"name":"Tama"}""", catType, responseOptions);
+        Assert.NotNull(cat);
+        Assert.Equal(7, catType.GetProperty("Id")!.GetValue(cat));
+
+        // A request does not send the base's readOnly property.
+        catType.GetProperty("Password")!.SetValue(cat, "secret");
+        var json = JsonSerializer.Serialize(cat, catType, requestOptions);
+        Assert.DoesNotContain("\"id\"", json);
+        Assert.Contains("\"password\":\"secret\"", json);
+        Assert.Contains("\"petType\":\"Cat\"", json);
+    }
+
+    [Fact]
+    public void DiscriminatorWithMultiLevelAllOfInheritance_IncludesTransitiveSubtypes()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                    mapping:
+                      cat: '#/components/schemas/Cat'
+                      siamese: '#/components/schemas/Siamese'
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        name:
+                          type: string
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+                    - type: object
+                      properties:
+                        pointColor:
+                          type: string
+            """;
+
+        var source = GenerateSource(openApi);
+        Assert.Contains("public class Siamese : Cat", source);
+        // Registered on Pet, on the intermediate Cat, and on Siamese itself.
+        Assert.Equal(3, source.Split("[JsonDerivedType(typeof(Siamese), typeDiscriminator: \"siamese\")]").Length - 1);
+        Assert.Equal(1, source.Split("public string? Name { get; init; }").Length - 1);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var siameseType = assembly.Assembly.GetType("GeneratorTests.Siamese")!;
+        var options = GetGeneratedSerializerOptions(assembly.Assembly);
+
+        const string siameseJson = """{"name":"Tama","pointColor":"seal","petType":"siamese"}""";
+        var viaPet = JsonSerializer.Deserialize(siameseJson, petType, options);
+        var viaCat = JsonSerializer.Deserialize(siameseJson, catType, options);
+        Assert.Equal(siameseType, viaPet!.GetType());
+        Assert.Equal(siameseType, viaCat!.GetType());
+        Assert.Equal("Tama", catType.GetProperty("Name")!.GetValue(viaPet));
+
+        foreach (var declaredType in new[] { petType, catType, siameseType })
+        {
+            var json = JsonSerializer.Serialize(viaPet, declaredType, options);
+            Assert.Equal(1, json.Split("\"petType\":\"siamese\"").Length - 1);
+            Assert.Contains("\"pointColor\":\"seal\"", json);
+        }
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!

@@ -89,7 +89,7 @@ public sealed class Order
 OpenApiWeaver supports OpenAPI discriminator-based polymorphism for component schemas that declare `discriminator.propertyName`. The subtypes are taken from:
 
 - `oneOf` or `anyOf`, where every member is a `$ref` to a named schema in `components/schemas` (ASP.NET Core's built-in OpenAPI generator uses `anyOf`)
-- Otherwise, the component schemas that extend the base with `allOf: [{ $ref: base }]`, the OpenAPI 3.0 inheritance pattern
+- Otherwise, the component schemas that extend the base with `allOf: [{ $ref: base }]`, the OpenAPI 3.0 inheritance pattern, either directly or through another subtype (for example `Siamese` extending `Cat` extending `Pet`)
 
 The generated base type becomes a non-sealed class annotated for System.Text.Json polymorphism, and each subtype is emitted as a derived type. If `discriminator.mapping` is present, the mapping key is used as the discriminator value. Otherwise the subtype's schema name is used.
 
@@ -206,7 +206,7 @@ OpenApiWeaver supports the following content types for request bodies:
 | `application/octet-stream`, any media type with a `format: binary` schema, or a media type without a schema | `ByteArrayContent` from a `byte[]` parameter |
 | `text/*` with a string schema or no schema | `StringContent` (UTF-8) from a `string` parameter |
 
-If a request body declares multiple supported media types, they are preferred in the order shown in the table, so JSON is used when available.
+If a request body declares multiple supported media types, they are preferred in the order shown in the table, so JSON is used when available. Media type ranges are sent as a concrete type they cover: `*/*` and `application/*` as `application/octet-stream`, and `text/*` as `text/plain`. Other ranges, such as `image/*`, are unsupported.
 
 An operation whose request body or parameters cannot be generated is skipped with a warning (`OAW005` or `OAW008`), and the rest of the client is still generated. Promote these warnings with `<WarningsAsErrors>OAW005;OAW008</WarningsAsErrors>` if you want the build to fail instead.
 
@@ -225,6 +225,7 @@ The following features are intentionally unsupported for form and multipart requ
 - Inline request body schemas
 - `oneOf` / `anyOf`
 - `additionalProperties` / `patternProperties`
+- Discriminator-based polymorphic schemas
 
 ## Parameter locations
 
@@ -239,7 +240,7 @@ Parameters defined in the OpenAPI document are mapped to method parameters accor
 
 Array parameters use OpenAPI-compatible defaults: query arrays are emitted as repeated query parameters, while path, header, and cookie arrays are formatted as comma-separated values.
 
-Object query parameters that use the default `style: form` and `explode: true` are expanded so that each property becomes its own query parameter, for example `?status=open&page=2`. Object parameters in other locations or with `explode: false`, `additionalProperties` parameters, and arrays of objects are skipped with `OAW008`.
+Object query parameters that use the default `style: form` and `explode: true` are expanded so that each property becomes its own query parameter, for example `?status=open&page=2`. This applies to both referenced and inline object schemas. Object parameters in other locations or with `explode: false`, `additionalProperties` parameters, and arrays of objects are skipped with `OAW008`.
 
 ## Security scheme support
 

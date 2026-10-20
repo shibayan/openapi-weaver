@@ -85,7 +85,9 @@ internal sealed partial class OperationEmitter
     {
         if (parameter.ObjectProperties is { } objectProperties)
         {
-            EmitQueryObjectAppend(writer, parameter.ParameterName, objectProperties);
+            // Optional parameters are already null-guarded; a required one may still allow null (`type: [object, null]`).
+            OperationRequestBodyEmitter.EmitIfNotNull(writer, parameter.ParameterName, parameter.Required && parameter.IsNullable, () =>
+                EmitQueryObjectAppend(writer, parameter.ParameterName, objectProperties));
             return;
         }
 

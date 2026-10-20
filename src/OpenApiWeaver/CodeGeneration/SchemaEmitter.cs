@@ -74,14 +74,12 @@ internal sealed class SchemaEmitter(ClientModel model)
         {
             EmitPolymorphicAttributes(writer, schema.DiscriminatorPropertyName!, schema.DerivedTypes);
         }
-        else if (schema.InheritedDiscriminatorPropertyName is not null && schema.DiscriminatorValue is not null)
+        else if (schema.InheritedDiscriminatorPropertyName is not null && schema.SelfAndDescendantTypes is { Count: > 0 } selfAndDescendantTypes)
         {
             // System.Text.Json only writes the discriminator when the declared type is polymorphic, so a derived
-            // type registers itself to keep the discriminator when it is used directly (e.g. as a request body).
-            EmitPolymorphicAttributes(
-                writer,
-                schema.InheritedDiscriminatorPropertyName,
-                [new SchemaDerivedTypeDefinition(schema.DeclaredTypeName, schema.DiscriminatorValue)]);
+            // type registers itself (and its own subtypes) to keep the discriminator when it is used directly,
+            // e.g. as a request body.
+            EmitPolymorphicAttributes(writer, schema.InheritedDiscriminatorPropertyName, selfAndDescendantTypes);
         }
 
         if (DictionarySchemaConverterEmitter.RequiresConverter(schema))
@@ -95,7 +93,7 @@ internal sealed class SchemaEmitter(ClientModel model)
         }
         else
         {
-            writer.Append(schema.IsPolymorphicBase || schema.DiscriminatorValue is not null ? "public class " : "public sealed class ").Append(schema.DeclaredTypeName);
+            writer.Append(schema.IsPolymorphicBase || schema.SelfAndDescendantTypes is { Count: > 0 } ? "public class " : "public sealed class ").Append(schema.DeclaredTypeName);
             if (!string.IsNullOrWhiteSpace(schema.BaseTypeName))
             {
                 writer.Append(" : ").Append(schema.BaseTypeName);

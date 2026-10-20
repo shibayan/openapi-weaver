@@ -27,10 +27,10 @@ public sealed partial class ClientGenerator
             var (contentType, bodyType) = kind switch
             {
                 RequestBodyKind.Binary => (
-                    selectedContent.Key.IndexOf('*') >= 0 ? "application/octet-stream" : selectedContent.Key,
+                    ResolveConcreteRequestMediaType(selectedContent.Key)!,
                     new TypeUsage("byte[]", TypeShape.Binary, schemaAllowsNull: false, isOptional: !requestBody.Required)),
                 RequestBodyKind.Text => (
-                    selectedContent.Key.IndexOf('*') >= 0 ? "text/plain" : StripMediaTypeParameters(selectedContent.Key),
+                    StripMediaTypeParameters(ResolveConcreteRequestMediaType(selectedContent.Key)!),
                     new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: !requestBody.Required)),
                 _ => (selectedContent.Key, _schemaTypeResolver.ResolveTypeUsage(schema, requestBody.Required))
             };
@@ -82,6 +82,15 @@ public sealed partial class ClientGenerator
             {
                 throw new UnsupportedGenerationException(
                     $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses additionalProperties or patternProperties, which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.RequestBody);
+            }
+
+            // Polymorphic models drop the discriminator property and inherit members, so their form fields cannot be mapped yet.
+            if (_schemaDefinitionsByTypeName.TryGetValue(typeName, out var schemaDefinition)
+                && (schemaDefinition.IsPolymorphicBase || schemaDefinition.BaseTypeName is not null))
+            {
+                throw new UnsupportedGenerationException(
+                    $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses a discriminator-based polymorphic schema, which is not supported for compile-time code generation.",
                     UnsupportedFeatureKind.RequestBody);
             }
 
@@ -254,6 +263,11 @@ public sealed partial class ClientGenerator
                 }
             }
 
+            if (ResolveConcreteRequestMediaType(contentType) is null)
+            {
+                return null;
+            }
+
             var schemaType = schema?.Type & ~JsonSchemaType.Null;
             var isBinarySchema = schemaType == JsonSchemaType.String
                 && string.Equals(schema!.Format, "binary", StringComparison.OrdinalIgnoreCase);
@@ -269,6 +283,24 @@ public sealed partial class ClientGenerator
 
             // A media type without a schema (e.g. `image/png: {}`) carries raw bytes.
             return schema is null ? RequestBodyKind.Binary : null;
+        }
+
+        // A media type range such as `image/*` can only be sent as a concrete type it covers; ranges without
+        // a safe concrete choice return null so the request body is reported as unsupported.
+        private static string? ResolveConcreteRequestMediaType(string contentType)
+        {
+            var mediaType = StripMediaTypeParameters(contentType);
+            if (mediaType.IndexOf('*') < 0)
+            {
+                return contentType;
+            }
+
+            return mediaType.ToLowerInvariant() switch
+            {
+                "*/*" or "application/*" => "application/octet-stream",
+                "text/*" => "text/plain",
+                _ => null
+            };
         }
 
         private static readonly (RequestBodyKind Kind, string ContentType)[] s_requestBodyContentTypes =

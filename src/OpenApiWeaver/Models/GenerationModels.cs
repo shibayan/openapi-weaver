@@ -114,6 +114,7 @@ internal sealed class ParameterInfo(
     public string ParameterName { get; } = parameterName;
     public string ParameterTypeName { get; } = type.CSharpTypeName;
     public bool IsArray { get; } = type.Shape == TypeShape.Array;
+    public bool IsNullable { get; } = type.CanBeNullInCSharp;
     public bool Required { get; } = required;
     public ParameterLocation Location { get; } = location;
     public string? Description { get; } = description;
@@ -137,7 +138,7 @@ internal sealed class SchemaDefinition(
     string? enumUnderlyingType,
     IReadOnlyList<SchemaEnumMemberDefinition> enumMembers,
     string? inheritedDiscriminatorPropertyName = null,
-    string? discriminatorValue = null)
+    IReadOnlyList<SchemaDerivedTypeDefinition>? selfAndDescendantTypes = null)
 {
     public string QualifiedTypeName { get; } = typeName;
     public string DeclaredTypeName { get; } = declaredTypeName;
@@ -155,9 +156,10 @@ internal sealed class SchemaDefinition(
     public bool IsEnum { get; } = enumKind != SchemaEnumKind.None;
     public bool IsPolymorphicBase { get; } = !string.IsNullOrWhiteSpace(discriminatorPropertyName) && derivedTypes.Count > 0;
 
-    // Set for a derived type so it writes its own discriminator even when serialized by its own type.
+    // Set for a derived type so it writes its own discriminator even when serialized by its own type,
+    // and can (de)serialize its own subtypes in multi-level hierarchies.
     public string? InheritedDiscriminatorPropertyName { get; } = inheritedDiscriminatorPropertyName;
-    public string? DiscriminatorValue { get; } = discriminatorValue;
+    public IReadOnlyList<SchemaDerivedTypeDefinition>? SelfAndDescendantTypes { get; } = selfAndDescendantTypes;
 }
 
 internal sealed class SchemaDerivedTypeDefinition(string typeName, string discriminatorValue)

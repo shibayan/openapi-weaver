@@ -101,13 +101,22 @@ public sealed partial class ClientGenerator
                         UnsupportedFeatureKind.Parameter);
                 case TypeShape.Object:
                     return ResolveQueryObjectProperties(parameter, typeUsage);
+                case TypeShape.JsonElement when ComposesObject(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)):
+                    // An object without a generated model would otherwise be formatted as its raw JSON text.
+                    throw new UnsupportedGenerationException(
+                        $"Parameter '{parameter.Name}' uses an object schema that has no generated model, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Parameter);
                 case TypeShape.Array:
-                    var itemShape = _schemaTypeResolver.ResolveTypeUsage(_schemaReferenceResolver.ResolveSchemaReference(parameter.Schema!).Items, required: true).Shape;
-                    if (itemShape is TypeShape.Object or TypeShape.Dictionary or TypeShape.Array)
+                    if (FindArrayItemsSchema(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)) is { } itemsSchema)
                     {
-                        throw new UnsupportedGenerationException(
-                            $"Parameter '{parameter.Name}' uses array items with an object or array schema, which is not supported for compile-time code generation.",
-                            UnsupportedFeatureKind.Parameter);
+                        var itemShape = _schemaTypeResolver.ResolveTypeUsage(itemsSchema, required: true).Shape;
+                        if (itemShape is TypeShape.Object or TypeShape.Dictionary or TypeShape.Array
+                            || (itemShape == TypeShape.JsonElement && ComposesObject(itemsSchema, new HashSet<string>(StringComparer.Ordinal))))
+                        {
+                            throw new UnsupportedGenerationException(
+                                $"Parameter '{parameter.Name}' uses array items with an object or array schema, which is not supported for compile-time code generation.",
+                                UnsupportedFeatureKind.Parameter);
+                        }
                     }
 
                     return null;
@@ -116,10 +125,37 @@ public sealed partial class ClientGenerator
             }
         }
 
+        // Finds the items schema of the array a parameter resolves to, including arrays supplied through composition.
+        private IOpenApiSchema? FindArrayItemsSchema(IOpenApiSchema schema, HashSet<string> visited)
+        {
+            var resolvedSchema = _schemaReferenceResolver.ResolveSchemaReference(schema);
+            if (!visited.Add(SchemaReferenceResolver.GetSchemaIdentity(resolvedSchema)))
+            {
+                return null;
+            }
+
+            if (resolvedSchema.Items is not null)
+            {
+                return resolvedSchema.Items;
+            }
+
+            var members = (resolvedSchema.AllOf ?? []).Concat(resolvedSchema.OneOf ?? []).Concat(resolvedSchema.AnyOf ?? []);
+            foreach (var member in members)
+            {
+                if (!SchemaReferenceResolver.IsNullOnlySchema(member) && FindArrayItemsSchema(member, visited) is { } itemsSchema)
+                {
+                    return itemsSchema;
+                }
+            }
+
+            return null;
+        }
+
         private List<RequestBodyPropertyInfo> ResolveQueryObjectProperties(IOpenApiParameter parameter, TypeUsage typeUsage)
         {
             var typeName = typeUsage.NonNullableCSharpTypeName;
             if (!_schemaDefinitionsByTypeName.TryGetValue(typeName, out var schemaDefinition)
+                || !_schemaSourcesByTypeName.TryGetValue(typeName, out var objectSchema)
                 || schemaDefinition.IsPolymorphicBase
                 || schemaDefinition.BaseTypeName is not null)
             {
@@ -133,7 +169,9 @@ public sealed partial class ClientGenerator
                 allowsBinary: false,
                 "query parameters",
                 UnsupportedFeatureKind.Parameter);
-            return CreateFormProperties(context, typeName, _schemaReferenceResolver.ResolveSchemaReference(parameter.Schema!));
+
+            // Collect from the model's own schema so wrappers such as `anyOf: [$ref: Filter, null]` expand like Filter itself.
+            return CreateFormProperties(context, typeName, objectSchema);
         }
 
         private static void ValidateParameterStyle(IOpenApiParameter parameter, TypeUsage typeUsage)

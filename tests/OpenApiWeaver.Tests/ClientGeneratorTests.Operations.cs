@@ -222,7 +222,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void QueryParameter_WithInlineObject_RemainsJsonElement()
+    public void QueryParameter_WithInlineObject_IsExpandedIntoPropertyQueryParameters()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -249,8 +249,10 @@ public sealed partial class ClientGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("public async Task FindPetsAsync(JsonElement? filter = default, CancellationToken cancellationToken = default)", source);
-        Assert.DoesNotContain("FindPetsFilterModel", source);
+        // style: form, explode: true (the default) writes each property as its own query parameter, not the object's JSON text.
+        Assert.Contains("public async Task FindPetsAsync(FindPetsFilterModel? filter = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"status\", OpenApiClientHelpers.FormatParameter(filter.Status));", source);
+        Assert.DoesNotContain("FormatParameter(filter)", source);
     }
 
     [Fact]
@@ -2574,6 +2576,11 @@ public sealed partial class ClientGeneratorTests
     [InlineData("in: query\nschema:\n  type: object\n  additionalProperties:\n    type: string", "additionalProperties or patternProperties")]
     [InlineData("in: query\nschema:\n  type: array\n  items:\n    $ref: '#/components/schemas/Filter'", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Nested'", "property 'inner' uses a schema type that is not supported")]
+    [InlineData("in: header\nschema:\n  type: object\n  properties:\n    a:\n      type: string", "uses an object schema")]
+    [InlineData("in: query\nschema:\n  type: array\n  items:\n    type: object\n    properties:\n      a:\n        type: string", "array items with an object or array schema")]
+    [InlineData("in: query\nschema:\n  type: object\n  oneOf:\n    - $ref: '#/components/schemas/Filter'\n    - $ref: '#/components/schemas/Nested'", "object schema that has no generated model")]
+    [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/FilterList'", "array items with an object or array schema")]
+    [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Cat'", "cannot be expanded into query parameters")]
     public void ComplexParameterShapes_ReportParameterDiagnostic(string parameterYaml, string expectedMessage)
     {
         var indentedParameter = string.Join("\n", parameterYaml.Split('\n').Select(static line => "          " + line));
@@ -2604,6 +2611,26 @@ public sealed partial class ClientGeneratorTests
                   properties:
                     inner:
                       $ref: '#/components/schemas/Filter'
+                FilterList:
+                  allOf:
+                    - type: array
+                      items:
+                        $ref: '#/components/schemas/Filter'
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        name:
+                          type: string
             """;
 
         var result = RunGenerator(openApi);
@@ -2611,6 +2638,184 @@ public sealed partial class ClientGeneratorTests
         var diagnostic = Assert.Single(result.Diagnostics, static diagnostic => diagnostic.Id == ParameterUnsupportedDiagnosticId);
         Assert.Contains(expectedMessage, diagnostic.GetMessage());
         Assert.DoesNotContain(result.GeneratedSources, static source => source.Contains("FormatParameter(filter)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RequiredNullableObjectQueryParameter_IsSkippedWhenNull()
+    {
+        await using var server = TestHttpServer.Start();
+
+        var openApi = $$"""
+            openapi: 3.1.0
+            info:
+              title: Test
+              version: v1
+            servers:
+              - url: {{server.BaseAddress}}
+            paths:
+              /search:
+                get:
+                  operationId: search
+                  parameters:
+                    - name: filter
+                      in: query
+                      required: true
+                      schema:
+                        $ref: '#/components/schemas/Filter'
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Filter:
+                  type: [object, 'null']
+                  properties:
+                    a:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+        Assert.Contains("public async Task SearchAsync(Filter? filter, CancellationToken cancellationToken = default)", source);
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var operationClient = Assert.Single(clientType.GetProperties()).GetValue(Activator.CreateInstance(clientType));
+        Assert.NotNull(operationClient);
+
+        // A permitted null value must not be dereferenced while expanding its properties.
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("SearchAsync")!.Invoke(operationClient, [null, CancellationToken.None]));
+        Assert.Equal("/api/v1/search", await server.GetRequestTargetAsync());
+    }
+
+    [Fact]
+    public void NullableUnionObjectQueryParameter_IsExpandedLikeTheReferencedObject()
+    {
+        const string openApi = """
+            openapi: 3.1.0
+            info:
+              title: Test
+              version: v1
+            paths:
+              /search:
+                get:
+                  operationId: search
+                  parameters:
+                    - name: filter
+                      in: query
+                      schema:
+                        anyOf:
+                          - $ref: '#/components/schemas/Filter'
+                          - type: 'null'
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Filter:
+                  type: object
+                  properties:
+                    a:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public async Task SearchAsync(Filter? filter = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"a\", OpenApiClientHelpers.FormatParameter(filter.A));", source);
+    }
+
+    [Fact]
+    public void MediaTypeRangeRequestBody_UsesCompatibleConcreteTypeOrSkipsOperation()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /files:
+                put:
+                  operationId: uploadAny
+                  requestBody:
+                    required: true
+                    content:
+                      '*/*':
+                        schema:
+                          type: string
+                          format: binary
+                  responses:
+                    '204':
+                      description: ok
+              /images:
+                put:
+                  operationId: uploadImage
+                  requestBody:
+                    required: true
+                    content:
+                      image/*:
+                        schema:
+                          type: string
+                          format: binary
+                  responses:
+                    '204':
+                      description: ok
+            """;
+
+        var result = RunGenerator(openApi);
+
+        // image/* has no concrete type that is safe to send, so it must not fall back to application/octet-stream.
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "UploadImage");
+        Assert.Contains("'image/*'", diagnostic.GetMessage());
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public async Task UploadAnyAsync(byte[] body, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("MediaTypeHeaderValue.Parse(\"application/octet-stream\")", source);
+    }
+
+    [Fact]
+    public void PolymorphicFormRequestBody_IsSkipped()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /cats:
+                post:
+                  operationId: createCat
+                  requestBody:
+                    required: true
+                    content:
+                      application/x-www-form-urlencoded:
+                        schema:
+                          $ref: '#/components/schemas/Cat'
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        name:
+                          type: string
+            """;
+
+        var result = RunGenerator(openApi);
+
+        // The discriminator has no CLR property, so form fields referencing it would not compile (CS1061).
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateCat");
+        Assert.Contains("polymorphic schema", diagnostic.GetMessage());
     }
 
     [Fact]

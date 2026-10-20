@@ -81,8 +81,8 @@ public sealed partial class ClientGenerator
                     UnsupportedFeatureKind.Discriminator);
             }
 
-            var (memberKeyword, derivedSchemaNameList) = ResolveDiscriminatorMembers(schemaName, schema);
-            if (derivedSchemaNameList.Count == 0)
+            var (memberKeyword, subtypes) = ResolveDiscriminatorMembers(schemaName, schema);
+            if (subtypes.Count == 0)
             {
                 // Nothing derives from this schema, so the discriminator is an ordinary property.
                 return;
@@ -91,9 +91,9 @@ public sealed partial class ClientGenerator
             var baseTypeName = _schemaCatalog.GetComponentSchemaName(schemaName);
             var derivedSchemaNames = new HashSet<string>(StringComparer.Ordinal);
             var derivedTypes = new List<SchemaDerivedTypeDefinition>();
-            var pendingDerivedSchemas = new List<(string TypeName, PolymorphicDerivedSchemaInfo Info)>();
+            var pendingDerivedSchemas = new Dictionary<string, (string TypeName, PolymorphicDerivedSchemaInfo Info)>(StringComparer.Ordinal);
             var usedDiscriminatorValues = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var derivedSchemaName in derivedSchemaNameList)
+            foreach (var (derivedSchemaName, parentSchemaName) in subtypes)
             {
                 derivedSchemaNames.Add(derivedSchemaName);
 
@@ -113,20 +113,35 @@ public sealed partial class ClientGenerator
                 }
 
                 if (_polymorphicDerivedSchemasByTypeName.TryGetValue(derivedTypeName, out var existingDerivedSchema)
-                    && !string.Equals(existingDerivedSchema.BaseTypeName, baseTypeName, StringComparison.Ordinal))
+                    && !string.Equals(existingDerivedSchema.RootTypeName, baseTypeName, StringComparison.Ordinal))
                 {
                     throw new UnsupportedGenerationException(
                         $"Schema '{derivedSchemaName}' is used by multiple discriminator hierarchies, which is not supported for compile-time code generation.",
                         UnsupportedFeatureKind.Discriminator);
                 }
 
-                pendingDerivedSchemas.Add((derivedTypeName, new PolymorphicDerivedSchemaInfo(schemaName, baseTypeName, discriminatorPropertyName!, discriminatorValue)));
-                derivedTypes.Add(new SchemaDerivedTypeDefinition(derivedTypeName, discriminatorValue));
+                // Subtypes are listed parents first, so an intermediate parent is already pending here.
+                var parentTypeName = string.Equals(parentSchemaName, schemaName, StringComparison.Ordinal)
+                    ? baseTypeName
+                    : pendingDerivedSchemas[parentSchemaName].TypeName;
+                var derivedInfo = new PolymorphicDerivedSchemaInfo(parentSchemaName, parentTypeName, baseTypeName, discriminatorPropertyName!);
+                var derivedType = new SchemaDerivedTypeDefinition(derivedTypeName, discriminatorValue);
+                derivedInfo.SelfAndDescendantTypes.Add(derivedType);
+                pendingDerivedSchemas[derivedSchemaName] = (derivedTypeName, derivedInfo);
+                derivedTypes.Add(derivedType);
+
+                // An intermediate type must also register its descendants, or serializing them through it fails.
+                var ancestorSchemaName = parentSchemaName;
+                while (pendingDerivedSchemas.TryGetValue(ancestorSchemaName, out var ancestor))
+                {
+                    ancestor.Info.SelfAndDescendantTypes.Add(derivedType);
+                    ancestorSchemaName = ancestor.Info.BaseSchemaName;
+                }
             }
 
             ValidateDiscriminatorMappings(schemaName, schema.Discriminator!, derivedSchemaNames, memberKeyword);
 
-            foreach (var (derivedTypeName, derivedInfo) in pendingDerivedSchemas)
+            foreach (var (derivedTypeName, derivedInfo) in pendingDerivedSchemas.Values)
             {
                 _polymorphicDerivedSchemasByTypeName[derivedTypeName] = derivedInfo;
             }
@@ -169,29 +184,54 @@ public sealed partial class ClientGenerator
             }
         }
 
-        private (string DerivedSchemaDescription, List<string> DerivedSchemaNames) ResolveDiscriminatorMembers(string schemaName, IOpenApiSchema schema)
+        // Returns each subtype with the schema it directly extends, parents before their own subtypes.
+        private (string DerivedSchemaDescription, List<(string SchemaName, string ParentSchemaName)> Subtypes) ResolveDiscriminatorMembers(string schemaName, IOpenApiSchema schema)
         {
             var keyword = schema.OneOf is { Count: > 0 } ? "oneOf" : "anyOf";
             if ((schema.OneOf is { Count: > 0 } ? schema.OneOf : schema.AnyOf) is { Count: > 0 } members)
             {
-                var derivedSchemaNames = new List<string>(members.Count);
+                var memberSubtypes = new List<(string, string)>(members.Count);
                 foreach (var member in members)
                 {
-                    derivedSchemaNames.Add(SchemaReferenceResolver.TryResolveSchemaReferenceId(member)
+                    var memberName = SchemaReferenceResolver.TryResolveSchemaReferenceId(member)
                         ?? throw new UnsupportedGenerationException(
                             $"Schema '{schemaName}' uses discriminator with inline {keyword} members, which is not supported for compile-time code generation.",
-                            UnsupportedFeatureKind.Discriminator));
+                            UnsupportedFeatureKind.Discriminator);
+                    memberSubtypes.Add((memberName, schemaName));
                 }
 
-                return ($"a schema listed in {keyword}", derivedSchemaNames);
+                return ($"a schema listed in {keyword}", memberSubtypes);
             }
 
-            // OpenAPI 3.0 inheritance: the base declares the discriminator and each subtype extends it with `allOf: [$ref: base]`.
-            var inheritingSchemaNames = _document.Components!.Schemas!
-                .Where(component => component.Value.AllOf?.Any(child => string.Equals(SchemaReferenceResolver.TryResolveSchemaReferenceId(child), schemaName, StringComparison.Ordinal)) == true)
-                .Select(static component => component.Key)
-                .ToList();
-            return ("a schema that extends it through allOf", inheritingSchemaNames);
+            // OpenAPI 3.0 inheritance: the base declares the discriminator and subtypes extend it, directly or through
+            // other subtypes, with `allOf: [$ref: parent]`.
+            var subtypes = new List<(string, string)>();
+            var visited = new HashSet<string>(StringComparer.Ordinal) { schemaName };
+            var parents = new Queue<string>();
+            parents.Enqueue(schemaName);
+            while (parents.Count > 0)
+            {
+                var parentSchemaName = parents.Dequeue();
+                foreach (var component in _document.Components!.Schemas!)
+                {
+                    if (visited.Contains(component.Key)
+                        || component.Value.AllOf?.Any(child => string.Equals(SchemaReferenceResolver.TryResolveSchemaReferenceId(child), parentSchemaName, StringComparison.Ordinal)) != true)
+                    {
+                        continue;
+                    }
+
+                    visited.Add(component.Key);
+                    subtypes.Add((component.Key, parentSchemaName));
+
+                    // A subtype that declares its own discriminator roots a separate hierarchy for its descendants.
+                    if (component.Value.Discriminator is null)
+                    {
+                        parents.Enqueue(component.Key);
+                    }
+                }
+            }
+
+            return ("a schema that extends it through allOf", subtypes);
         }
 
         private void RegisterInlineSchemaNames()
@@ -230,6 +270,7 @@ public sealed partial class ClientGenerator
                     var definition = CreateSchemaDefinition(schemaName, schemaName, parentTypeName: null, schema.Value);
                     schemas.Add(definition);
                     _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
+                    _schemaSourcesByTypeName[definition.QualifiedTypeName] = schema.Value;
                 }
             }
 
@@ -238,6 +279,7 @@ public sealed partial class ClientGenerator
                 var definition = CreateSchemaDefinition(inlineSchema.TypeName, inlineSchema.DeclaredTypeName, inlineSchema.ParentTypeName, inlineSchema.Schema);
                 schemas.Add(definition);
                 _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
+                _schemaSourcesByTypeName[definition.QualifiedTypeName] = inlineSchema.Schema;
             }
 
             return schemas;
@@ -322,7 +364,7 @@ public sealed partial class ClientGenerator
                 enumUnderlyingType,
                 enumMembers,
                 polymorphicDerivedSchema?.DiscriminatorPropertyName,
-                polymorphicDerivedSchema?.DiscriminatorValue);
+                polymorphicDerivedSchema?.SelfAndDescendantTypes);
         }
 
         private void RegisterOperationInlineSchemaNames()
@@ -350,11 +392,7 @@ public sealed partial class ClientGenerator
 
         private void RegisterOperationParameterInlineSchema(IOpenApiParameter parameter, string operationName)
         {
-            if (parameter.Schema is null || _schemaEnumResolver.GetSchemaEnumKind(parameter.Schema) == SchemaEnumKind.None)
-            {
-                return;
-            }
-
+            // Inline enums and objects get generated models so object parameters can be validated and expanded.
             RegisterOperationInlineSchema(parameter.Schema, operationName, parameter.Name ?? "Parameter");
         }
 
@@ -571,12 +609,14 @@ public sealed partial class ClientGenerator
             public IReadOnlyList<SchemaDerivedTypeDefinition> DerivedTypes { get; } = derivedTypes;
         }
 
-        private sealed class PolymorphicDerivedSchemaInfo(string baseSchemaName, string baseTypeName, string discriminatorPropertyName, string discriminatorValue)
+        private sealed class PolymorphicDerivedSchemaInfo(string baseSchemaName, string baseTypeName, string rootTypeName, string discriminatorPropertyName)
         {
+            // The schema and type this subtype directly extends; RootTypeName is the type that declares the discriminator.
             public string BaseSchemaName { get; } = baseSchemaName;
             public string BaseTypeName { get; } = baseTypeName;
+            public string RootTypeName { get; } = rootTypeName;
             public string DiscriminatorPropertyName { get; } = discriminatorPropertyName;
-            public string DiscriminatorValue { get; } = discriminatorValue;
+            public List<SchemaDerivedTypeDefinition> SelfAndDescendantTypes { get; } = [];
         }
 
     }

@@ -189,7 +189,8 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
                     continue;
                 }
 
-                writer.Append("if (typeInfo.Type == typeof(").Append(schema.QualifiedTypeName).AppendLine("))");
+                // IsAssignableFrom applies a base model's readOnly/writeOnly rules to the contracts of its derived models too.
+                writer.Append("if (typeof(").Append(schema.QualifiedTypeName).AppendLine(").IsAssignableFrom(typeInfo.Type))");
                 writer.AppendLine("{");
                 using (writer.PushIndent())
                 {
