@@ -24,10 +24,17 @@ public sealed partial class ClientGenerator
                     UnsupportedFeatureKind.RequestBody);
             }
 
+            // A JSON body without a schema has no model to serialize, so the caller supplies the JSON bytes as-is;
+            // a `string` parameter would be serialized as a quoted JSON string instead.
+            if (kind == RequestBodyKind.Json && schema is null)
+            {
+                kind = RequestBodyKind.Binary;
+            }
+
             var (contentType, bodyType) = kind switch
             {
                 RequestBodyKind.Binary => (
-                    ResolveConcreteRequestMediaType(selectedContent.Key)!,
+                    ResolveConcreteRequestMediaType(selectedContent.Key) ?? "application/json",
                     new TypeUsage("byte[]", TypeShape.Binary, schemaAllowsNull: false, isOptional: !requestBody.Required)),
                 RequestBodyKind.Text => (
                     RemoveCharsetParameter(ResolveConcreteRequestMediaType(selectedContent.Key)!),

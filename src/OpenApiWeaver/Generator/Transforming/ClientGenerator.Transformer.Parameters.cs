@@ -139,8 +139,9 @@ public sealed partial class ClientGenerator
                 return true;
             }
 
-            return (schema.OneOf ?? []).Concat(schema.AnyOf ?? [])
-                .Any(alternative => !SchemaReferenceResolver.IsNullOnlySchema(alternative) && SerializesAsObject(alternative, visited));
+            // allOf members are walked too, so a union wrapped in allOf (e.g. `allOf: [{ anyOf: [object, string] }]`) is found.
+            return (schema.AllOf ?? []).Concat(schema.OneOf ?? []).Concat(schema.AnyOf ?? [])
+                .Any(member => !SchemaReferenceResolver.IsNullOnlySchema(member) && SerializesAsObject(member, visited));
         }
 
         // Finds the items schema of the array a parameter resolves to, including arrays supplied through composition.

@@ -237,23 +237,30 @@ public sealed partial class ClientGenerator
 
             // OpenAPI 3.0 inheritance: the base declares the discriminator and subtypes extend it, directly or through
             // other subtypes, with `allOf: [$ref: parent]`.
-            var subtypes = new List<(string, string)>();
-            var visited = new HashSet<string>(StringComparer.Ordinal) { schemaName };
+            var componentSchemas = _document.Components!.Schemas!;
+            List<string> GetReferencedSchemaNames(string componentName)
+                => componentSchemas[componentName].AllOf?
+                    .Select(static child => SchemaReferenceResolver.TryResolveSchemaReferenceId(child))
+                    .OfType<string>()
+                    .Where(name => !string.Equals(name, componentName, StringComparison.Ordinal))
+                    .ToList() ?? [];
+
+            var hierarchyMembers = new List<string>();
+            var hierarchy = new HashSet<string>(StringComparer.Ordinal) { schemaName };
             var parents = new Queue<string>();
             parents.Enqueue(schemaName);
             while (parents.Count > 0)
             {
                 var parentSchemaName = parents.Dequeue();
-                foreach (var component in _document.Components!.Schemas!)
+                foreach (var component in componentSchemas)
                 {
-                    if (visited.Contains(component.Key)
-                        || component.Value.AllOf?.Any(child => string.Equals(SchemaReferenceResolver.TryResolveSchemaReferenceId(child), parentSchemaName, StringComparison.Ordinal)) != true)
+                    if (hierarchy.Contains(component.Key) || !GetReferencedSchemaNames(component.Key).Contains(parentSchemaName))
                     {
                         continue;
                     }
 
-                    visited.Add(component.Key);
-                    subtypes.Add((component.Key, parentSchemaName));
+                    hierarchy.Add(component.Key);
+                    hierarchyMembers.Add(component.Key);
 
                     // A subtype that declares its own discriminator roots a separate hierarchy for its descendants.
                     if (component.Value.Discriminator is null)
@@ -263,6 +270,60 @@ public sealed partial class ClientGenerator
                 }
             }
 
+            // A subtype extends the most specific hierarchy member it references, so a redundant reference to an ancestor
+            // (`Siamese: allOf: [$ref: Pet, $ref: Cat]`) still makes it a Cat. Unrelated parents cannot be represented.
+            var parentByMember = new Dictionary<string, string>(StringComparer.Ordinal);
+            var depthByMember = new Dictionary<string, int>(StringComparer.Ordinal) { [schemaName] = 0 };
+            bool IsAncestor(string ancestorName, string memberName)
+            {
+                while (!string.Equals(memberName, schemaName, StringComparison.Ordinal))
+                {
+                    memberName = parentByMember[memberName];
+                    if (string.Equals(memberName, ancestorName, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            int GetDepth(string memberName, HashSet<string> resolving)
+            {
+                if (depthByMember.TryGetValue(memberName, out var knownDepth))
+                {
+                    return knownDepth;
+                }
+
+                if (!resolving.Add(memberName))
+                {
+                    throw new UnsupportedGenerationException(
+                        $"Schema '{memberName}' is part of a cyclic allOf inheritance chain in the '{schemaName}' discriminator hierarchy, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Discriminator);
+                }
+
+                var referencedMembers = GetReferencedSchemaNames(memberName).Where(hierarchy.Contains).Distinct(StringComparer.Ordinal).ToList();
+                var parentName = referencedMembers.OrderByDescending(name => GetDepth(name, resolving)).First();
+                parentByMember[memberName] = parentName;
+                foreach (var referencedMember in referencedMembers)
+                {
+                    if (!string.Equals(referencedMember, parentName, StringComparison.Ordinal) && !IsAncestor(referencedMember, memberName))
+                    {
+                        throw new UnsupportedGenerationException(
+                            $"Schema '{memberName}' extends both '{parentName}' and '{referencedMember}' in the '{schemaName}' discriminator hierarchy, which is not supported for compile-time code generation.",
+                            UnsupportedFeatureKind.Discriminator);
+                    }
+                }
+
+                resolving.Remove(memberName);
+                depthByMember[memberName] = depthByMember[parentName] + 1;
+                return depthByMember[memberName];
+            }
+
+            var subtypes = hierarchyMembers
+                .OrderBy(member => GetDepth(member, new HashSet<string>(StringComparer.Ordinal)))
+                .Select(member => (member, parentByMember[member]))
+                .ToList();
             return ("a schema that extends it through allOf", subtypes);
         }
 

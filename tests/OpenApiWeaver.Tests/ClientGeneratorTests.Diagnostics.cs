@@ -360,6 +360,45 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void AllOfSubtypeExtendingUnrelatedSubtypes_ReportsUnsupportedDiagnostic()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                Dog:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                CatDog:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+                    - $ref: '#/components/schemas/Dog'
+            """;
+
+        // Multiple inheritance cannot be represented, so it is rejected instead of silently picking one parent.
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains("'CatDog' extends both", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
     public void NestedDiscriminatorHierarchy_ReportsUnsupportedDiagnostic()
     {
         const string openApi = """

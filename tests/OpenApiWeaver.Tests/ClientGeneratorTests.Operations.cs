@@ -2583,6 +2583,8 @@ public sealed partial class ClientGeneratorTests
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Cat'", "cannot be expanded into query parameters")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Shape'", "cannot be expanded into query parameters")]
     [InlineData("in: query\nschema:\n  oneOf:\n    - $ref: '#/components/schemas/Filter'\n    - $ref: '#/components/schemas/Nested'", "object schema that has no generated model")]
+    [InlineData("in: query\nschema:\n  allOf:\n    - anyOf:\n        - type: object\n          properties:\n            a:\n              type: string\n        - type: string", "object schema that has no generated model")]
+    [InlineData("in: query\nschema:\n  type: array\n  items:\n    allOf:\n      - anyOf:\n          - type: object\n            properties:\n              a:\n                type: string\n          - type: string", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  type: array\n  items:\n    anyOf:\n      - $ref: '#/components/schemas/Filter'\n      - $ref: '#/components/schemas/Nested'", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  type: array\n  items:\n    $ref: '#/components/schemas/Shape'", "array items with an object or array schema")]
     public void ComplexParameterShapes_ReportParameterDiagnostic(string parameterYaml, string expectedMessage)
@@ -2945,6 +2947,49 @@ public sealed partial class ClientGeneratorTests
         var bodyDiagnostic = Assert.Single(result.Diagnostics, static diagnostic => diagnostic.Id == RequestBodyUnsupportedDiagnosticId);
         Assert.Contains("'POST /filters'", bodyDiagnostic.GetMessage());
         Assert.Contains(result.GeneratedSources, static source => source.Contains("GetHealthAsync(", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SchemalessJsonRequestBody_IsSentAsRawBytes()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /raw:
+                post:
+                  operationId: postRaw
+                  requestBody:
+                    required: true
+                    content:
+                      application/json: {}
+                      text/plain:
+                        schema:
+                          type: string
+                  responses:
+                    '204':
+                      description: ok
+            """;
+
+        // JSON is still preferred, but without a schema there is no model, so the caller's JSON bytes are sent as-is.
+        var source = GenerateSource(openApi);
+        Assert.Contains("public async Task PostRawAsync(byte[] body, CancellationToken cancellationToken = default)", source);
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new ContentCapturingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com/") };
+        var operationClient = Assert.Single(clientType.GetProperties()).GetValue(Activator.CreateInstance(clientType, httpClient));
+        Assert.NotNull(operationClient);
+
+        var json = Encoding.UTF8.GetBytes("""{"x":1}""");
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("PostRawAsync")!.Invoke(operationClient, [json, CancellationToken.None]));
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("application/json", request.ContentType);
+        Assert.Equal(json, request.Body);
     }
 
     [Fact]

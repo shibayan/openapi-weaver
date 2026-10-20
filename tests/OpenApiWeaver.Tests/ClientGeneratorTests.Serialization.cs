@@ -781,6 +781,56 @@ public sealed partial class ClientGeneratorTests
         }
     }
 
+    [Fact]
+    public void AllOfSubtype_WithRedundantAncestorReference_ExtendsMostSpecificParent()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        name:
+                          type: string
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - $ref: '#/components/schemas/Cat'
+                    - type: object
+                      properties:
+                        pointColor:
+                          type: string
+            """;
+
+        // Siamese references Pet redundantly; it must still derive from Cat and be registered on Cat.
+        var source = GenerateSource(openApi);
+        Assert.Contains("public class Siamese : Cat", source);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var siameseType = assembly.Assembly.GetType("GeneratorTests.Siamese")!;
+        var options = GetGeneratedSerializerOptions(assembly.Assembly);
+
+        var viaCat = JsonSerializer.Deserialize("""{"petType":"Siamese","name":"Tama","pointColor":"seal"}""", catType, options);
+        Assert.Equal(siameseType, viaCat!.GetType());
+        Assert.Equal("seal", siameseType.GetProperty("PointColor")!.GetValue(viaCat));
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!
