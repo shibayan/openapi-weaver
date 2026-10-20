@@ -584,12 +584,12 @@ public sealed partial class ClientGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"kind\")]", source);
+        Assert.Contains("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"kind\", IgnoreUnrecognizedTypeDiscriminators = true)]", source);
         Assert.Contains("[JsonDerivedType(typeof(Dog), typeDiscriminator: \"dog\")]", source);
         Assert.Contains("[JsonDerivedType(typeof(Cat), typeDiscriminator: \"cat\")]", source);
         Assert.Contains("public class Animal", source);
-        Assert.Contains("public sealed class Dog : Animal", source);
-        Assert.Contains("public sealed class Cat : Animal", source);
+        Assert.Contains("public class Dog : Animal", source);
+        Assert.Contains("public class Cat : Animal", source);
         Assert.Contains("public required string Name { get; init; }", source);
         Assert.Contains("public required bool Barks { get; init; }", source);
         Assert.Contains("public required int Lives { get; init; }", source);
@@ -1559,5 +1559,147 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("[JsonPropertyName(\"class\")]", source);
         Assert.Contains("public required string Class { get; init; }", source);
         Assert.Contains("[JsonPropertyName(\"default\")]", source);
+    }
+
+    [Fact]
+    public void MemberNamesMatchingEnclosingTypeName_AreRenamedToCompile()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Name Collision API
+              version: v1
+            tags:
+              - name: TestClient
+              - name: Dispose
+            paths:
+              /errors:
+                get:
+                  operationId: getError
+                  tags: [TestClient]
+                  responses:
+                    '204':
+                      description: ok
+              /disposals:
+                get:
+                  operationId: listDisposals
+                  tags: [Dispose]
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Error:
+                  type: object
+                  properties:
+                    error:
+                      type: string
+                    address:
+                      type: object
+                      properties:
+                        street:
+                          type: string
+                    addressModel:
+                      type: string
+                Status:
+                  type: string
+                  enum: [status, value, equals]
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonPropertyName(\"error\")]", source);
+        Assert.Contains("public string? Error2 { get; init; }", source);
+        Assert.Contains("public sealed class AddressModel", source);
+        Assert.Contains("public string? AddressModel2 { get; init; }", source);
+        Assert.Contains("public static readonly Status Status2 = new(\"status\");", source);
+        Assert.Contains("public static readonly Status Value2 = new(\"value\");", source);
+        Assert.Contains("public static readonly Status Equals2 = new(\"equals\");", source);
+        Assert.Contains("public TestClient2Client TestClient2 { get; }", source);
+        Assert.Contains("public Dispose2Client Dispose2 { get; }", source);
+    }
+
+    [Fact]
+    public void AliasComponentSchemas_ResolveToUnderlyingTypes()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Alias API
+              version: v1
+            paths:
+              /users:
+                get:
+                  operationId: getUser
+                  parameters:
+                    - name: id
+                      in: query
+                      required: true
+                      schema:
+                        $ref: '#/components/schemas/UserId'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/User'
+            components:
+              schemas:
+                UserId:
+                  type: string
+                  format: uuid
+                Tags:
+                  type: array
+                  items:
+                    type: string
+                Addresses:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      street:
+                        type: string
+                Tree:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Tree'
+                User:
+                  type: object
+                  required: [id]
+                  properties:
+                    id:
+                      $ref: '#/components/schemas/UserId'
+                    tags:
+                      $ref: '#/components/schemas/Tags'
+                    addresses:
+                      $ref: '#/components/schemas/Addresses'
+                    tree:
+                      $ref: '#/components/schemas/Tree'
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.DoesNotContain("class UserId", source);
+        Assert.DoesNotContain("class Tags", source);
+        Assert.DoesNotContain("class Tree", source);
+        Assert.Contains("public required Guid Id { get; init; }", source);
+        Assert.Contains("public IReadOnlyList<string>? Tags { get; init; }", source);
+        Assert.Contains("public sealed class AddressesItem", source);
+        Assert.Contains("public IReadOnlyList<AddressesItem>? Addresses { get; init; }", source);
+        Assert.Contains("public IReadOnlyList<JsonElement>? Tree { get; init; }", source);
+        Assert.Contains("public async Task<User> GetUserAsync(Guid id, CancellationToken cancellationToken = default)", source);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var userType = assembly.Assembly.GetType("GeneratorTests.User");
+        Assert.NotNull(userType);
+
+        var user = JsonSerializer.Deserialize(
+            """{"id":"6f9619ff-8b86-d011-b42d-00cf4fc964ff","tags":["a","b"],"addresses":[{"street":"Main"}],"tree":[[]]}""",
+            userType!,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(user);
+        Assert.Equal(Guid.Parse("6f9619ff-8b86-d011-b42d-00cf4fc964ff"), userType!.GetProperty("Id")!.GetValue(user));
+        Assert.Equal(["a", "b"], Assert.IsAssignableFrom<IReadOnlyList<string>>(userType.GetProperty("Tags")!.GetValue(user)));
     }
 }

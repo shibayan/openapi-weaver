@@ -123,21 +123,32 @@ public sealed class Order
 |---|---|
 | `allOf` | すべてのプロパティを含む 1 つのクラスへフラット化 |
 | `oneOf` / `anyOf` | union 風の nullable プロパティ、または primitive と `null` の組み合わせなら nullable CLR プリミティブ |
-| `discriminator` + `oneOf` | `JsonPolymorphic` / `JsonDerivedType` 属性付きのポリモーフィックなベースクラスと、参照先スキーマの派生クラス |
+| `discriminator` + `oneOf` / `anyOf` / `allOf` による継承 | `JsonPolymorphic` / `JsonDerivedType` 属性付きのポリモーフィックなベースクラスと、サブタイプの派生クラス |
 
 ### discriminator ベースのポリモーフィズム
 
-コンポーネントスキーマが `discriminator` を持ち、`oneOf` で名前付きコンポーネントスキーマを参照している場合、OpenApiWeaver はそのスキーマをポリモーフィックなベース型として扱います。
+コンポーネントスキーマが `discriminator` を持つ場合、OpenApiWeaver はそのスキーマをポリモーフィックなベース型として扱います。サブタイプは次のいずれかで決まります。
 
-- ベース型は `public sealed class` ではなく `public class` として生成される
-- ベース型には `[JsonPolymorphic(TypeDiscriminatorPropertyName = "...")]` が付与される
-- `oneOf` の各要素に対して `[JsonDerivedType(typeof(...), typeDiscriminator: "...")]` が生成される
-- 参照先の子スキーマは派生クラスとして生成される
+- 名前付きコンポーネントスキーマを `$ref` で参照する `oneOf` または `anyOf` の要素
+- `oneOf` / `anyOf` がない場合は、`allOf: [{ $ref: base }]` でベースを拡張しているコンポーネントスキーマ (OpenAPI 3.0 の継承パターン)
+
+各階層について次のように生成されます。
+
+- ベース型と各派生型は `public sealed class` ではなく `public class` として生成される
+- ベース型には `[JsonPolymorphic(TypeDiscriminatorPropertyName = "...", IgnoreUnrecognizedTypeDiscriminators = true)]` が付与される
+- 各サブタイプに対して `[JsonDerivedType(typeof(...), typeDiscriminator: "...")]` が生成される
+- 各派生型も自身の discriminator を登録するため、リクエストボディなどで派生型を直接シリアライズしても discriminator が出力される
 - `discriminator.mapping` がある場合はそのキーが discriminator 値に使われ、ない場合はスキーマ名が使われる
+- 未知の discriminator 値は例外にならずベース型としてデシリアライズされる
+- .NET 9 以降では、discriminator が JSON の先頭プロパティでなくてもよい
 
-System.Text.Json のポリモーフィックシリアライズと整合させるため、discriminator プロパティ自体は生成型の通常の CLR プロパティとしては出力されません。
+System.Text.Json のポリモーフィックシリアライズと整合させるため、discriminator プロパティ自体は生成型の通常の CLR プロパティとしては出力されません。`discriminator` を宣言していてもサブタイプがないスキーマでは、discriminator は通常のプロパティとして生成されます。
 
-この機能では、discriminator の各メンバーが `oneOf` 内の `$ref` であることが必要です。`anyOf`、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` 外を指す mapping は `OAW006` で拒否されます。
+インラインの `oneOf` / `anyOf` メンバー、重複した discriminator 値、サブタイプ以外を指す mapping、複数の階層で共有されるサブタイプは `OAW006` で拒否されます。
+
+## エイリアススキーマ
+
+`UserId: { type: string, format: uuid }` や `Tags: { type: array, items: { type: string } }` のように、オブジェクト・列挙型・辞書のいずれでもないコンポーネントスキーマにはラッパークラスを生成しません。各参照は基になる CLR 型 (`Guid`、`IReadOnlyList<string>`) に解決されます。有限の CLR 型を持たない自己参照エイリアスは `JsonElement` になります。
 
 ## Nullable 型配列（OpenAPI 3.2）
 

@@ -152,28 +152,23 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 
     private static void EmitFactoryReturn(IndentedStringBuilder writer, string modifierMethodName)
     {
-        writer.AppendLine("return new JsonSerializerOptions(JsonSerializerDefaults.Web)");
+        writer.Append("var options = ").Append(SupportTypeNames.ClientHelpers).AppendLine(".CreateSerializerOptions();");
+        writer.AppendLine("options.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver");
         writer.AppendLine("{");
         using (writer.PushIndent())
         {
-            writer.AppendLine("TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver");
+            writer.AppendLine("Modifiers =");
             writer.AppendLine("{");
             using (writer.PushIndent())
             {
-                writer.AppendLine("Modifiers =");
-                writer.AppendLine("{");
-                using (writer.PushIndent())
-                {
-                    writer.Append(modifierMethodName).AppendLine();
-                }
-
-                writer.AppendLine("}");
+                writer.Append(modifierMethodName).AppendLine();
             }
 
             writer.AppendLine("}");
         }
 
         writer.AppendLine("};");
+        writer.AppendLine("return options;");
     }
 
     private void EmitMetadataMethod(

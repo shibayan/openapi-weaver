@@ -50,7 +50,8 @@ var user = await client.Users.GetAsync(userId: "me");
 OpenApiWeaver はオブジェクトスキーマに対してクラスを生成し、メソッド引数や戻り値へ型付きでマッピングします。
 
 - **オブジェクトスキーマ** -> `[JsonPropertyName]` 属性付きの `sealed class`
-- **ポリモーフィックスキーマ** -> スキーマが `discriminator` と `oneOf` を使う場合はベースクラスと派生クラスを生成
+- **ポリモーフィックスキーマ** -> スキーマが `discriminator` を `oneOf`、`anyOf`、または `allOf` による継承と組み合わせて使う場合はベースクラスと派生クラスを生成
+- **エイリアススキーマ** (例: `UserId: { type: string, format: uuid }`) -> ラッパークラスは生成せず、`Guid` などの基になる CLR 型を使用
 - **列挙型** -> 文字列 enum は専用 `JsonConverter` 付きの `readonly record struct`、整数 enum は標準 `enum`。詳細は [スキーマ型マッピング](./schema-types) を参照
 - **配列** -> `IReadOnlyList<T>`
 - **辞書** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
@@ -62,7 +63,7 @@ OpenApiWeaver はオブジェクトスキーマに対してクラスを生成し
 
 OpenAPI 3.2 の nullable type array である `type: ["string", "null"]` のような表現は、`string?` のような nullable CLR 型へマッピングされます。
 
-コンポーネントスキーマが `discriminator` と、名前付きスキーマを参照する `oneOf` を併用している場合、OpenApiWeaver は `[JsonPolymorphic]` と `[JsonDerivedType]` を使ったポリモーフィックなベースモデルと、その派生型を生成します。
+コンポーネントスキーマが `discriminator` を使っている場合、OpenApiWeaver は `[JsonPolymorphic]` と `[JsonDerivedType]` を使ったポリモーフィックなベースモデルと、そのサブタイプの派生型を生成します。
 
 ## インラインスキーマ / ネスト型
 
@@ -85,13 +86,12 @@ public sealed class Order
 
 ## discriminator を使ったポリモーフィックスキーマ
 
-OpenApiWeaver は、次の条件を満たすコンポーネントスキーマに対して OpenAPI の discriminator ベースのポリモーフィズムをサポートします。
+OpenApiWeaver は、`discriminator.propertyName` を持つコンポーネントスキーマに対して OpenAPI の discriminator ベースのポリモーフィズムをサポートします。サブタイプは次のいずれかから決まります。
 
-- ベーススキーマが `discriminator.propertyName` を持つ
-- ベーススキーマが `oneOf` を使う
-- `oneOf` の各要素が `components/schemas` 内の名前付きスキーマへの `$ref` である
+- `oneOf` または `anyOf` (各要素が `components/schemas` 内の名前付きスキーマへの `$ref` であること。ASP.NET Core 組み込みの OpenAPI 生成は `anyOf` を使います)
+- `oneOf` / `anyOf` がない場合は、`allOf: [{ $ref: base }]` でベースを拡張しているコンポーネントスキーマ (OpenAPI 3.0 の継承パターン)
 
-生成されるベース型は、System.Text.Json のポリモーフィックシリアライズ用属性が付与された non-sealed なクラスになります。参照された各スキーマは派生型として出力されます。`discriminator.mapping` がある場合はそのキーが discriminator 値として使われ、ない場合は参照先のスキーマ名が使われます。
+生成されるベース型は、System.Text.Json のポリモーフィックシリアライズ用属性が付与された non-sealed なクラスになります。各サブタイプは派生型として出力されます。`discriminator.mapping` がある場合はそのキーが discriminator 値として使われ、ない場合はサブタイプのスキーマ名が使われます。
 
 ```yaml
 animal:
@@ -121,7 +121,7 @@ cat:
 ```
 
 ```csharp
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind", IgnoreUnrecognizedTypeDiscriminators = true)]
 [JsonDerivedType(typeof(Dog), typeDiscriminator: "dog")]
 [JsonDerivedType(typeof(Cat), typeDiscriminator: "cat")]
 public class Animal
@@ -130,16 +130,24 @@ public class Animal
     public required string Name { get; init; }
 }
 
-public sealed class Dog : Animal
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind", IgnoreUnrecognizedTypeDiscriminators = true)]
+[JsonDerivedType(typeof(Dog), typeDiscriminator: "dog")]
+public class Dog : Animal
 {
     [JsonPropertyName("barks")]
     public required bool Barks { get; init; }
 }
 ```
 
-discriminator 用のプロパティ自体は通常の CLR プロパティとしては生成されません。これにより、ポリモーフィックシリアライズ時の重複した JSON 出力を避けます。
+discriminator 用のプロパティ自体は通常の CLR プロパティとしては生成されません。これにより、ポリモーフィックシリアライズ時の重複した JSON 出力を避けます。生成されるシリアライズの挙動は次のとおりです。
 
-未対応の discriminator パターンは `OAW006` で生成失敗になります。対象には、`anyOf` と組み合わせた discriminator、`oneOf` を持たない discriminator、インラインの `oneOf` メンバー、重複した discriminator 値、`oneOf` に含まれないスキーマを参照する mapping が含まれます。
+- 各派生型は自身の discriminator も登録するため、`Dog` をリクエストボディとして直接送信しても `"kind": "dog"` が含まれます
+- サーバー側で後から追加されたサブタイプなど、未知の discriminator 値は例外にならずベース型としてデシリアライズされます
+- .NET 9 以降では `AllowOutOfOrderMetadataProperties` が有効になるため、discriminator が JSON の先頭プロパティでなくても読み取れます
+
+`discriminator` を宣言していてもサブタイプがないスキーマでは、discriminator は通常のプロパティとして生成されます。
+
+未対応の discriminator パターンは `OAW006` で生成失敗になります。対象には、インラインの `oneOf` / `anyOf` メンバー、重複した discriminator 値、サブタイプ以外のスキーマを参照する mapping、複数の階層で共有されるサブタイプが含まれます。
 
 ## レスポンス型
 
@@ -195,12 +203,16 @@ OpenApiWeaver はリクエストボディで次のコンテンツタイプをサ
 | `application/json` | `JsonSerializerDefaults.Web` を使う `JsonSerializer` |
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (バイナリファイルアップロード対応) |
+| `application/octet-stream`、`format: binary` のスキーマを持つメディアタイプ、またはスキーマのないメディアタイプ | `byte[]` 引数からの `ByteArrayContent` |
+| 文字列スキーマを持つ、またはスキーマのない `text/*` | `string` 引数からの `StringContent` (UTF-8) |
 
-1 つのリクエストボディに複数のサポート済みメディアタイプが定義されている場合は、利用可能であれば JSON が優先されます。
+1 つのリクエストボディに複数のサポート済みメディアタイプが定義されている場合は、表の順に優先されるため、利用可能であれば JSON が使われます。
+
+リクエストボディやパラメーターを生成できないオペレーションは警告 (`OAW005` または `OAW008`) を出してスキップされ、クライアントの残りの部分は生成されます。ビルドを失敗させたい場合は `<WarningsAsErrors>OAW005;OAW008</WarningsAsErrors>` でエラーに格上げしてください。
 
 ### フォーム / マルチパートのコンパイル時専用ポリシー
 
-`application/x-www-form-urlencoded` および `multipart/form-data` のリクエストボディは、必要なコードをすべてコンパイル時に生成できなければなりません。生成できない場合は `OAW005` でエラーになります。
+`application/x-www-form-urlencoded` および `multipart/form-data` のリクエストボディは、必要なコードをすべてコンパイル時に生成できなければなりません。生成できない場合、そのオペレーションは `OAW005` でスキップされます。
 
 サポートされるフォーム / マルチパートリクエストボディの要件：
 
@@ -226,6 +238,8 @@ OpenAPI ドキュメントで定義されたパラメーターは、その場所
 | `cookie` | `Cookie` ヘッダーへ追加される |
 
 配列パラメーターは OpenAPI の既定に沿ってシリアライズされます。query の配列は同じクエリキーを繰り返し、path、header、cookie の配列はカンマ区切りの値として送信されます。
+
+既定の `style: form` と `explode: true` を使うオブジェクト型の query パラメーターは展開され、各プロパティがそれぞれ独立したクエリパラメーターになります (例: `?status=open&page=2`)。query 以外の場所や `explode: false` のオブジェクトパラメーター、`additionalProperties` を使うパラメーター、オブジェクトの配列は `OAW008` でスキップされます。
 
 ## セキュリティスキームのサポート
 
@@ -258,9 +272,10 @@ OpenApiWeaver は、コンパイル中に標準のコンパイラ診断として
 | OAW002 | Warning | OpenAPI ドキュメントに検証警告があります |
 | OAW003 | Error | OpenAPI ドキュメントが不正です (例: JSON/YAML の構文不正) |
 | OAW004 | Error | OpenAPI ドキュメントで未対応機能が使われています |
-| OAW005 | Error | OpenAPI リクエストボディで未対応機能が使われています |
+| OAW005 | Warning | OpenAPI リクエストボディで未対応機能が使われています。該当オペレーションはスキップされます |
 | OAW006 | Error | OpenAPI discriminator で未対応機能が使われています |
 | OAW007 | Error | OpenAPI スキーマで未対応機能が使われています |
+| OAW008 | Warning | OpenAPI パラメーターで未対応機能が使われています。該当オペレーションはスキップされます |
 
 これらの診断は、Visual Studio の Error List、`dotnet build` の出力、CI ログに他のコンパイラ診断と同様に表示されます。
 

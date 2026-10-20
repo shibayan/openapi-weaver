@@ -255,4 +255,184 @@ public sealed partial class ClientGeneratorTests
         var dateResult = genericMethod.MakeGenericMethod(typeof(DateOnly)).Invoke(null, [dateOnly]);
         Assert.Equal("2026-06-01", dateResult);
     }
+
+    [Fact]
+    public void DiscriminatorSchema_ToleratesServerOrderingUnknownValuesAndDirectDerivedSerialization()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  oneOf:
+                    - $ref: '#/components/schemas/Cat'
+                  discriminator:
+                    propertyName: petType
+                    mapping:
+                      cat: '#/components/schemas/Cat'
+                Cat:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                    name:
+                      type: string
+            """;
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var helpersType = assembly.Assembly.GetType("GeneratorTests.OpenApiClientHelpers")!;
+        var options = Assert.IsType<JsonSerializerOptions>(
+            helpersType.GetField("SerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+
+        // The discriminator does not have to be the first property.
+        var outOfOrder = JsonSerializer.Deserialize("""{"name":"Tama","petType":"cat"}""", petType, options);
+        Assert.Equal(catType, outOfOrder!.GetType());
+        Assert.Equal("Tama", catType.GetProperty("Name")!.GetValue(outOfOrder));
+
+        // A discriminator value added on the server later falls back to the base type instead of throwing.
+        var unknown = JsonSerializer.Deserialize("""{"petType":"dog","name":"Pochi"}""", petType, options);
+        Assert.Equal(petType, unknown!.GetType());
+
+        // Serializing the derived type directly (e.g. as a request body) still writes its discriminator exactly once.
+        var cat = JsonSerializer.Deserialize("""{"petType":"cat","name":"Tama"}""", catType, options);
+        Assert.Equal(catType, cat!.GetType());
+        var asCat = JsonSerializer.Serialize(cat, catType, options);
+        var asPet = JsonSerializer.Serialize(cat, petType, options);
+        Assert.Equal(1, asCat.Split("\"petType\":\"cat\"").Length - 1);
+        Assert.Equal(1, asPet.Split("\"petType\":\"cat\"").Length - 1);
+        Assert.Contains("\"name\":\"Tama\"", asCat);
+    }
+
+    [Fact]
+    public void DiscriminatorWithAnyOf_GeneratesPolymorphicModels()
+    {
+        // ASP.NET Core's built-in OpenAPI generator describes polymorphic types with anyOf + discriminator.
+        const string openApi = """
+            openapi: 3.1.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Shape:
+                  required: [kind]
+                  type: object
+                  anyOf:
+                    - $ref: '#/components/schemas/ShapeCircle'
+                    - $ref: '#/components/schemas/ShapeSquare'
+                  discriminator:
+                    propertyName: kind
+                    mapping:
+                      circle: '#/components/schemas/ShapeCircle'
+                      square: '#/components/schemas/ShapeSquare'
+                ShapeCircle:
+                  type: object
+                  properties:
+                    kind:
+                      enum: [circle]
+                      type: string
+                    radius:
+                      type: number
+                      format: double
+                ShapeSquare:
+                  type: object
+                  properties:
+                    kind:
+                      enum: [square]
+                      type: string
+                    side:
+                      type: number
+                      format: double
+            """;
+
+        var result = RunGenerator(openApi);
+        Assert.Empty(result.Diagnostics);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var shapeType = assembly.Assembly.GetType("GeneratorTests.Shape")!;
+        var squareType = assembly.Assembly.GetType("GeneratorTests.ShapeSquare")!;
+        Assert.Equal(shapeType, squareType.BaseType);
+        var options = GetGeneratedSerializerOptions(assembly.Assembly);
+
+        var square = JsonSerializer.Deserialize("""{"kind":"square","side":2.5}""", shapeType, options);
+        Assert.Equal(squareType, square!.GetType());
+        Assert.Equal(2.5, squareType.GetProperty("Side")!.GetValue(square));
+        Assert.Equal(1, JsonSerializer.Serialize(square, shapeType, options).Split("\"kind\":\"square\"").Length - 1);
+    }
+
+    [Fact]
+    public void DiscriminatorWithAllOfInheritance_GeneratesPolymorphicModels()
+    {
+        // OpenAPI 3.0 inheritance: the base declares the discriminator and subtypes extend it through allOf.
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, name]
+                  properties:
+                    petType:
+                      type: string
+                    name:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                    mapping:
+                      cat: '#/components/schemas/Cat'
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        huntingSkill:
+                          type: string
+                Dog:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        packSize:
+                          type: integer
+            """;
+
+        var source = GenerateSource(openApi);
+        Assert.Contains("[JsonDerivedType(typeof(Cat), typeDiscriminator: \"cat\")]", source);
+        Assert.Contains("[JsonDerivedType(typeof(Dog), typeDiscriminator: \"Dog\")]", source);
+        Assert.Contains("public class Cat : Pet", source);
+        Assert.Equal(1, source.Split("public required string Name { get; init; }").Length - 1);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var dogType = assembly.Assembly.GetType("GeneratorTests.Dog")!;
+        var options = GetGeneratedSerializerOptions(assembly.Assembly);
+
+        var dog = JsonSerializer.Deserialize("""{"name":"Pochi","packSize":3,"petType":"Dog"}""", petType, options);
+        Assert.Equal(dogType, dog!.GetType());
+        Assert.Equal("Pochi", petType.GetProperty("Name")!.GetValue(dog));
+        Assert.Equal(3, dogType.GetProperty("PackSize")!.GetValue(dog));
+
+        var json = JsonSerializer.Serialize(dog, dogType, options);
+        Assert.Equal(1, json.Split("\"petType\":\"Dog\"").Length - 1);
+        Assert.Contains("\"name\":\"Pochi\"", json);
+    }
+
+    private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
+        => Assert.IsType<JsonSerializerOptions>(
+            assembly.GetType("GeneratorTests.OpenApiClientHelpers")!
+                .GetField("SerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null));
 }

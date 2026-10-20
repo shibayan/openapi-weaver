@@ -8,6 +8,27 @@ public sealed partial class ClientGenerator
 {
     private sealed partial class Transformer
     {
+        // Locals declared by OperationEmitter in every generated method body; method parameters must not shadow them (CS0136).
+        private static readonly string[] s_operationLocalNames =
+        [
+            "cancellationToken",
+            "pathBuilder",
+            "path",
+            "hasQuery",
+            "request",
+            "response",
+            "cookieBuilder",
+            "values",
+            "content",
+            "item",
+            "securityRequirementIndex",
+            "statusCode",
+            "contentType",
+            "responseContent",
+            "error",
+            "exception"
+        ];
+
         private OperationGroupItem BuildOperation(
             string route,
             string operationType,
@@ -17,15 +38,12 @@ public sealed partial class ClientGenerator
             IReadOnlyDictionary<string, SecuritySchemeBinding> securitySchemesByKey)
         {
             var tagName = GetTagName(operation);
-            var usedParameterNames = new HashSet<string>(StringComparer.Ordinal)
-            {
-                "cancellationToken"
-            };
+            var usedParameterNames = new HashSet<string>(s_operationLocalNames, StringComparer.Ordinal);
             var parameters = CollectParameters(pathItem, operation)
                 .Select(parameter =>
                 {
                     var typeUsage = _schemaTypeResolver.ResolveTypeUsage(parameter.Schema, parameter.Required);
-                    ValidateParameterSerialization(parameter, typeUsage);
+                    var objectProperties = ResolveParameterSerialization(parameter, typeUsage);
                     return new ParameterInfo(
                         parameter.Name ?? string.Empty,
                         AllocateUniqueName(
@@ -35,7 +53,8 @@ public sealed partial class ClientGenerator
                         typeUsage,
                         parameter.Required,
                         MapParameterLocation(parameter.In ?? OpenApiParameterLocation.Query),
-                        parameter.Description);
+                        parameter.Description,
+                        objectProperties);
                 })
                 .ToList();
 

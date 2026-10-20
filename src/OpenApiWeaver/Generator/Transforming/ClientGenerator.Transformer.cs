@@ -17,6 +17,7 @@ public sealed partial class ClientGenerator
         private readonly Dictionary<string, PolymorphicSchemaInfo> _polymorphicSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, SchemaDefinition> _schemaDefinitionsByTypeName = new(StringComparer.Ordinal);
+        private readonly List<SkippedOperation> _skippedOperations = [];
 
         public Transformer(string documentPath, string rootNamespace, string? clientNameOverride, OpenApiDocument document)
         {
@@ -27,6 +28,8 @@ public sealed partial class ClientGenerator
             _schemaEnumResolver = new SchemaEnumResolver(_schemaAnalysisCache);
             _schemaTypeResolver = new SchemaTypeResolver(_schemaCatalog, _schemaAnalysisCache, _schemaReferenceResolver, _schemaEnumResolver);
         }
+
+        public IReadOnlyList<SkippedOperation> SkippedOperations => _skippedOperations;
 
         public ClientModel Transform()
         {

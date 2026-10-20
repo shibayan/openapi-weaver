@@ -84,7 +84,59 @@ public sealed partial class ClientGenerator
                 || string.Equals(name, "Authorization", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static void ValidateParameterSerialization(IOpenApiParameter parameter, TypeUsage typeUsage)
+        private IReadOnlyList<RequestBodyPropertyInfo>? ResolveParameterSerialization(IOpenApiParameter parameter, TypeUsage typeUsage)
+        {
+            ValidateParameterStyle(parameter, typeUsage);
+
+            var location = parameter.In ?? OpenApiParameterLocation.Query;
+            switch (typeUsage.Shape)
+            {
+                case TypeShape.Dictionary:
+                    throw new UnsupportedGenerationException(
+                        $"Parameter '{parameter.Name}' uses additionalProperties or patternProperties, which is not supported for compile-time code generation.",
+                        UnsupportedFeatureKind.Parameter);
+                case TypeShape.Object when location != OpenApiParameterLocation.Query || !parameter.Explode:
+                    throw new UnsupportedGenerationException(
+                        $"Parameter '{parameter.Name}' uses an object schema, which is only supported for query parameters with style: form and explode: true.",
+                        UnsupportedFeatureKind.Parameter);
+                case TypeShape.Object:
+                    return ResolveQueryObjectProperties(parameter, typeUsage);
+                case TypeShape.Array:
+                    var itemShape = _schemaTypeResolver.ResolveTypeUsage(_schemaReferenceResolver.ResolveSchemaReference(parameter.Schema!).Items, required: true).Shape;
+                    if (itemShape is TypeShape.Object or TypeShape.Dictionary or TypeShape.Array)
+                    {
+                        throw new UnsupportedGenerationException(
+                            $"Parameter '{parameter.Name}' uses array items with an object or array schema, which is not supported for compile-time code generation.",
+                            UnsupportedFeatureKind.Parameter);
+                    }
+
+                    return null;
+                default:
+                    return null;
+            }
+        }
+
+        private List<RequestBodyPropertyInfo> ResolveQueryObjectProperties(IOpenApiParameter parameter, TypeUsage typeUsage)
+        {
+            var typeName = typeUsage.NonNullableCSharpTypeName;
+            if (!_schemaDefinitionsByTypeName.TryGetValue(typeName, out var schemaDefinition)
+                || schemaDefinition.IsPolymorphicBase
+                || schemaDefinition.BaseTypeName is not null)
+            {
+                throw new UnsupportedGenerationException(
+                    $"Parameter '{parameter.Name}' uses an object schema that cannot be expanded into query parameters for compile-time code generation.",
+                    UnsupportedFeatureKind.Parameter);
+            }
+
+            var context = new FormValueContext(
+                $"Query parameter '{parameter.Name}' schema '{typeName}'",
+                allowsBinary: false,
+                "query parameters",
+                UnsupportedFeatureKind.Parameter);
+            return CreateFormProperties(context, typeName, _schemaReferenceResolver.ResolveSchemaReference(parameter.Schema!));
+        }
+
+        private static void ValidateParameterStyle(IOpenApiParameter parameter, TypeUsage typeUsage)
         {
             var location = parameter.In ?? OpenApiParameterLocation.Query;
             var style = parameter.Style;

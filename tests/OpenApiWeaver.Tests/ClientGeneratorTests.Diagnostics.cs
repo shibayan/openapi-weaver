@@ -23,7 +23,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void PipeDelimitedQueryParameter_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void PipeDelimitedQueryParameter_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -54,13 +54,12 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, ParameterUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, ParameterUnsupportedDiagnosticId, "ListReports");
         Assert.Contains("PipeDelimited", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
-    public void NonExplodedArrayQueryParameter_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void NonExplodedArrayQueryParameter_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -91,9 +90,8 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, ParameterUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, ParameterUnsupportedDiagnosticId, "ListReports");
         Assert.Contains("explode: false", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -130,7 +128,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void InlineMultipartRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void InlineMultipartRequestBody_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -162,13 +160,12 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateUpload");
         Assert.Contains("multipart/form-data request bodies must reference a named component schema", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
-    public void AdditionalPropertiesFormRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void AdditionalPropertiesFormRequestBody_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -202,13 +199,12 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateReport");
         Assert.Contains("additionalProperties or patternProperties", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
-    public void AnyOfMultipartRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void AnyOfMultipartRequestBody_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -249,9 +245,8 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateUpload");
         Assert.Contains("uses oneOf/anyOf", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -283,7 +278,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void DiscriminatorWithoutOneOf_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void DiscriminatorWithoutDerivedSchemas_KeepsDiscriminatorAsOrdinaryProperty()
     {
         const string openApi = """
             openapi: 3.2.0
@@ -295,6 +290,7 @@ public sealed partial class ClientGeneratorTests
               schemas:
                 animal:
                   type: object
+                  required: [kind]
                   discriminator:
                     propertyName: kind
                   properties:
@@ -304,39 +300,11 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
-        Assert.Contains("without oneOf", diagnostic.GetMessage());
-        AssertNoClientSource(result);
-    }
-
-    [Fact]
-    public void DiscriminatorWithAnyOf_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
-    {
-        const string openApi = """
-            openapi: 3.2.0
-            info:
-              title: Polymorphism API
-              version: v1
-            paths: {}
-            components:
-              schemas:
-                animal:
-                  discriminator:
-                    propertyName: kind
-                  anyOf:
-                    - $ref: '#/components/schemas/dog'
-                dog:
-                  type: object
-                  properties:
-                    kind:
-                      type: string
-            """;
-
-        var result = RunGenerator(openApi);
-
-        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
-        Assert.Contains("discriminator with anyOf", diagnostic.GetMessage());
-        AssertNoClientSource(result);
+        Assert.Empty(result.Diagnostics);
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public sealed class Animal", source);
+        Assert.Contains("[JsonPropertyName(\"kind\")]", source);
+        Assert.DoesNotContain("JsonPolymorphic", source);
     }
 
     [Fact]

@@ -101,7 +101,14 @@ internal sealed class TypeUsage
     public bool RequiresNonNullJsonResponse { get; }
 }
 
-internal sealed class ParameterInfo(string wireName, string parameterName, TypeUsage type, bool required, ParameterLocation location, string? description)
+internal sealed class ParameterInfo(
+    string wireName,
+    string parameterName,
+    TypeUsage type,
+    bool required,
+    ParameterLocation location,
+    string? description,
+    IReadOnlyList<RequestBodyPropertyInfo>? objectProperties = null)
 {
     public string WireName { get; } = wireName;
     public string ParameterName { get; } = parameterName;
@@ -110,6 +117,9 @@ internal sealed class ParameterInfo(string wireName, string parameterName, TypeU
     public bool Required { get; } = required;
     public ParameterLocation Location { get; } = location;
     public string? Description { get; } = description;
+
+    // Set only for exploded form-style query objects, whose properties are written as separate name/value pairs.
+    public IReadOnlyList<RequestBodyPropertyInfo>? ObjectProperties { get; } = objectProperties;
 }
 
 internal sealed class SchemaDefinition(
@@ -125,7 +135,9 @@ internal sealed class SchemaDefinition(
     IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes,
     SchemaEnumKind enumKind,
     string? enumUnderlyingType,
-    IReadOnlyList<SchemaEnumMemberDefinition> enumMembers)
+    IReadOnlyList<SchemaEnumMemberDefinition> enumMembers,
+    string? inheritedDiscriminatorPropertyName = null,
+    string? discriminatorValue = null)
 {
     public string QualifiedTypeName { get; } = typeName;
     public string DeclaredTypeName { get; } = declaredTypeName;
@@ -142,6 +154,10 @@ internal sealed class SchemaDefinition(
     public IReadOnlyList<SchemaEnumMemberDefinition> EnumMembers { get; } = enumMembers;
     public bool IsEnum { get; } = enumKind != SchemaEnumKind.None;
     public bool IsPolymorphicBase { get; } = !string.IsNullOrWhiteSpace(discriminatorPropertyName) && derivedTypes.Count > 0;
+
+    // Set for a derived type so it writes its own discriminator even when serialized by its own type.
+    public string? InheritedDiscriminatorPropertyName { get; } = inheritedDiscriminatorPropertyName;
+    public string? DiscriminatorValue { get; } = discriminatorValue;
 }
 
 internal sealed class SchemaDerivedTypeDefinition(string typeName, string discriminatorValue)
@@ -229,11 +245,14 @@ internal sealed class ResponseInfo(ResponseKind kind, TypeUsage? type, string? d
     public string? Documentation { get; } = documentation;
 }
 
+// Declaration order is the preference order when an operation offers several request body media types.
 internal enum RequestBodyKind
 {
     Json,
     FormUrlEncoded,
-    MultipartFormData
+    MultipartFormData,
+    Binary,
+    Text
 }
 
 internal enum ResponseKind

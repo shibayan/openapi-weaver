@@ -7,7 +7,7 @@ public sealed partial class ClientGenerator
     private sealed partial class Transformer
     {
         private static int GetRequestBodyContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
-            => TryResolveRequestBodyKind(item.Key) is { } kind ? (int)kind : int.MaxValue;
+            => TryResolveRequestBodyKind(item.Key, item.Value.Schema) is { } kind ? (int)kind : int.MaxValue;
 
         private int GetResponseContentPriority(KeyValuePair<string, IOpenApiMediaType> item)
             => IsJson(item) ? 0 : IsBinary(item) ? 1 : IsText(item) ? 2 : int.MaxValue;

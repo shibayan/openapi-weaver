@@ -50,7 +50,8 @@ When a tag includes a description, OpenApiWeaver emits it as XML documentation o
 OpenApiWeaver generates classes for object schemas and maps them to strongly typed method parameters and return values:
 
 - **Object schemas** -> `sealed class` with `[JsonPropertyName]` attributes
-- **Polymorphic object schemas** -> base class plus derived classes when a schema uses `discriminator` with `oneOf`
+- **Polymorphic object schemas** -> base class plus derived classes when a schema uses `discriminator` with `oneOf`, `anyOf`, or `allOf` inheritance
+- **Alias schemas** (e.g. `UserId: { type: string, format: uuid }`) -> the underlying CLR type, such as `Guid`, without a wrapper class
 - **Enums** -> `readonly record struct` with a dedicated `JsonConverter` for string enums, or standard `enum` for integer enums; see [Schema Type Mapping](./schema-types)
 - **Arrays** -> `IReadOnlyList<T>`
 - **Dictionaries** (`additionalProperties` / `patternProperties`) -> `IReadOnlyDictionary<string, T>`
@@ -62,7 +63,7 @@ Optional (non-required) nullable properties are annotated with `[JsonIgnore(Cond
 
 OpenAPI 3.2 nullable type arrays such as `type: ["string", "null"]` are mapped to nullable CLR types like `string?`.
 
-When a component schema uses `discriminator` together with `oneOf` references to named component schemas, OpenApiWeaver generates a polymorphic base model annotated with `[JsonPolymorphic]` and `[JsonDerivedType]`, and the referenced schemas become derived classes.
+When a component schema uses `discriminator`, OpenApiWeaver generates a polymorphic base model annotated with `[JsonPolymorphic]` and `[JsonDerivedType]`, and its subtypes become derived classes.
 
 ## Inline / nested schemas
 
@@ -85,13 +86,12 @@ public sealed class Order
 
 ## Polymorphic schemas with discriminator
 
-OpenApiWeaver supports OpenAPI discriminator-based polymorphism for component schemas that follow this pattern:
+OpenApiWeaver supports OpenAPI discriminator-based polymorphism for component schemas that declare `discriminator.propertyName`. The subtypes are taken from:
 
-- The base schema declares `discriminator.propertyName`
-- The base schema uses `oneOf`
-- Every `oneOf` member is a `$ref` to a named schema in `components/schemas`
+- `oneOf` or `anyOf`, where every member is a `$ref` to a named schema in `components/schemas` (ASP.NET Core's built-in OpenAPI generator uses `anyOf`)
+- Otherwise, the component schemas that extend the base with `allOf: [{ $ref: base }]`, the OpenAPI 3.0 inheritance pattern
 
-The generated base type becomes a non-sealed class annotated for System.Text.Json polymorphism, and each referenced schema is emitted as a derived type. If `discriminator.mapping` is present, the mapping key is used as the discriminator value. Otherwise the referenced schema name is used.
+The generated base type becomes a non-sealed class annotated for System.Text.Json polymorphism, and each subtype is emitted as a derived type. If `discriminator.mapping` is present, the mapping key is used as the discriminator value. Otherwise the subtype's schema name is used.
 
 ```yaml
 animal:
@@ -121,7 +121,7 @@ cat:
 ```
 
 ```csharp
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind", IgnoreUnrecognizedTypeDiscriminators = true)]
 [JsonDerivedType(typeof(Dog), typeDiscriminator: "dog")]
 [JsonDerivedType(typeof(Cat), typeDiscriminator: "cat")]
 public class Animal
@@ -130,16 +130,24 @@ public class Animal
     public required string Name { get; init; }
 }
 
-public sealed class Dog : Animal
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind", IgnoreUnrecognizedTypeDiscriminators = true)]
+[JsonDerivedType(typeof(Dog), typeDiscriminator: "dog")]
+public class Dog : Animal
 {
     [JsonPropertyName("barks")]
     public required bool Barks { get; init; }
 }
 ```
 
-The discriminator property itself is not generated as a normal CLR property on the base or derived types, which avoids duplicate JSON output during polymorphic serialization.
+The discriminator property itself is not generated as a normal CLR property on the base or derived types, which avoids duplicate JSON output during polymorphic serialization. The generated serialization behaves as follows:
 
-Unsupported discriminator patterns fail generation with `OAW006`. This includes `discriminator` used with `anyOf`, `discriminator` without `oneOf`, inline `oneOf` members, duplicate discriminator values, and mappings that reference schemas not listed in `oneOf`.
+- Each derived type registers its own discriminator, so a `Dog` sent directly as a request body still includes `"kind": "dog"`
+- An unrecognized discriminator value, such as a subtype added on the server later, deserializes to the base type instead of throwing
+- On .NET 9 or later, `AllowOutOfOrderMetadataProperties` is enabled, so the discriminator does not have to be the first JSON property
+
+A schema that declares `discriminator` but has no subtypes keeps the discriminator as an ordinary property.
+
+Unsupported discriminator patterns fail generation with `OAW006`. This includes inline `oneOf` / `anyOf` members, duplicate discriminator values, mappings that reference schemas outside the subtypes, and subtypes shared by several hierarchies.
 
 ## Response types
 
@@ -195,12 +203,16 @@ OpenApiWeaver supports the following content types for request bodies:
 | `application/json` | `JsonSerializer` with `JsonSerializerDefaults.Web` |
 | `application/x-www-form-urlencoded` | `FormUrlEncodedContent` |
 | `multipart/form-data` | `MultipartFormDataContent` (supports binary file uploads) |
+| `application/octet-stream`, any media type with a `format: binary` schema, or a media type without a schema | `ByteArrayContent` from a `byte[]` parameter |
+| `text/*` with a string schema or no schema | `StringContent` (UTF-8) from a `string` parameter |
 
-If a request body declares multiple supported media types, JSON is used when available.
+If a request body declares multiple supported media types, they are preferred in the order shown in the table, so JSON is used when available.
+
+An operation whose request body or parameters cannot be generated is skipped with a warning (`OAW005` or `OAW008`), and the rest of the client is still generated. Promote these warnings with `<WarningsAsErrors>OAW005;OAW008</WarningsAsErrors>` if you want the build to fail instead.
 
 ### Compile-time-only policy for form / multipart
 
-For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all required code must be generated entirely at compile time. If that is not possible, generation fails with `OAW005`.
+For `application/x-www-form-urlencoded` and `multipart/form-data` request bodies, all required code must be generated entirely at compile time. If that is not possible, the operation is skipped with `OAW005`.
 
 Supported form and multipart request bodies require:
 
@@ -226,6 +238,8 @@ Parameters defined in the OpenAPI document are mapped to method parameters accor
 | `cookie` | Added to the `Cookie` header |
 
 Array parameters use OpenAPI-compatible defaults: query arrays are emitted as repeated query parameters, while path, header, and cookie arrays are formatted as comma-separated values.
+
+Object query parameters that use the default `style: form` and `explode: true` are expanded so that each property becomes its own query parameter, for example `?status=open&page=2`. Object parameters in other locations or with `explode: false`, `additionalProperties` parameters, and arrays of objects are skipped with `OAW008`.
 
 ## Security scheme support
 
@@ -258,9 +272,10 @@ OpenApiWeaver reports errors and warnings as standard compiler diagnostics durin
 | OAW002 | Warning | OpenAPI document has validation warnings |
 | OAW003 | Error | OpenAPI document is invalid (e.g. malformed JSON/YAML) |
 | OAW004 | Error | OpenAPI document uses an unsupported feature |
-| OAW005 | Error | OpenAPI request body uses an unsupported feature |
+| OAW005 | Warning | OpenAPI request body uses an unsupported feature; the operation is skipped |
 | OAW006 | Error | OpenAPI discriminator uses an unsupported feature |
 | OAW007 | Error | OpenAPI schema uses an unsupported feature |
+| OAW008 | Warning | OpenAPI parameter uses an unsupported feature; the operation is skipped |
 
 These diagnostics appear in the Visual Studio Error List, `dotnet build` output, and CI logs, just like any other compiler diagnostic.
 

@@ -8,6 +8,16 @@ namespace OpenApiWeaver.OpenApi;
 
 internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
 {
+    private static readonly string[] s_recordStructReservedMemberNames =
+    [
+        "Value",
+        "ToString",
+        "Equals",
+        "GetHashCode",
+        "Deconstruct",
+        "PrintMembers"
+    ];
+
     public bool IsEnumSchema(IOpenApiSchema schema)
     {
         return GetSchemaEnumKind(schema) != SchemaEnumKind.None;
@@ -39,10 +49,23 @@ internal sealed class SchemaEnumResolver(SchemaAnalysisCache cache)
         return string.Equals(schema.Format, "int64", StringComparison.OrdinalIgnoreCase) ? "long" : "int";
     }
 
-    public static List<SchemaEnumMemberDefinition> CreateEnumMembers(IOpenApiSchema schema, SchemaEnumKind enumKind)
+    public static List<SchemaEnumMemberDefinition> CreateEnumMembers(IOpenApiSchema schema, SchemaEnumKind enumKind, string declaredTypeName)
     {
         var members = new List<SchemaEnumMemberDefinition>();
-        var usedMemberNames = new Dictionary<string, int>(StringComparer.Ordinal);
+        var usedMemberNames = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            // A member cannot share the name of its enclosing type (CS0542).
+            [declaredTypeName] = 1
+        };
+
+        if (enumKind != SchemaEnumKind.Integer)
+        {
+            // String and number enums are emitted as record structs whose members cannot redeclare these names.
+            foreach (var reservedMemberName in s_recordStructReservedMemberNames)
+            {
+                usedMemberNames[reservedMemberName] = 1;
+            }
+        }
 
         foreach (var literalValue in EnumerateEnumLiteralValues(schema))
         {

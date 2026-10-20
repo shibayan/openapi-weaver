@@ -2490,6 +2490,236 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("var error = OpenApiClientHelpers.DeserializeResponseContent<ProblemDetails>(responseContent);", source);
         Assert.Contains("throw new OpenApiException<ProblemDetails>(statusCode, response.ReasonPhrase, contentType, responseContent, error);", source);
     }
+
+    [Fact]
+    public async Task ObjectQueryParameter_IsExplodedIntoPropertyQueryParameters()
+    {
+        await using var server = TestHttpServer.Start();
+
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            servers:
+              - url: {{server.BaseAddress}}
+            paths:
+              /search:
+                get:
+                  operationId: search
+                  parameters:
+                    - name: filter
+                      in: query
+                      required: true
+                      schema:
+                        $ref: '#/components/schemas/Filter'
+                    - name: path
+                      in: query
+                      required: true
+                      schema:
+                        type: string
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Filter:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      readOnly: true
+                    a:
+                      type: string
+                    b:
+                      type: integer
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    nickname:
+                      type: string
+            """;
+
+        var source = GenerateSource(openApi);
+        Assert.Contains("public async Task SearchAsync(Filter filter, string path2, CancellationToken cancellationToken = default)", source);
+        Assert.DoesNotContain("FormatParameter(filter)", source);
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+
+        var assembly = generatedAssembly.Assembly;
+        var filterType = assembly.GetType("GeneratorTests.Filter");
+        Assert.NotNull(filterType);
+        var filter = Activator.CreateInstance(filterType!);
+        filterType!.GetProperty("A")!.SetValue(filter, "hello world");
+        filterType.GetProperty("B")!.SetValue(filter, 3);
+        filterType.GetProperty("Tags")!.SetValue(filter, new[] { "x", "y" });
+
+        var clientType = Assert.Single(assembly.GetTypes(), static type => type.Name == "TestClient");
+        var client = Activator.CreateInstance(clientType);
+        var operationClient = Assert.Single(clientType.GetProperties()).GetValue(client);
+        Assert.NotNull(operationClient);
+        var operationMethod = operationClient.GetType().GetMethod("SearchAsync", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(operationMethod);
+
+        await Assert.IsAssignableFrom<Task>(operationMethod.Invoke(operationClient, [filter, "p", CancellationToken.None]));
+
+        var requestTarget = await server.GetRequestTargetAsync();
+        Assert.Equal("/api/v1/search?a=hello%20world&b=3&tags=x&tags=y&path=p", requestTarget);
+    }
+
+    [Theory]
+    [InlineData("in: header\nschema:\n  $ref: '#/components/schemas/Filter'", "uses an object schema")]
+    [InlineData("in: query\nexplode: false\nschema:\n  $ref: '#/components/schemas/Filter'", "uses an object schema")]
+    [InlineData("in: query\nschema:\n  type: object\n  additionalProperties:\n    type: string", "additionalProperties or patternProperties")]
+    [InlineData("in: query\nschema:\n  type: array\n  items:\n    $ref: '#/components/schemas/Filter'", "array items with an object or array schema")]
+    [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Nested'", "property 'inner' uses a schema type that is not supported")]
+    public void ComplexParameterShapes_ReportParameterDiagnostic(string parameterYaml, string expectedMessage)
+    {
+        var indentedParameter = string.Join("\n", parameterYaml.Split('\n').Select(static line => "          " + line));
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /search:
+                get:
+                  operationId: search
+                  parameters:
+                    - name: filter
+            {{indentedParameter}}
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Filter:
+                  type: object
+                  properties:
+                    a:
+                      type: string
+                Nested:
+                  type: object
+                  properties:
+                    inner:
+                      $ref: '#/components/schemas/Filter'
+            """;
+
+        var result = RunGenerator(openApi);
+
+        var diagnostic = Assert.Single(result.Diagnostics, static diagnostic => diagnostic.Id == ParameterUnsupportedDiagnosticId);
+        Assert.Contains(expectedMessage, diagnostic.GetMessage());
+        Assert.DoesNotContain(result.GeneratedSources, static source => source.Contains("FormatParameter(filter)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task UnsupportedOperation_IsSkipped_AndBinaryAndTextRequestBodiesAreSent()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /files:
+                put:
+                  operationId: uploadFile
+                  requestBody:
+                    required: true
+                    content:
+                      application/octet-stream:
+                        schema:
+                          type: string
+                          format: binary
+                  responses:
+                    '204':
+                      description: ok
+              /images:
+                put:
+                  operationId: uploadImage
+                  requestBody:
+                    content:
+                      image/png: {}
+                  responses:
+                    '204':
+                      description: ok
+              /notes:
+                put:
+                  operationId: putNote
+                  requestBody:
+                    required: true
+                    content:
+                      text/plain:
+                        schema:
+                          type: string
+                  responses:
+                    '204':
+                      description: ok
+              /xml:
+                post:
+                  operationId: postXml
+                  requestBody:
+                    required: true
+                    content:
+                      application/xml:
+                        schema:
+                          type: object
+                  responses:
+                    '204':
+                      description: ok
+            """;
+
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "PostXml");
+        Assert.Contains("'POST /xml'", diagnostic.GetMessage());
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public async Task UploadFileAsync(byte[] body, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task UploadImageAsync(byte[]? body = default, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task PutNoteAsync(string body, CancellationToken cancellationToken = default)", source);
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new ContentCapturingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com/") };
+        var operationClient = Assert.Single(clientType.GetProperties()).GetValue(Activator.CreateInstance(clientType, httpClient));
+        Assert.NotNull(operationClient);
+
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("UploadFileAsync")!.Invoke(operationClient, [new byte[] { 1, 2, 3 }, CancellationToken.None]));
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("UploadImageAsync")!.Invoke(operationClient, [new byte[] { 4 }, CancellationToken.None]));
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("PutNoteAsync")!.Invoke(operationClient, ["こんにちは", CancellationToken.None]));
+
+        Assert.Collection(
+            handler.Requests,
+            static request =>
+            {
+                Assert.Equal("application/octet-stream", request.ContentType);
+                Assert.Equal([1, 2, 3], request.Body);
+            },
+            static request =>
+            {
+                Assert.Equal("image/png", request.ContentType);
+                Assert.Equal([4], request.Body);
+            },
+            static request =>
+            {
+                Assert.Equal("text/plain; charset=utf-8", request.ContentType);
+                Assert.Equal("こんにちは", Encoding.UTF8.GetString(request.Body));
+            });
+    }
+
+    private sealed class ContentCapturingHttpMessageHandler : HttpMessageHandler
+    {
+        public List<(string? ContentType, byte[] Body)> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(cancellationToken);
+            Requests.Add((request.Content?.Headers.ContentType?.ToString(), body));
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
+    }
 }
 
 sealed file class TestHttpServer : IAsyncDisposable

@@ -32,6 +32,7 @@ public sealed partial class ClientGenerator
                 {
                     var tagName = GetTagName(operation.Value);
                     var groupName = string.IsNullOrWhiteSpace(tagName) ? "Default" : tagName!;
+                    var operationType = operation.Key.ToString();
 
                     if (!accumulators.TryGetValue(groupName, out var accumulator))
                     {
@@ -40,11 +41,24 @@ public sealed partial class ClientGenerator
                         accumulators[groupName] = accumulator;
                     }
 
-                    accumulator.Operations.Add(BuildOperation(path.Key, operation.Key.ToString(), path.Value, operation.Value, accumulator.UsedMethodNames, securitySchemesByKey));
+                    try
+                    {
+                        accumulator.Operations.Add(BuildOperation(path.Key, operationType, path.Value, operation.Value, accumulator.UsedMethodNames, securitySchemesByKey));
+                    }
+                    catch (UnsupportedGenerationException exception) when (OpenApiWeaverDiagnostics.SkipsOperation(exception.Kind))
+                    {
+                        // One unsupported operation should not prevent the rest of the client from being generated.
+                        _skippedOperations.Add(new SkippedOperation($"{operationType.ToUpperInvariant()} {path.Key}", exception.Kind, exception.Message));
+                    }
                 }
             }
 
-            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
+            // Tag properties live on the root client, so they cannot reuse its name (CS0542) or its Dispose method (CS0102).
+            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal)
+            {
+                _clientName,
+                "Dispose"
+            };
             var reservedClassNames = _schemaCatalog.ComponentTypeNames
                 .Concat(_schemaCatalog.InlineSchemas.Where(static schema => schema.ParentTypeName is null).Select(static schema => schema.DeclaredTypeName))
                 .Append(_clientName)
@@ -59,7 +73,8 @@ public sealed partial class ClientGenerator
                 StringComparer.Ordinal);
 
             return [..
-                accumulators.OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+                accumulators.Where(static pair => pair.Value.Operations.Count > 0)
+                    .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
                     .Select(pair =>
                     {
                         var propertyName = AllocateUniqueName(
@@ -72,6 +87,13 @@ public sealed partial class ClientGenerator
                             "DefaultClient");
                         return new TagGroup(propertyName, className, pair.Value.Description, pair.Value.Operations);
                     })];
+        }
+
+        public sealed class SkippedOperation(string operation, UnsupportedFeatureKind kind, string message)
+        {
+            public string Operation { get; } = operation;
+            public UnsupportedFeatureKind Kind { get; } = kind;
+            public string Message { get; } = message;
         }
 
         private sealed class TagGroupAccumulator(string? description)

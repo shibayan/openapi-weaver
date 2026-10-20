@@ -16,21 +16,33 @@ public sealed partial class ClientGenerator
                 return null;
             }
 
-            if (TryResolveRequestBodyKind(selectedContent.Key) is not { } kind)
+            var schema = selectedContent.Value.Schema;
+            if (TryResolveRequestBodyKind(selectedContent.Key, schema) is not { } kind)
             {
                 throw new UnsupportedGenerationException(
-                    $"Request body content type '{selectedContent.Key}' is not supported. Supported content types are: application/json, application/*+json, application/x-www-form-urlencoded, multipart/form-data.",
+                    $"Request body content type '{selectedContent.Key}' is not supported. Supported content types are: application/json, application/*+json, application/x-www-form-urlencoded, multipart/form-data, text/*, and binary content such as application/octet-stream.",
                     UnsupportedFeatureKind.RequestBody);
             }
 
+            var (contentType, bodyType) = kind switch
+            {
+                RequestBodyKind.Binary => (
+                    selectedContent.Key.IndexOf('*') >= 0 ? "application/octet-stream" : selectedContent.Key,
+                    new TypeUsage("byte[]", TypeShape.Binary, schemaAllowsNull: false, isOptional: !requestBody.Required)),
+                RequestBodyKind.Text => (
+                    selectedContent.Key.IndexOf('*') >= 0 ? "text/plain" : StripMediaTypeParameters(selectedContent.Key),
+                    new TypeUsage("string", TypeShape.String, schemaAllowsNull: false, isOptional: !requestBody.Required)),
+                _ => (selectedContent.Key, _schemaTypeResolver.ResolveTypeUsage(schema, requestBody.Required))
+            };
+
             return new RequestBodyInfo(
                 kind,
-                selectedContent.Key,
-                _schemaTypeResolver.ResolveTypeUsage(selectedContent.Value.Schema, requestBody.Required),
+                contentType,
+                bodyType,
                 AllocateUniqueName(usedParameterNames, "body", "body"),
                 requestBody.Required,
                 requestBody.Description,
-                kind == RequestBodyKind.Json ? [] : GetSupportedRequestBodyProperties(kind, selectedContent.Value.Schema));
+                kind is RequestBodyKind.FormUrlEncoded or RequestBodyKind.MultipartFormData ? GetSupportedRequestBodyProperties(kind, schema) : []);
         }
 
         private List<RequestBodyPropertyInfo> GetSupportedRequestBodyProperties(RequestBodyKind requestBodyKind, IOpenApiSchema? schema)
@@ -42,7 +54,7 @@ public sealed partial class ClientGenerator
                     UnsupportedFeatureKind.RequestBody);
             }
 
-            if (_schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not { } schemaName)
+            if (SchemaReferenceResolver.TryResolveSchemaReferenceId(schema) is not { } schemaReferenceId)
             {
                 throw new UnsupportedGenerationException(
                     $"{GetRequestBodyContentType(requestBodyKind)} request bodies must reference a named component schema for compile-time code generation.",
@@ -50,10 +62,19 @@ public sealed partial class ClientGenerator
             }
 
             var resolvedSchema = _schemaReferenceResolver.ResolveSchemaReference(schema);
+            var typeName = _schemaReferenceResolver.TryResolveSchemaReferenceName(schema);
+            var schemaName = typeName ?? schemaReferenceId;
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
                 throw new UnsupportedGenerationException(
                     $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' uses oneOf/anyOf, which is not supported for compile-time code generation.",
+                    UnsupportedFeatureKind.RequestBody);
+            }
+
+            if (typeName is null)
+            {
+                throw new UnsupportedGenerationException(
+                    $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' must reference an object schema for compile-time code generation.",
                     UnsupportedFeatureKind.RequestBody);
             }
 
@@ -64,7 +85,17 @@ public sealed partial class ClientGenerator
                     UnsupportedFeatureKind.RequestBody);
             }
 
-            var propertyNameByJsonName = _schemaDefinitionsByTypeName.TryGetValue(schemaName, out var schemaDefinition)
+            var context = new FormValueContext(
+                $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}'",
+                allowsBinary: requestBodyKind == RequestBodyKind.MultipartFormData,
+                $"{GetRequestBodyContentType(requestBodyKind)} request bodies",
+                UnsupportedFeatureKind.RequestBody);
+            return CreateFormProperties(context, typeName, resolvedSchema);
+        }
+
+        private List<RequestBodyPropertyInfo> CreateFormProperties(FormValueContext context, string typeName, IOpenApiSchema resolvedSchema)
+        {
+            var propertyNameByJsonName = _schemaDefinitionsByTypeName.TryGetValue(typeName, out var schemaDefinition)
                 ? schemaDefinition.Properties.ToDictionary(static p => p.JsonPropertyName, static p => p.PropertyName, StringComparer.Ordinal)
                 : new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -82,16 +113,16 @@ public sealed partial class ClientGenerator
                     propertyName = NormalizePascalIdentifier(property.Name, "Value");
                 }
 
-                result.Add(CreateRequestBodyPropertyInfo(schemaName, requestBodyKind, property, propertyName));
+                result.Add(CreateFormPropertyInfo(context, property, propertyName));
             }
 
             return result;
         }
 
-        private RequestBodyPropertyInfo CreateRequestBodyPropertyInfo(string schemaName, RequestBodyKind requestBodyKind, SchemaPropertyInfo property, string propertyName)
+        private RequestBodyPropertyInfo CreateFormPropertyInfo(FormValueContext context, SchemaPropertyInfo property, string propertyName)
         {
             var propertyType = _schemaTypeResolver.ResolveTypeUsage(property.Schema, property.Required);
-            var valueKind = ClassifyRequestBodyValueKind(schemaName, property.Name, requestBodyKind, property.Schema, out var elementKind);
+            var valueKind = ClassifyValueKind(context, property.Name, property.Schema, isArrayItem: false, out var elementKind);
             var isNullable = propertyType.CanBeNullInCSharp;
             var elementNullable = valueKind == RequestBodyValueKind.Collection
                 && _schemaTypeResolver.ResolveTypeUsage(_schemaReferenceResolver.ResolveSchemaReference(property.Schema).Items, required: true).CanBeNullInCSharp;
@@ -105,27 +136,21 @@ public sealed partial class ClientGenerator
                 elementNullable);
         }
 
-        private RequestBodyValueKind ClassifyRequestBodyValueKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema, out RequestBodyValueKind? elementKind)
-            => ClassifyValueKind(schemaName, propertyName, requestBodyKind, schema, isArrayItem: false, out elementKind);
-
-        private RequestBodyValueKind ClassifyCollectionElementKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema)
-            => ClassifyValueKind(schemaName, propertyName, requestBodyKind, schema, isArrayItem: true, out _);
-
-        private RequestBodyValueKind ClassifyValueKind(string schemaName, string propertyName, RequestBodyKind requestBodyKind, IOpenApiSchema schema, bool isArrayItem, out RequestBodyValueKind? elementKind)
+        private RequestBodyValueKind ClassifyValueKind(FormValueContext context, string propertyName, IOpenApiSchema schema, bool isArrayItem, out RequestBodyValueKind? elementKind)
         {
             var resolvedSchema = _schemaReferenceResolver.ResolveSchemaReference(schema);
             elementKind = null;
 
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
-                throw UnsupportedProperty(requestBodyKind, schemaName, propertyName, isArrayItem,
+                throw UnsupportedProperty(context, propertyName, isArrayItem,
                     propertyReason: "uses oneOf/anyOf, which is not supported for compile-time code generation.",
                     arrayItemReason: "has array items using oneOf/anyOf, which is not supported for compile-time code generation.");
             }
 
             if (_schemaTypeResolver.TryGetDictionaryValueType(resolvedSchema, out _))
             {
-                throw UnsupportedProperty(requestBodyKind, schemaName, propertyName, isArrayItem,
+                throw UnsupportedProperty(context, propertyName, isArrayItem,
                     propertyReason: "uses additionalProperties or patternProperties, which is not supported for compile-time code generation.",
                     arrayItemReason: "has array items using additionalProperties or patternProperties, which is not supported for compile-time code generation.");
             }
@@ -141,7 +166,7 @@ public sealed partial class ClientGenerator
                 var nonNullMembers = resolvedSchema.AllOf.Where(static s => !SchemaReferenceResolver.IsNullOnlySchema(s)).ToList();
                 if (nonNullMembers.Count == 1)
                 {
-                    return ClassifyValueKind(schemaName, propertyName, requestBodyKind, nonNullMembers[0], isArrayItem, out elementKind);
+                    return ClassifyValueKind(context, propertyName, nonNullMembers[0], isArrayItem, out elementKind);
                 }
             }
 
@@ -159,19 +184,19 @@ public sealed partial class ClientGenerator
                 case JsonSchemaType.String when isBinaryString:
                     if (isArrayItem)
                     {
-                        if (requestBodyKind != RequestBodyKind.MultipartFormData)
+                        if (!context.AllowsBinary)
                         {
-                            throw UnsupportedArrayItemType(requestBodyKind, schemaName, propertyName);
+                            throw UnsupportedArrayItemType(context, propertyName);
                         }
 
                         return RequestBodyValueKind.Binary;
                     }
 
-                    if (requestBodyKind == RequestBodyKind.FormUrlEncoded)
+                    if (!context.AllowsBinary)
                     {
                         throw new UnsupportedGenerationException(
-                            $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses binary format, which is not supported for application/x-www-form-urlencoded request bodies.",
-                            UnsupportedFeatureKind.RequestBody);
+                            $"{context.Subject} property '{propertyName}' uses binary format, which is not supported for {context.BinaryUnsupportedTarget}.",
+                            context.FeatureKind);
                     }
 
                     return RequestBodyValueKind.Binary;
@@ -179,35 +204,35 @@ public sealed partial class ClientGenerator
                     if (resolvedSchema.Items is null)
                     {
                         throw new UnsupportedGenerationException(
-                            $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' defines an array without an items schema.",
-                            UnsupportedFeatureKind.RequestBody);
+                            $"{context.Subject} property '{propertyName}' defines an array without an items schema.",
+                            context.FeatureKind);
                     }
 
-                    elementKind = ClassifyCollectionElementKind(schemaName, propertyName, requestBodyKind, resolvedSchema.Items);
+                    elementKind = ClassifyValueKind(context, propertyName, resolvedSchema.Items, isArrayItem: true, out _);
                     return RequestBodyValueKind.Collection;
                 default:
                     throw isArrayItem
-                        ? UnsupportedArrayItemType(requestBodyKind, schemaName, propertyName)
+                        ? UnsupportedArrayItemType(context, propertyName)
                         : new UnsupportedGenerationException(
-                            $"{GetRequestBodyContentType(requestBodyKind)} request body '{schemaName}' property '{propertyName}' uses a schema type that is not supported for compile-time code generation.",
-                            UnsupportedFeatureKind.RequestBody);
+                            $"{context.Subject} property '{propertyName}' uses a schema type that is not supported for compile-time code generation.",
+                            context.FeatureKind);
             }
         }
 
-        private static UnsupportedGenerationException UnsupportedProperty(RequestBodyKind kind, string schemaName, string propertyName, bool isArrayItem, string propertyReason, string arrayItemReason)
+        private static UnsupportedGenerationException UnsupportedProperty(FormValueContext context, string propertyName, bool isArrayItem, string propertyReason, string arrayItemReason)
             => new(
-                $"{GetRequestBodyContentType(kind)} request body '{schemaName}' property '{propertyName}' {(isArrayItem ? arrayItemReason : propertyReason)}",
-                UnsupportedFeatureKind.RequestBody);
+                $"{context.Subject} property '{propertyName}' {(isArrayItem ? arrayItemReason : propertyReason)}",
+                context.FeatureKind);
 
-        private static UnsupportedGenerationException UnsupportedArrayItemType(RequestBodyKind kind, string schemaName, string propertyName)
+        private static UnsupportedGenerationException UnsupportedArrayItemType(FormValueContext context, string propertyName)
             => new(
-                $"{GetRequestBodyContentType(kind)} request body '{schemaName}' property '{propertyName}' has array items with a schema type that is not supported for compile-time code generation.",
-                UnsupportedFeatureKind.RequestBody);
+                $"{context.Subject} property '{propertyName}' has array items with a schema type that is not supported for compile-time code generation.",
+                context.FeatureKind);
 
         private static string GetRequestBodyContentType(RequestBodyKind kind)
             => s_requestBodyContentTypes.First(pair => pair.Kind == kind).ContentType;
 
-        private static RequestBodyKind? TryResolveRequestBodyKind(string contentType)
+        private static RequestBodyKind? TryResolveRequestBodyKind(string contentType, IOpenApiSchema? schema)
         {
             var mediaType = StripMediaTypeParameters(contentType);
 
@@ -229,7 +254,21 @@ public sealed partial class ClientGenerator
                 }
             }
 
-            return null;
+            var schemaType = schema?.Type & ~JsonSchemaType.Null;
+            var isBinarySchema = schemaType == JsonSchemaType.String
+                && string.Equals(schema!.Format, "binary", StringComparison.OrdinalIgnoreCase);
+            if (isBinarySchema || string.Equals(mediaType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
+            {
+                return RequestBodyKind.Binary;
+            }
+
+            if (mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+            {
+                return schema is null || schemaType == JsonSchemaType.String ? RequestBodyKind.Text : null;
+            }
+
+            // A media type without a schema (e.g. `image/png: {}`) carries raw bytes.
+            return schema is null ? RequestBodyKind.Binary : null;
         }
 
         private static readonly (RequestBodyKind Kind, string ContentType)[] s_requestBodyContentTypes =
@@ -238,5 +277,15 @@ public sealed partial class ClientGenerator
             (RequestBodyKind.FormUrlEncoded, "application/x-www-form-urlencoded"),
             (RequestBodyKind.MultipartFormData, "multipart/form-data"),
         ];
+
+        // Describes where form-style name/value pairs are written (a form request body or an exploded query object)
+        // so unsupported property shapes are reported against the right construct.
+        private sealed class FormValueContext(string subject, bool allowsBinary, string binaryUnsupportedTarget, UnsupportedFeatureKind featureKind)
+        {
+            public string Subject { get; } = subject;
+            public bool AllowsBinary { get; } = allowsBinary;
+            public string BinaryUnsupportedTarget { get; } = binaryUnsupportedTarget;
+            public UnsupportedFeatureKind FeatureKind { get; } = featureKind;
+        }
     }
 }

@@ -42,6 +42,16 @@ internal sealed class SchemaEmitter(ClientModel model)
         return lookup;
     }
 
+    private static void EmitPolymorphicAttributes(IndentedStringBuilder writer, string discriminatorPropertyName, IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes)
+    {
+        // Unknown discriminator values fall back to the declared type so new server-side subtypes do not break clients.
+        writer.Append("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"").Append(EscapeStringLiteral(discriminatorPropertyName)).AppendLine("\", IgnoreUnrecognizedTypeDiscriminators = true)]");
+        foreach (var derivedType in derivedTypes)
+        {
+            writer.Append("[JsonDerivedType(typeof(").Append(derivedType.TypeName).Append("), typeDiscriminator: \"").Append(EscapeStringLiteral(derivedType.DiscriminatorValue)).AppendLine("\")]");
+        }
+    }
+
     private void EmitSchemaDefinition(IndentedStringBuilder writer, SchemaDefinition schema)
     {
         if (schema.IsEnum)
@@ -62,11 +72,16 @@ internal sealed class SchemaEmitter(ClientModel model)
 
         if (schema.IsPolymorphicBase)
         {
-            writer.Append("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"").Append(EscapeStringLiteral(schema.DiscriminatorPropertyName!)).AppendLine("\")]");
-            foreach (var derivedType in schema.DerivedTypes)
-            {
-                writer.Append("[JsonDerivedType(typeof(").Append(derivedType.TypeName).Append("), typeDiscriminator: \"").Append(EscapeStringLiteral(derivedType.DiscriminatorValue)).AppendLine("\")]");
-            }
+            EmitPolymorphicAttributes(writer, schema.DiscriminatorPropertyName!, schema.DerivedTypes);
+        }
+        else if (schema.InheritedDiscriminatorPropertyName is not null && schema.DiscriminatorValue is not null)
+        {
+            // System.Text.Json only writes the discriminator when the declared type is polymorphic, so a derived
+            // type registers itself to keep the discriminator when it is used directly (e.g. as a request body).
+            EmitPolymorphicAttributes(
+                writer,
+                schema.InheritedDiscriminatorPropertyName,
+                [new SchemaDerivedTypeDefinition(schema.DeclaredTypeName, schema.DiscriminatorValue)]);
         }
 
         if (DictionarySchemaConverterEmitter.RequiresConverter(schema))
@@ -80,7 +95,7 @@ internal sealed class SchemaEmitter(ClientModel model)
         }
         else
         {
-            writer.Append(schema.IsPolymorphicBase ? "public class " : "public sealed class ").Append(schema.DeclaredTypeName);
+            writer.Append(schema.IsPolymorphicBase || schema.DiscriminatorValue is not null ? "public class " : "public sealed class ").Append(schema.DeclaredTypeName);
             if (!string.IsNullOrWhiteSpace(schema.BaseTypeName))
             {
                 writer.Append(" : ").Append(schema.BaseTypeName);

@@ -157,7 +157,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void UnknownRequestBodyContentType_ReportsUnsupportedDiagnostic()
+    public void UnknownRequestBodyContentType_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.1.0
@@ -181,7 +181,7 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertSingleErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateItem");
         Assert.Contains("application/xml", diagnostic.GetMessage());
     }
 

@@ -18,9 +18,39 @@ public sealed partial class ClientGenerator
 
             foreach (var schema in _document.Components.Schemas)
             {
+                // Aliases such as `UserId: { type: string }` resolve to their underlying type at each use site.
+                if (!GeneratesComponentType(schema.Value))
+                {
+                    continue;
+                }
+
                 var schemaName = _schemaCatalog.AllocateTypeName(parentTypeName: null, NormalizePascalIdentifier(schema.Key, "Model"));
                 _schemaCatalog.AddComponentSchemaName(schema.Key, schemaName);
             }
+        }
+
+        private bool GeneratesComponentType(IOpenApiSchema schema)
+        {
+            return schema.Discriminator is not null
+                || _schemaEnumResolver.IsEnumSchema(schema)
+                || ComposesObject(schema, new HashSet<string>(StringComparer.Ordinal));
+        }
+
+        private static bool ComposesObject(IOpenApiSchema schema, HashSet<string> visited)
+        {
+            if (!visited.Add(SchemaReferenceResolver.GetSchemaIdentity(schema)))
+            {
+                return false;
+            }
+
+            if ((schema.Type & ~JsonSchemaType.Null) == JsonSchemaType.Object
+                || (schema.Properties?.Count ?? 0) > 0
+                || SchemaTypeResolver.IsDictionarySchema(schema))
+            {
+                return true;
+            }
+
+            return schema.AllOf?.Any(child => ComposesObject(child, visited)) == true;
         }
 
         private void RegisterPolymorphicSchemaInfo()
@@ -43,20 +73,6 @@ public sealed partial class ClientGenerator
 
         private void RegisterPolymorphicSchemaInfo(string schemaName, IOpenApiSchema schema)
         {
-            if (schema.AnyOf is { Count: > 0 })
-            {
-                throw new UnsupportedGenerationException(
-                    $"Schema '{schemaName}' uses discriminator with anyOf, which is not supported for compile-time code generation.",
-                    UnsupportedFeatureKind.Discriminator);
-            }
-
-            if (schema.OneOf is not { Count: > 0 })
-            {
-                throw new UnsupportedGenerationException(
-                    $"Schema '{schemaName}' uses discriminator without oneOf, which is not supported for compile-time code generation.",
-                    UnsupportedFeatureKind.Discriminator);
-            }
-
             var discriminatorPropertyName = schema.Discriminator?.PropertyName;
             if (string.IsNullOrWhiteSpace(discriminatorPropertyName))
             {
@@ -65,21 +81,20 @@ public sealed partial class ClientGenerator
                     UnsupportedFeatureKind.Discriminator);
             }
 
+            var (memberKeyword, derivedSchemaNameList) = ResolveDiscriminatorMembers(schemaName, schema);
+            if (derivedSchemaNameList.Count == 0)
+            {
+                // Nothing derives from this schema, so the discriminator is an ordinary property.
+                return;
+            }
+
             var baseTypeName = _schemaCatalog.GetComponentSchemaName(schemaName);
             var derivedSchemaNames = new HashSet<string>(StringComparer.Ordinal);
             var derivedTypes = new List<SchemaDerivedTypeDefinition>();
             var pendingDerivedSchemas = new List<(string TypeName, PolymorphicDerivedSchemaInfo Info)>();
             var usedDiscriminatorValues = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var child in schema.OneOf)
+            foreach (var derivedSchemaName in derivedSchemaNameList)
             {
-                var derivedSchemaName = SchemaReferenceResolver.TryResolveSchemaReferenceId(child);
-                if (derivedSchemaName is null)
-                {
-                    throw new UnsupportedGenerationException(
-                        $"Schema '{schemaName}' uses discriminator with inline oneOf members, which is not supported for compile-time code generation.",
-                        UnsupportedFeatureKind.Discriminator);
-                }
-
                 derivedSchemaNames.Add(derivedSchemaName);
 
                 if (!_schemaCatalog.TryGetComponentSchemaName(derivedSchemaName, out var derivedTypeName))
@@ -105,11 +120,11 @@ public sealed partial class ClientGenerator
                         UnsupportedFeatureKind.Discriminator);
                 }
 
-                pendingDerivedSchemas.Add((derivedTypeName, new PolymorphicDerivedSchemaInfo(schemaName, baseTypeName, discriminatorPropertyName!)));
+                pendingDerivedSchemas.Add((derivedTypeName, new PolymorphicDerivedSchemaInfo(schemaName, baseTypeName, discriminatorPropertyName!, discriminatorValue)));
                 derivedTypes.Add(new SchemaDerivedTypeDefinition(derivedTypeName, discriminatorValue));
             }
 
-            ValidateDiscriminatorMappings(schemaName, schema.Discriminator!, derivedSchemaNames);
+            ValidateDiscriminatorMappings(schemaName, schema.Discriminator!, derivedSchemaNames, memberKeyword);
 
             foreach (var (derivedTypeName, derivedInfo) in pendingDerivedSchemas)
             {
@@ -135,7 +150,7 @@ public sealed partial class ClientGenerator
             return derivedSchemaName;
         }
 
-        private static void ValidateDiscriminatorMappings(string schemaName, OpenApiDiscriminator discriminator, HashSet<string> derivedSchemaNames)
+        private static void ValidateDiscriminatorMappings(string schemaName, OpenApiDiscriminator discriminator, HashSet<string> derivedSchemaNames, string derivedSchemaDescription)
         {
             if (discriminator.Mapping is null)
             {
@@ -148,10 +163,35 @@ public sealed partial class ClientGenerator
                 if (mappedSchemaName is null || !derivedSchemaNames.Contains(mappedSchemaName))
                 {
                     throw new UnsupportedGenerationException(
-                        $"Schema '{schemaName}' discriminator mapping '{mapping.Key}' must reference a schema listed in oneOf.",
+                        $"Schema '{schemaName}' discriminator mapping '{mapping.Key}' must reference {derivedSchemaDescription}.",
                         UnsupportedFeatureKind.Discriminator);
                 }
             }
+        }
+
+        private (string DerivedSchemaDescription, List<string> DerivedSchemaNames) ResolveDiscriminatorMembers(string schemaName, IOpenApiSchema schema)
+        {
+            var keyword = schema.OneOf is { Count: > 0 } ? "oneOf" : "anyOf";
+            if ((schema.OneOf is { Count: > 0 } ? schema.OneOf : schema.AnyOf) is { Count: > 0 } members)
+            {
+                var derivedSchemaNames = new List<string>(members.Count);
+                foreach (var member in members)
+                {
+                    derivedSchemaNames.Add(SchemaReferenceResolver.TryResolveSchemaReferenceId(member)
+                        ?? throw new UnsupportedGenerationException(
+                            $"Schema '{schemaName}' uses discriminator with inline {keyword} members, which is not supported for compile-time code generation.",
+                            UnsupportedFeatureKind.Discriminator));
+                }
+
+                return ($"a schema listed in {keyword}", derivedSchemaNames);
+            }
+
+            // OpenAPI 3.0 inheritance: the base declares the discriminator and each subtype extends it with `allOf: [$ref: base]`.
+            var inheritingSchemaNames = _document.Components!.Schemas!
+                .Where(component => component.Value.AllOf?.Any(child => string.Equals(SchemaReferenceResolver.TryResolveSchemaReferenceId(child), schemaName, StringComparison.Ordinal)) == true)
+                .Select(static component => component.Key)
+                .ToList();
+            return ("a schema that extends it through allOf", inheritingSchemaNames);
         }
 
         private void RegisterInlineSchemaNames()
@@ -160,8 +200,14 @@ public sealed partial class ClientGenerator
             {
                 foreach (var schema in _document.Components.Schemas)
                 {
-                    var schemaName = _schemaCatalog.GetComponentSchemaName(schema.Key);
-                    RegisterNestedInlineSchemas(schema.Value, new HashSet<string>(StringComparer.Ordinal), schemaName, string.Empty);
+                    if (_schemaCatalog.TryGetComponentSchemaName(schema.Key, out var schemaName))
+                    {
+                        RegisterNestedInlineSchemas(schema.Value, new HashSet<string>(StringComparer.Ordinal), schemaName, string.Empty);
+                    }
+                    else
+                    {
+                        RegisterNestedInlineSchemas(schema.Value, new HashSet<string>(StringComparer.Ordinal), containingTypeName: null, NormalizePascalIdentifier(schema.Key, "Model"));
+                    }
                 }
             }
 
@@ -176,7 +222,11 @@ public sealed partial class ClientGenerator
             {
                 foreach (var schema in _document.Components.Schemas)
                 {
-                    var schemaName = _schemaCatalog.GetComponentSchemaName(schema.Key);
+                    if (!_schemaCatalog.TryGetComponentSchemaName(schema.Key, out var schemaName))
+                    {
+                        continue;
+                    }
+
                     var definition = CreateSchemaDefinition(schemaName, schemaName, parentTypeName: null, schema.Value);
                     schemas.Add(definition);
                     _schemaDefinitionsByTypeName[definition.QualifiedTypeName] = definition;
@@ -216,7 +266,14 @@ public sealed partial class ClientGenerator
             }
 
             var properties = new List<SchemaPropertyDefinition>();
-            var usedPropertyNames = new HashSet<string>(StringComparer.Ordinal);
+
+            // A member cannot share the name of its enclosing type (CS0542) or of a nested type (CS0102).
+            var usedPropertyNames = new HashSet<string>(
+                _schemaCatalog.InlineSchemas
+                    .Where(inlineSchema => string.Equals(inlineSchema.ParentTypeName, typeName, StringComparison.Ordinal))
+                    .Select(static inlineSchema => inlineSchema.DeclaredTypeName)
+                    .Append(declaredTypeName),
+                StringComparer.Ordinal);
             foreach (var property in SchemaPropertyCollector.Collect(schema, ignoredPropertyNames, ignoredSchemaReferences))
             {
                 if (property.ReadOnly && property.WriteOnly)
@@ -248,7 +305,7 @@ public sealed partial class ClientGenerator
                 SchemaEnumKind.Number => SchemaEnumResolver.GetNumberEnumValueType(schema),
                 _ => null
             };
-            var enumMembers = enumKind == SchemaEnumKind.None ? [] : SchemaEnumResolver.CreateEnumMembers(schema, enumKind);
+            var enumMembers = enumKind == SchemaEnumKind.None ? [] : SchemaEnumResolver.CreateEnumMembers(schema, enumKind, declaredTypeName);
 
             return new SchemaDefinition(
                 typeName,
@@ -263,7 +320,9 @@ public sealed partial class ClientGenerator
                 derivedTypes,
                 enumKind,
                 enumUnderlyingType,
-                enumMembers);
+                enumMembers,
+                polymorphicDerivedSchema?.DiscriminatorPropertyName,
+                polymorphicDerivedSchema?.DiscriminatorValue);
         }
 
         private void RegisterOperationInlineSchemaNames()
@@ -358,7 +417,8 @@ public sealed partial class ClientGenerator
 
         private void RegisterNestedInlineSchemas(IOpenApiSchema? schema, HashSet<string> visited, string? containingTypeName, string nestedNamePrefix)
         {
-            if (schema is null || _schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not null)
+            // Children of component schemas, including aliases, are registered once from the components pass.
+            if (schema is null || SchemaReferenceResolver.TryResolveSchemaReferenceId(schema) is not null)
             {
                 return;
             }
@@ -463,7 +523,7 @@ public sealed partial class ClientGenerator
 
         private bool CanGenerateInlineSchema(IOpenApiSchema schema)
         {
-            if (_schemaReferenceResolver.TryResolveSchemaReferenceName(schema) is not null
+            if (SchemaReferenceResolver.TryResolveSchemaReferenceId(schema) is not null
                 || SchemaTypeResolver.IsDictionarySchema(schema)
                 || schema.OneOf is { Count: > 0 }
                 || schema.AnyOf is { Count: > 0 })
@@ -511,11 +571,12 @@ public sealed partial class ClientGenerator
             public IReadOnlyList<SchemaDerivedTypeDefinition> DerivedTypes { get; } = derivedTypes;
         }
 
-        private sealed class PolymorphicDerivedSchemaInfo(string baseSchemaName, string baseTypeName, string discriminatorPropertyName)
+        private sealed class PolymorphicDerivedSchemaInfo(string baseSchemaName, string baseTypeName, string discriminatorPropertyName, string discriminatorValue)
         {
             public string BaseSchemaName { get; } = baseSchemaName;
             public string BaseTypeName { get; } = baseTypeName;
             public string DiscriminatorPropertyName { get; } = discriminatorPropertyName;
+            public string DiscriminatorValue { get; } = discriminatorValue;
         }
 
     }

@@ -16,6 +16,18 @@ internal sealed class OperationRequestBodyEmitter(ClientModel model)
             case RequestBodyKind.MultipartFormData:
                 EmitMultipartFormDataContentAssignment(writer, requestBody, bodyValue);
                 break;
+            case RequestBodyKind.Binary:
+                writer.Append("request.Content = new ByteArrayContent(").Append(bodyValue).AppendLine(");");
+                writer.Append("request.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(\"")
+                    .Append(EscapeStringLiteral(requestBody.ContentType))
+                    .AppendLine("\");");
+                break;
+            case RequestBodyKind.Text:
+                writer.Append("request.Content = new StringContent(").Append(bodyValue).AppendLine(", Encoding.UTF8);");
+                writer.Append("request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(\"")
+                    .Append(EscapeStringLiteral(requestBody.ContentType))
+                    .AppendLine("\") { CharSet = \"utf-8\" };");
+                break;
             default:
                 writer.Append("request.Content = JsonContent.Create(")
                     .Append(bodyValue)
@@ -103,7 +115,7 @@ internal sealed class OperationRequestBodyEmitter(ClientModel model)
         }
     }
 
-    private static void EmitIfNotNull(IndentedStringBuilder writer, string expression, bool nullable, Action emitBody)
+    internal static void EmitIfNotNull(IndentedStringBuilder writer, string expression, bool nullable, Action emitBody)
     {
         if (!nullable)
         {
@@ -121,7 +133,7 @@ internal sealed class OperationRequestBodyEmitter(ClientModel model)
         writer.AppendLine("}");
     }
 
-    private static void EmitCollectionLoop(IndentedStringBuilder writer, string expression, Action emitBody)
+    internal static void EmitCollectionLoop(IndentedStringBuilder writer, string expression, Action emitBody)
     {
         writer.Append("foreach (var item in ").Append(expression).AppendLine(")");
         writer.AppendLine("{");
