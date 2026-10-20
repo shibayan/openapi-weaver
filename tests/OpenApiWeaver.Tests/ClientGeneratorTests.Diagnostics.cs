@@ -278,6 +278,43 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void DiscriminatorListingItselfAsMember_ReportsUnsupportedDiagnostic()
+    {
+        const string openApi = """
+            openapi: 3.2.0
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                animal:
+                  type: object
+                  required: [kind]
+                  discriminator:
+                    propertyName: kind
+                  oneOf:
+                    - $ref: '#/components/schemas/animal'
+                    - $ref: '#/components/schemas/dog'
+                  properties:
+                    kind:
+                      type: string
+                dog:
+                  type: object
+                  properties:
+                    barks:
+                      type: boolean
+            """;
+
+        // Previously the subtype ancestor walk never terminated for a self-referencing member.
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains("lists itself as a discriminator oneOf member", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
     public void DiscriminatorWithoutDerivedSchemas_KeepsDiscriminatorAsOrdinaryProperty()
     {
         const string openApi = """

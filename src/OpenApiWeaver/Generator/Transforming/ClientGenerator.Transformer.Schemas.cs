@@ -197,6 +197,15 @@ public sealed partial class ClientGenerator
                         ?? throw new UnsupportedGenerationException(
                             $"Schema '{schemaName}' uses discriminator with inline {keyword} members, which is not supported for compile-time code generation.",
                             UnsupportedFeatureKind.Discriminator);
+
+                    // A schema cannot be its own subtype; it would also never terminate the ancestor walk.
+                    if (string.Equals(memberName, schemaName, StringComparison.Ordinal))
+                    {
+                        throw new UnsupportedGenerationException(
+                            $"Schema '{schemaName}' lists itself as a discriminator {keyword} member, which is not supported for compile-time code generation.",
+                            UnsupportedFeatureKind.Discriminator);
+                    }
+
                     memberSubtypes.Add((memberName, schemaName));
                 }
 
@@ -569,11 +578,9 @@ public sealed partial class ClientGenerator
                 return false;
             }
 
-            var baseType = schema.Type & ~JsonSchemaType.Null;
+            // Scalar compositions such as `allOf: [{ type: string, format: uuid }]` keep their underlying CLR type.
             return _schemaEnumResolver.IsEnumSchema(schema)
-                || baseType == JsonSchemaType.Object
-                || schema.AllOf is { Count: > 0 }
-                || (schema.Properties?.Count ?? 0) > 0;
+                || ComposesObject(schema, new HashSet<string>(StringComparer.Ordinal));
         }
 
         private string BuildInlineSchemaTypeName(string nestedNamePrefix, string childName, IOpenApiSchema schema)

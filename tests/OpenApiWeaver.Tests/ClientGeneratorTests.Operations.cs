@@ -2725,6 +2725,58 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void InlineScalarAllOfComposition_KeepsUnderlyingClrType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /items:
+                get:
+                  operationId: getItem
+                  parameters:
+                    - name: id
+                      in: query
+                      required: true
+                      schema:
+                        allOf:
+                          - type: string
+                            format: uuid
+                    - name: X-Trace
+                      in: header
+                      required: true
+                      schema:
+                        allOf:
+                          - type: string
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                            properties:
+                              createdAt:
+                                allOf:
+                                  - type: string
+                                    format: date-time
+            """;
+
+        var result = RunGenerator(openApi);
+
+        // The operation must not be skipped, and no empty wrapper models may be generated for scalars.
+        Assert.Empty(result.Diagnostics);
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public async Task<GetItemResponseModel> GetItemAsync(Guid id, string xTrace, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"id\", OpenApiClientHelpers.FormatParameter(id));", source);
+        Assert.Contains("public DateTimeOffset? CreatedAt { get; init; }", source);
+        Assert.DoesNotContain("GetItemIdModel", source);
+        Assert.DoesNotContain("CreatedAtModel", source);
+    }
+
+    [Fact]
     public void MediaTypeRangeRequestBody_UsesCompatibleConcreteTypeOrSkipsOperation()
     {
         const string openApi = """
