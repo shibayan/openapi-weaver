@@ -337,12 +337,19 @@ public sealed partial class ClientGenerator
                 return contentType;
             }
 
-            return mediaType.ToLowerInvariant() switch
+            var concreteMediaType = mediaType.ToLowerInvariant() switch
             {
                 "*/*" or "application/*" => "application/octet-stream",
                 "text/*" => "text/plain",
                 _ => null
             };
+
+            // Only the range itself is replaced; declared parameters such as `version=2` are kept. The type and
+            // subtype cannot contain quotes, so the first `;` always starts the parameters.
+            var parametersIndex = contentType.IndexOf(';');
+            return concreteMediaType is null || parametersIndex < 0
+                ? concreteMediaType
+                : concreteMediaType + contentType.Substring(parametersIndex);
         }
 
         private static readonly (RequestBodyKind Kind, string ContentType)[] s_requestBodyContentTypes =

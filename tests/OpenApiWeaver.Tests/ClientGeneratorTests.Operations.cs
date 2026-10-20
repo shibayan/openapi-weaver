@@ -2806,7 +2806,7 @@ public sealed partial class ClientGeneratorTests
                   requestBody:
                     required: true
                     content:
-                      '*/*':
+                      '*/*; profile=raw':
                         schema:
                           type: string
                           format: binary
@@ -2835,12 +2835,13 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("'image/*'", diagnostic.GetMessage());
         var source = string.Join(Environment.NewLine, result.GeneratedSources);
         Assert.Contains("public async Task UploadAnyAsync(byte[] body, CancellationToken cancellationToken = default)", source);
-        Assert.Contains("MediaTypeHeaderValue.Parse(\"application/octet-stream\")", source);
+        Assert.Contains("MediaTypeHeaderValue.Parse(\"application/octet-stream; profile=raw\")", source);
     }
 
     [Theory]
     [InlineData("text/csv; header=absent; charset=iso-8859-1", "text/csv; header=absent", "text/csv; header=absent; charset=utf-8")]
     [InlineData("text/plain; note=\"a;charset=b\"; charset=iso-8859-1", "text/plain; note=\\\"a;charset=b\\\"", "text/plain; note=\"a;charset=b\"; charset=utf-8")]
+    [InlineData("text/*; version=2; charset=iso-8859-1", "text/plain; version=2", "text/plain; version=2; charset=utf-8")]
     public async Task TextRequestBody_KeepsDeclaredMediaTypeParametersExceptCharset(string declaredContentType, string expectedLiteral, string expectedHeader)
     {
         var openApi = $$"""
