@@ -2885,6 +2885,69 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void SelfReferencingFormValueComposition_SkipsOperationInsteadOfOverflowing()
+    {
+        const string openApi = """
+            openapi: 3.1.0
+            info:
+              title: Test
+              version: v1
+            paths:
+              /search:
+                get:
+                  operationId: search
+                  parameters:
+                    - name: filter
+                      in: query
+                      schema:
+                        $ref: '#/components/schemas/Filter'
+                  responses:
+                    '204':
+                      description: ok
+              /filters:
+                post:
+                  operationId: createFilter
+                  requestBody:
+                    required: true
+                    content:
+                      application/x-www-form-urlencoded:
+                        schema:
+                          $ref: '#/components/schemas/Filter'
+                  responses:
+                    '204':
+                      description: ok
+              /health:
+                get:
+                  operationId: getHealth
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Loop:
+                  type: 'null'
+                  allOf:
+                    - $ref: '#/components/schemas/Loop'
+                Filter:
+                  type: object
+                  properties:
+                    loop:
+                      $ref: '#/components/schemas/Loop'
+            """;
+
+        // Previously the form-value classification recursed through `Loop` until the compiler's stack overflowed.
+        var result = RunGenerator(openApi);
+
+        AssertNoErrorDiagnostics(result);
+        var parameterDiagnostic = Assert.Single(result.Diagnostics, static diagnostic => diagnostic.Id == ParameterUnsupportedDiagnosticId);
+        Assert.Contains("'GET /search'", parameterDiagnostic.GetMessage());
+        Assert.Contains("self-referencing schema", parameterDiagnostic.GetMessage());
+        var bodyDiagnostic = Assert.Single(result.Diagnostics, static diagnostic => diagnostic.Id == RequestBodyUnsupportedDiagnosticId);
+        Assert.Contains("'POST /filters'", bodyDiagnostic.GetMessage());
+        Assert.Contains(result.GeneratedSources, static source => source.Contains("GetHealthAsync(", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ComposedScalarRequestBodies_AreClassifiedByTheirEffectiveType()
     {
         const string openApi = """

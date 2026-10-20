@@ -145,10 +145,26 @@ public sealed partial class ClientGenerator
                 elementNullable);
         }
 
-        private RequestBodyValueKind ClassifyValueKind(FormValueContext context, string propertyName, IOpenApiSchema schema, bool isArrayItem, out RequestBodyValueKind? elementKind)
+        private RequestBodyValueKind ClassifyValueKind(
+            FormValueContext context,
+            string propertyName,
+            IOpenApiSchema schema,
+            bool isArrayItem,
+            out RequestBodyValueKind? elementKind,
+            HashSet<string>? activeSchemaIdentities = null)
         {
             var resolvedSchema = _schemaReferenceResolver.ResolveSchemaReference(schema);
             elementKind = null;
+
+            // A self-referencing composition such as `Loop: { type: 'null', allOf: [$ref: Loop] }` has no scalar
+            // form value; without this guard the classification would recurse until the compiler overflows its stack.
+            activeSchemaIdentities ??= new HashSet<string>(StringComparer.Ordinal);
+            if (!activeSchemaIdentities.Add(SchemaReferenceResolver.GetSchemaIdentity(resolvedSchema)))
+            {
+                throw UnsupportedProperty(context, propertyName, isArrayItem,
+                    propertyReason: "uses a self-referencing schema, which is not supported for compile-time code generation.",
+                    arrayItemReason: "has array items using a self-referencing schema, which is not supported for compile-time code generation.");
+            }
 
             if (resolvedSchema.OneOf is { Count: > 0 } || resolvedSchema.AnyOf is { Count: > 0 })
             {
@@ -175,7 +191,7 @@ public sealed partial class ClientGenerator
                 var nonNullMembers = resolvedSchema.AllOf.Where(static s => !SchemaReferenceResolver.IsNullOnlySchema(s)).ToList();
                 if (nonNullMembers.Count == 1)
                 {
-                    return ClassifyValueKind(context, propertyName, nonNullMembers[0], isArrayItem, out elementKind);
+                    return ClassifyValueKind(context, propertyName, nonNullMembers[0], isArrayItem, out elementKind, activeSchemaIdentities);
                 }
             }
 
@@ -217,7 +233,7 @@ public sealed partial class ClientGenerator
                             context.FeatureKind);
                     }
 
-                    elementKind = ClassifyValueKind(context, propertyName, resolvedSchema.Items, isArrayItem: true, out _);
+                    elementKind = ClassifyValueKind(context, propertyName, resolvedSchema.Items, isArrayItem: true, out _, activeSchemaIdentities);
                     return RequestBodyValueKind.Collection;
                 default:
                     throw isArrayItem
