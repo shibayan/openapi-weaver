@@ -268,9 +268,11 @@ public sealed partial class ClientGenerator
                 return null;
             }
 
-            var schemaType = schema?.Type & ~JsonSchemaType.Null;
+            var (schemaType, schemaFormat) = schema is null
+                ? (null, null)
+                : GetEffectiveScalarType(schema, new HashSet<string>(StringComparer.Ordinal));
             var isBinarySchema = schemaType == JsonSchemaType.String
-                && string.Equals(schema!.Format, "binary", StringComparison.OrdinalIgnoreCase);
+                && string.Equals(schemaFormat, "binary", StringComparison.OrdinalIgnoreCase);
             if (isBinarySchema || string.Equals(mediaType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
             {
                 return RequestBodyKind.Binary;
@@ -283,6 +285,45 @@ public sealed partial class ClientGenerator
 
             // A media type without a schema (e.g. `image/png: {}`) carries raw bytes.
             return schema is null ? RequestBodyKind.Binary : null;
+        }
+
+        // The scalar type a schema resolves to, looking through compositions such as `allOf: [{ type: string, format: binary }]`
+        // whose non-null members all agree. This runs while inline models are still being registered, so it reads the schema
+        // structurally instead of through the (caching) type resolver.
+        private static (JsonSchemaType? Type, string? Format) GetEffectiveScalarType(IOpenApiSchema schema, HashSet<string> visited)
+        {
+            if ((schema.Type & ~JsonSchemaType.Null) is { } declaredType && declaredType != 0)
+            {
+                return (declaredType, schema.Format);
+            }
+
+            // Only the current path is tracked, so siblings that share a referenced schema are not mistaken for a cycle.
+            var identity = SchemaReferenceResolver.GetSchemaIdentity(schema);
+            if (!visited.Add(identity))
+            {
+                return (null, null);
+            }
+
+            (JsonSchemaType? Type, string? Format) result = (null, null);
+            foreach (var members in new[] { schema.AllOf, schema.OneOf, schema.AnyOf })
+            {
+                var nonNullMembers = members?.Where(static member => !SchemaReferenceResolver.IsNullOnlySchema(member)).ToList();
+                if (nonNullMembers is not { Count: > 0 })
+                {
+                    continue;
+                }
+
+                var effectiveTypes = nonNullMembers.Select(member => GetEffectiveScalarType(member, visited)).Distinct().ToList();
+                if (effectiveTypes.Count == 1)
+                {
+                    result = effectiveTypes[0];
+                }
+
+                break;
+            }
+
+            visited.Remove(identity);
+            return result;
         }
 
         // Text bodies are always encoded as UTF-8, so only the declared charset is replaced; other parameters such as

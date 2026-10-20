@@ -101,7 +101,7 @@ public sealed partial class ClientGenerator
                         UnsupportedFeatureKind.Parameter);
                 case TypeShape.Object:
                     return ResolveQueryObjectProperties(parameter, typeUsage);
-                case TypeShape.JsonElement when ComposesObject(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)):
+                case TypeShape.JsonElement when SerializesAsObject(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)):
                     // An object without a generated model would otherwise be formatted as its raw JSON text.
                     throw new UnsupportedGenerationException(
                         $"Parameter '{parameter.Name}' uses an object schema that has no generated model, which is not supported for compile-time code generation.",
@@ -111,7 +111,7 @@ public sealed partial class ClientGenerator
                     {
                         var itemShape = _schemaTypeResolver.ResolveTypeUsage(itemsSchema, required: true).Shape;
                         if (itemShape is TypeShape.Object or TypeShape.Dictionary or TypeShape.Array
-                            || (itemShape == TypeShape.JsonElement && ComposesObject(itemsSchema, new HashSet<string>(StringComparer.Ordinal))))
+                            || (itemShape == TypeShape.JsonElement && SerializesAsObject(itemsSchema, new HashSet<string>(StringComparer.Ordinal))))
                         {
                             throw new UnsupportedGenerationException(
                                 $"Parameter '{parameter.Name}' uses array items with an object or array schema, which is not supported for compile-time code generation.",
@@ -123,6 +123,24 @@ public sealed partial class ClientGenerator
                 default:
                     return null;
             }
+        }
+
+        // Whether a value of this schema can be an object on the wire, including through `oneOf` / `anyOf` alternatives.
+        // Kept separate from ComposesObject, which decides whether a model is generated.
+        private static bool SerializesAsObject(IOpenApiSchema schema, HashSet<string> visited)
+        {
+            if (!visited.Add(SchemaReferenceResolver.GetSchemaIdentity(schema)))
+            {
+                return false;
+            }
+
+            if (schema.Discriminator is not null || ComposesObject(schema, new HashSet<string>(StringComparer.Ordinal)))
+            {
+                return true;
+            }
+
+            return (schema.OneOf ?? []).Concat(schema.AnyOf ?? [])
+                .Any(alternative => !SchemaReferenceResolver.IsNullOnlySchema(alternative) && SerializesAsObject(alternative, visited));
         }
 
         // Finds the items schema of the array a parameter resolves to, including arrays supplied through composition.

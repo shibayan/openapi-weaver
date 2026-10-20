@@ -2582,6 +2582,8 @@ public sealed partial class ClientGeneratorTests
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/FilterList'", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Cat'", "cannot be expanded into query parameters")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Shape'", "cannot be expanded into query parameters")]
+    [InlineData("in: query\nschema:\n  oneOf:\n    - $ref: '#/components/schemas/Filter'\n    - $ref: '#/components/schemas/Nested'", "object schema that has no generated model")]
+    [InlineData("in: query\nschema:\n  type: array\n  items:\n    anyOf:\n      - $ref: '#/components/schemas/Filter'\n      - $ref: '#/components/schemas/Nested'", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  type: array\n  items:\n    $ref: '#/components/schemas/Shape'", "array items with an object or array schema")]
     public void ComplexParameterShapes_ReportParameterDiagnostic(string parameterYaml, string expectedMessage)
     {
@@ -2880,6 +2882,54 @@ public sealed partial class ClientGeneratorTests
         // The declared `header` parameter survives; the charset matches the UTF-8 bytes actually sent.
         var request = Assert.Single(handler.Requests);
         Assert.Equal(expectedHeader, request.ContentType);
+    }
+
+    [Fact]
+    public void ComposedScalarRequestBodies_AreClassifiedByTheirEffectiveType()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Test
+              version: v1
+            paths:
+              /notes:
+                put:
+                  operationId: putNote
+                  requestBody:
+                    required: true
+                    content:
+                      text/plain:
+                        schema:
+                          allOf:
+                            - type: string
+                  responses:
+                    '204':
+                      description: ok
+              /images:
+                put:
+                  operationId: putImage
+                  requestBody:
+                    required: true
+                    content:
+                      image/png:
+                        schema:
+                          allOf:
+                            - type: string
+                              format: binary
+                  responses:
+                    '204':
+                      description: ok
+            """;
+
+        // Neither operation may be skipped just because the scalar type is wrapped in a composition.
+        var result = RunGenerator(openApi);
+
+        Assert.Empty(result.Diagnostics);
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public async Task PutNoteAsync(string body, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("public async Task PutImageAsync(byte[] body, CancellationToken cancellationToken = default)", source);
+        Assert.Contains("MediaTypeHeaderValue.Parse(\"image/png\")", source);
     }
 
     [Fact]

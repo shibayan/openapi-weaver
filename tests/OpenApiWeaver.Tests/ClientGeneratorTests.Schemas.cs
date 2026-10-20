@@ -1716,6 +1716,70 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void EnumJsonConverterNames_DoNotCollideWithTypesOrMembers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Converter Naming API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Status:
+                  type: string
+                  enum: [open, closed]
+                StatusJsonConverter:
+                  type: object
+                  properties:
+                    note:
+                      type: string
+                Order:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum: [placed, delivered]
+                    status_enum_json_converter:
+                      type: string
+                Pet:
+                  type: object
+                  required: [petType, statusEnumJsonConverter]
+                  properties:
+                    petType:
+                      type: string
+                    statusEnumJsonConverter:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        status:
+                          type: string
+                          enum: [hungry, asleep]
+            """;
+
+        // Each enum's `{Name}JsonConverter` class is reserved together with the enum; GenerateSource compiles the result.
+        var source = GenerateSource(openApi);
+
+        // A top-level component cannot take the converter name of the `Status` enum.
+        Assert.Contains("public sealed class StatusJsonConverter : JsonConverter<Status>", source);
+        Assert.Contains("public sealed class StatusJsonConverter2", source);
+
+        // A property cannot take the name of a nested enum's converter (CS0102).
+        Assert.Contains("public sealed class StatusEnumJsonConverter : JsonConverter<StatusEnum>", source);
+        Assert.Contains("public string? StatusEnumJsonConverter2 { get; init; }", source);
+
+        // A subtype's nested converter cannot hide a required inherited member (CS9031).
+        Assert.Contains("public required string StatusEnumJsonConverter { get; init; }", source);
+        Assert.Contains("public Cat.StatusEnum2? Status { get; init; }", source);
+        Assert.Contains("public sealed class StatusEnum2JsonConverter : JsonConverter<StatusEnum2>", source);
+    }
+
+    [Fact]
     public void AliasComponentSchemas_ResolveToUnderlyingTypes()
     {
         const string openApi = """

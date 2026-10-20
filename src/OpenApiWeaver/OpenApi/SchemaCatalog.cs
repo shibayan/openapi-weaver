@@ -34,21 +34,24 @@ internal sealed class SchemaCatalog
     public bool TryGetInlineSchema(string identity, out InlineSchemaInfo inlineSchema)
         => _inlineSchemasByIdentity.TryGetValue(identity, out inlineSchema!);
 
-    public InlineSchemaInfo AddInlineSchema(string identity, string? parentTypeName, string suggestedTypeName, IOpenApiSchema schema)
+    public InlineSchemaInfo AddInlineSchema(string identity, string? parentTypeName, string suggestedTypeName, IOpenApiSchema schema, string? companionTypeSuffix = null)
     {
-        var declaredTypeName = AllocateTypeName(parentTypeName, suggestedTypeName);
+        var declaredTypeName = AllocateTypeName(parentTypeName, suggestedTypeName, companionTypeSuffix);
         var inlineSchema = new InlineSchemaInfo(
             BuildQualifiedTypeName(parentTypeName, declaredTypeName),
             declaredTypeName,
             parentTypeName,
-            schema);
+            schema,
+            companionTypeSuffix is null ? null : declaredTypeName + companionTypeSuffix);
 
         _inlineSchemasByIdentity.Add(identity, inlineSchema);
         _inlineSchemas.Add(inlineSchema);
         return inlineSchema;
     }
 
-    public string AllocateTypeName(string? parentTypeName, string suggestedTypeName)
+    // When companionTypeSuffix is set, the type is emitted with a sibling type (e.g. `StatusJsonConverter` next to
+    // `Status`), so both names are allocated together.
+    public string AllocateTypeName(string? parentTypeName, string suggestedTypeName, string? companionTypeSuffix = null)
     {
         var baseTypeName = string.IsNullOrWhiteSpace(suggestedTypeName) ? "Model" : suggestedTypeName;
         var enclosingTypeName = GetDeclaredTypeName(parentTypeName);
@@ -56,11 +59,20 @@ internal sealed class SchemaCatalog
         var suffix = 2;
 
         // A nested type cannot share the name of its enclosing type (CS0542).
-        while (string.Equals(candidate, enclosingTypeName, StringComparison.Ordinal)
-            || !_usedTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate)))
+        bool IsAvailable(string name)
+            => !string.Equals(name, enclosingTypeName, StringComparison.Ordinal)
+                && !_usedTypeNames.Contains(BuildQualifiedTypeName(parentTypeName, name));
+
+        while (!IsAvailable(candidate) || (companionTypeSuffix is not null && !IsAvailable(candidate + companionTypeSuffix)))
         {
             candidate = baseTypeName + suffix.ToString(CultureInfo.InvariantCulture);
             suffix++;
+        }
+
+        _usedTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate));
+        if (companionTypeSuffix is not null)
+        {
+            _usedTypeNames.Add(BuildQualifiedTypeName(parentTypeName, candidate + companionTypeSuffix));
         }
 
         return candidate;
@@ -81,10 +93,13 @@ internal sealed class SchemaCatalog
         => string.IsNullOrWhiteSpace(parentTypeName) ? declaredTypeName : $"{parentTypeName}.{declaredTypeName}";
 }
 
-internal sealed class InlineSchemaInfo(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema)
+internal sealed class InlineSchemaInfo(string typeName, string declaredTypeName, string? parentTypeName, IOpenApiSchema schema, string? companionTypeName = null)
 {
     public string TypeName { get; } = typeName;
     public string DeclaredTypeName { get; } = declaredTypeName;
     public string? ParentTypeName { get; } = parentTypeName;
     public IOpenApiSchema Schema { get; } = schema;
+
+    // The sibling type emitted with this one (e.g. its JsonConverter), if any.
+    public string? CompanionTypeName { get; } = companionTypeName;
 }

@@ -24,7 +24,7 @@ public sealed partial class ClientGenerator
                     continue;
                 }
 
-                var schemaName = _schemaCatalog.AllocateTypeName(parentTypeName: null, NormalizePascalIdentifier(schema.Key, "Model"));
+                var schemaName = _schemaCatalog.AllocateTypeName(parentTypeName: null, NormalizePascalIdentifier(schema.Key, "Model"), GetCompanionTypeSuffix(schema.Value));
                 _schemaCatalog.AddComponentSchemaName(schema.Key, schemaName);
             }
         }
@@ -375,12 +375,14 @@ public sealed partial class ClientGenerator
             var (ignoredPropertyNames, ignoredSchemaReferences) = GetPropertyCollectionFilters(typeName);
             var inheritedPropertyNames = GetInheritedPropertyNames(typeName);
 
-            // A member cannot share the name of its enclosing type (CS0542), of a nested type (CS0102),
-            // or of an inherited member it would hide (CS0108 / CS9031).
+            // A member cannot share the name of its enclosing type (CS0542), of a nested type or its companion converter
+            // (CS0102), or of an inherited member it would hide (CS0108 / CS9031).
             var usedPropertyNames = new HashSet<string>(
                 _schemaCatalog.InlineSchemas
                     .Where(inlineSchema => string.Equals(inlineSchema.ParentTypeName, typeName, StringComparison.Ordinal))
-                    .Select(static inlineSchema => inlineSchema.DeclaredTypeName)
+                    .SelectMany(static inlineSchema => inlineSchema.CompanionTypeName is { } companionTypeName
+                        ? new[] { inlineSchema.DeclaredTypeName, companionTypeName }
+                        : [inlineSchema.DeclaredTypeName])
                     .Concat(inheritedPropertyNames.Values)
                     .Append(declaredTypeName),
                 StringComparer.Ordinal);
@@ -773,8 +775,18 @@ public sealed partial class ClientGenerator
                 identity,
                 parentTypeName,
                 NormalizePascalIdentifier(suggestedTypeName, "InlineObject"),
-                schema);
+                schema,
+                GetCompanionTypeSuffix(schema));
         }
+
+        // String and number enums, and dictionaries with properties, are emitted with a sibling `{Name}JsonConverter`
+        // class whose name must not collide with other types or members. Every dictionary reserves one, since its
+        // properties are not known yet.
+        private string? GetCompanionTypeSuffix(IOpenApiSchema schema)
+            => _schemaEnumResolver.GetSchemaEnumKind(schema) is SchemaEnumKind.String or SchemaEnumKind.Number
+                || SchemaTypeResolver.IsDictionarySchema(schema)
+                ? "JsonConverter"
+                : null;
 
         private bool CanGenerateInlineSchema(IOpenApiSchema schema)
         {
