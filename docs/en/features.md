@@ -147,7 +147,7 @@ The discriminator property itself is not generated as a normal CLR property on t
 
 A schema that declares `discriminator` but has no subtypes keeps the discriminator as an ordinary property.
 
-A subtype that redeclares an inherited property with the same type reuses the inherited member. If a subtype makes an inherited optional property required, the requirement is enforced when responses are deserialized.
+A subtype that redeclares an inherited property with the same type reuses the inherited member, and any `readOnly` / `writeOnly` it adds applies to its own requests and responses. If a subtype makes an inherited optional property required, the requirement is enforced when responses are deserialized.
 
 Unsupported discriminator patterns fail generation with `OAW006`. This includes inline `oneOf` / `anyOf` members, a schema listing itself as a member, duplicate discriminator values, mappings that reference schemas outside the subtypes, subtypes shared by several hierarchies, subtypes that declare their own discriminator hierarchy, `additionalProperties` / `patternProperties` within a hierarchy, and subtypes that redeclare an inherited property with a different type.
 

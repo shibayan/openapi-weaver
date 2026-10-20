@@ -288,9 +288,44 @@ public sealed partial class ClientGenerator
         // Text bodies are always encoded as UTF-8, so only the declared charset is replaced; other parameters such as
         // `header=absent` on text/csv are preserved.
         private static string RemoveCharsetParameter(string contentType)
-            => string.Join("; ", contentType.Split(';')
+            => string.Join("; ", SplitMediaTypeSegments(contentType)
                 .Select(static part => part.Trim())
-                .Where(static (part, index) => index == 0 || (part.Length > 0 && !part.StartsWith("charset=", StringComparison.OrdinalIgnoreCase))));
+                .Where(static (part, index) => index == 0 || (part.Length > 0 && !IsCharsetParameter(part))));
+
+        private static bool IsCharsetParameter(string parameter)
+        {
+            var separatorIndex = parameter.IndexOf('=');
+            return separatorIndex > 0
+                && string.Equals(parameter.Substring(0, separatorIndex).Trim(), "charset", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Splits a media type into its type and parameters on `;`, except inside quoted parameter values
+        // such as `note="a;b"`, where `\` escapes the next character (RFC 9110 quoted-string).
+        private static List<string> SplitMediaTypeSegments(string contentType)
+        {
+            var segments = new List<string>();
+            var segmentStart = 0;
+            var inQuotes = false;
+            for (var i = 0; i < contentType.Length; i++)
+            {
+                switch (contentType[i])
+                {
+                    case '\\' when inQuotes:
+                        i++;
+                        break;
+                    case '"':
+                        inQuotes = !inQuotes;
+                        break;
+                    case ';' when !inQuotes:
+                        segments.Add(contentType.Substring(segmentStart, i - segmentStart));
+                        segmentStart = i + 1;
+                        break;
+                }
+            }
+
+            segments.Add(contentType.Substring(segmentStart));
+            return segments;
+        }
 
         // A media type range such as `image/*` can only be sent as a concrete type it covers; ranges without
         // a safe concrete choice return null so the request body is reported as unsupported.

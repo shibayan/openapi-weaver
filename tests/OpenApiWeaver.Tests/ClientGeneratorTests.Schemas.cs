@@ -1620,6 +1620,47 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
+    public void SubtypeNestedTypeNames_DoNotHideInheritedMembers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, detailModel]
+                  properties:
+                    petType:
+                      type: string
+                    detailModel:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        detail:
+                          type: object
+                          properties:
+                            color:
+                              type: string
+            """;
+
+        // `Cat.DetailModel` would hide the required inherited `Pet.DetailModel` property (CS9031); GenerateSource compiles the result.
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required string DetailModel { get; init; }", source);
+        Assert.Contains("public sealed class DetailModel2", source);
+        Assert.Contains("public Cat.DetailModel2? Detail { get; init; }", source);
+    }
+
+    [Fact]
     public void AliasComponentSchemas_ResolveToUnderlyingTypes()
     {
         const string openApi = """

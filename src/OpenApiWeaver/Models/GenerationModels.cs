@@ -139,7 +139,7 @@ internal sealed class SchemaDefinition(
     IReadOnlyList<SchemaEnumMemberDefinition> enumMembers,
     string? inheritedDiscriminatorPropertyName = null,
     IReadOnlyList<SchemaDerivedTypeDefinition>? selfAndDescendantTypes = null,
-    IReadOnlyList<string>? inheritedRequiredPropertyNames = null)
+    IReadOnlyList<InheritedPropertyRule>? inheritedPropertyRules = null)
 {
     public string QualifiedTypeName { get; } = typeName;
     public string DeclaredTypeName { get; } = declaredTypeName;
@@ -162,8 +162,22 @@ internal sealed class SchemaDefinition(
     public string? InheritedDiscriminatorPropertyName { get; } = inheritedDiscriminatorPropertyName;
     public IReadOnlyList<SchemaDerivedTypeDefinition>? SelfAndDescendantTypes { get; } = selfAndDescendantTypes;
 
-    // JSON names of inherited optional properties that this subtype makes required.
-    public IReadOnlyList<string> InheritedRequiredPropertyNames { get; } = inheritedRequiredPropertyNames ?? [];
+    // Constraints this subtype adds to inherited members, enforced through the serializer contract because
+    // the inherited CLR members themselves cannot change.
+    public IReadOnlyList<InheritedPropertyRule> InheritedPropertyRules { get; } = inheritedPropertyRules ?? [];
+}
+
+internal enum InheritedPropertyRuleKind
+{
+    RequireInResponse,
+    IgnoreInRequest,
+    IgnoreInResponse
+}
+
+internal sealed class InheritedPropertyRule(string jsonPropertyName, InheritedPropertyRuleKind kind)
+{
+    public string JsonPropertyName { get; } = jsonPropertyName;
+    public InheritedPropertyRuleKind Kind { get; } = kind;
 }
 
 internal sealed class SchemaDerivedTypeDefinition(string typeName, string discriminatorValue)

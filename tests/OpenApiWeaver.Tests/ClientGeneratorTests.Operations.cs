@@ -2838,10 +2838,12 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("MediaTypeHeaderValue.Parse(\"application/octet-stream\")", source);
     }
 
-    [Fact]
-    public async Task TextRequestBody_KeepsDeclaredMediaTypeParametersExceptCharset()
+    [Theory]
+    [InlineData("text/csv; header=absent; charset=iso-8859-1", "text/csv; header=absent", "text/csv; header=absent; charset=utf-8")]
+    [InlineData("text/plain; note=\"a;charset=b\"; charset=iso-8859-1", "text/plain; note=\\\"a;charset=b\\\"", "text/plain; note=\"a;charset=b\"; charset=utf-8")]
+    public async Task TextRequestBody_KeepsDeclaredMediaTypeParametersExceptCharset(string declaredContentType, string expectedLiteral, string expectedHeader)
     {
-        const string openApi = """
+        var openApi = $$"""
             openapi: 3.0.1
             info:
               title: Test
@@ -2853,7 +2855,7 @@ public sealed partial class ClientGeneratorTests
                   requestBody:
                     required: true
                     content:
-                      text/csv; header=absent; charset=iso-8859-1:
+                      '{{declaredContentType}}':
                         schema:
                           type: string
                   responses:
@@ -2861,8 +2863,9 @@ public sealed partial class ClientGeneratorTests
                       description: ok
             """;
 
+        // Quoted parameter values may contain `;` and `charset=`, so only the real charset parameter is replaced.
         var source = GenerateSource(openApi);
-        Assert.Contains("MediaTypeHeaderValue.Parse(\"text/csv; header=absent\")", source);
+        Assert.Contains($"MediaTypeHeaderValue.Parse(\"{expectedLiteral}\")", source);
 
         using var generatedAssembly = LoadGeneratedAssembly(openApi);
         var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
@@ -2875,7 +2878,7 @@ public sealed partial class ClientGeneratorTests
 
         // The declared `header` parameter survives; the charset matches the UTF-8 bytes actually sent.
         var request = Assert.Single(handler.Requests);
-        Assert.Equal("text/csv; header=absent; charset=utf-8", request.ContentType);
+        Assert.Equal(expectedHeader, request.ContentType);
     }
 
     [Fact]

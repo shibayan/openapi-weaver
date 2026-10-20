@@ -640,6 +640,80 @@ public sealed partial class ClientGeneratorTests
         Assert.Equal(petType, pet!.GetType());
     }
 
+    [Fact]
+    public void DiscriminatorWithAllOfInheritance_AppliesDirectionAnnotationsAddedByRedeclaration()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths:
+              /cats:
+                post:
+                  operationId: createCat
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/Cat'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/Cat'
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, password, nickname]
+                  properties:
+                    petType:
+                      type: string
+                    password:
+                      type: string
+                    nickname:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        password:
+                          type: string
+                          writeOnly: true
+                        nickname:
+                          type: string
+                          readOnly: true
+            """;
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var optionsType = assembly.Assembly.GetType("GeneratorTests.TestClientJsonSerializerOptions")!;
+        var requestOptions = Assert.IsType<JsonSerializerOptions>(optionsType.GetField("RequestSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+        var responseOptions = Assert.IsType<JsonSerializerOptions>(optionsType.GetField("ResponseSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+
+        // Cat makes `password` writeOnly: a Cat response omits it, even though Pet requires it.
+        var cat = JsonSerializer.Deserialize("""{"petType":"Cat","nickname":"Tama"}""", catType, responseOptions);
+        Assert.NotNull(cat);
+        Assert.Null(petType.GetProperty("Password")!.GetValue(cat));
+
+        // Cat makes `nickname` readOnly: a Cat request does not send it.
+        petType.GetProperty("Password")!.SetValue(cat, "secret");
+        var json = JsonSerializer.Serialize(cat, catType, requestOptions);
+        Assert.DoesNotContain("\"nickname\"", json);
+        Assert.Contains("\"password\":\"secret\"", json);
+
+        // Pet itself keeps both properties bidirectional.
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("""{"nickname":"Tama"}""", petType, responseOptions));
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!

@@ -58,14 +58,24 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
 
             writer.AppendLine("}");
             writer.AppendLine();
-            EmitMetadataMethod(writer, "ApplyRequestSerializerMetadata", property => property.ReadOnly, static _ => "IgnoreSerializedProperty", includeInheritedRequirements: false);
+            EmitMetadataMethod(
+                writer,
+                "ApplyRequestSerializerMetadata",
+                property => property.ReadOnly,
+                static _ => "IgnoreSerializedProperty",
+                static kind => kind == InheritedPropertyRuleKind.IgnoreInRequest ? "IgnoreSerializedProperty" : null);
             writer.AppendLine();
             EmitMetadataMethod(
                 writer,
                 "ApplyResponseSerializerMetadata",
                 property => property.WriteOnly || (property.ReadOnly && property.Required),
                 static property => property.WriteOnly ? "IgnoreDeserializedProperty" : "RequireDeserializedProperty",
-                includeInheritedRequirements: true);
+                static kind => kind switch
+                {
+                    InheritedPropertyRuleKind.RequireInResponse => "RequireDeserializedProperty",
+                    InheritedPropertyRuleKind.IgnoreInResponse => "IgnoreDeserializedProperty",
+                    _ => null
+                });
             writer.AppendLine();
             writer.AppendLine("private static void IgnoreSerializedProperty(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo, string propertyName)");
             writer.AppendLine("{");
@@ -177,7 +187,7 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
         string methodName,
         Func<SchemaPropertyDefinition, bool> propertyPredicate,
         Func<SchemaPropertyDefinition, string> configureMethodNameSelector,
-        bool includeInheritedRequirements)
+        Func<InheritedPropertyRuleKind, string?> inheritedRuleMethodNameSelector)
     {
         writer.Append("private static void ").Append(methodName).AppendLine("(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo)");
         writer.AppendLine("{");
@@ -189,9 +199,12 @@ internal sealed class JsonSerializerOptionsEmitter(ClientModel model)
                     .Where(propertyPredicate)
                     .Select(property => (MethodName: configureMethodNameSelector(property), property.JsonPropertyName))
                     .ToList();
-                if (includeInheritedRequirements)
+                foreach (var inheritedRule in schema.InheritedPropertyRules)
                 {
-                    rules.AddRange(schema.InheritedRequiredPropertyNames.Select(static name => (MethodName: "RequireDeserializedProperty", JsonPropertyName: name)));
+                    if (inheritedRuleMethodNameSelector(inheritedRule.Kind) is { } inheritedMethodName)
+                    {
+                        rules.Add((inheritedMethodName, inheritedRule.JsonPropertyName));
+                    }
                 }
 
                 if (rules.Count == 0)

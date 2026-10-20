@@ -270,6 +270,8 @@ public sealed partial class ClientGenerator
         {
             if (_document.Components?.Schemas is not null)
             {
+                ReserveInheritedMemberNames(_document.Components.Schemas);
+
                 foreach (var schema in _document.Components.Schemas)
                 {
                     if (_schemaCatalog.TryGetComponentSchemaName(schema.Key, out var schemaName))
@@ -284,6 +286,25 @@ public sealed partial class ClientGenerator
             }
 
             RegisterOperationInlineSchemaNames();
+        }
+
+        // A subtype's nested types are named before its members, so the names of members it will inherit are reserved
+        // first; otherwise a nested type such as `Cat.DetailModel` would hide an inherited `DetailModel` property (CS9031).
+        private void ReserveInheritedMemberNames(IDictionary<string, IOpenApiSchema> componentSchemas)
+        {
+            foreach (var derivedSchema in _polymorphicDerivedSchemasByTypeName)
+            {
+                if (!componentSchemas.TryGetValue(derivedSchema.Value.BaseSchemaName, out var baseSchema))
+                {
+                    continue;
+                }
+
+                // Collecting the direct base without ignored references also flattens everything it inherits.
+                foreach (var property in SchemaPropertyCollector.Collect(baseSchema))
+                {
+                    _schemaCatalog.ReserveTypeName($"{derivedSchema.Key}.{NormalizePascalIdentifier(property.Name, "Value")}");
+                }
+            }
         }
 
         private List<SchemaDefinition> BuildSchemaDefinitions()
@@ -379,7 +400,8 @@ public sealed partial class ClientGenerator
 
             var properties = new List<SchemaPropertyDefinition>();
             var inheritedProperties = CollectInheritedProperties(baseTypeName);
-            var inheritedRequiredPropertyNames = new List<string>();
+            var inheritedPropertyRules = new List<InheritedPropertyRule>();
+            var redeclaredWriteOnlyNames = new HashSet<string>(StringComparer.Ordinal);
 
             // A member cannot share the name of its enclosing type (CS0542), of a nested type (CS0102),
             // or of an inherited member it would hide (CS0108 / CS9031).
@@ -410,6 +432,25 @@ public sealed partial class ClientGenerator
                             UnsupportedFeatureKind.Discriminator);
                     }
 
+                    // Direction annotations the subtype adds still apply to its own contract.
+                    if ((property.ReadOnly || inheritedProperty.ReadOnly) && (property.WriteOnly || inheritedProperty.WriteOnly))
+                    {
+                        throw new UnsupportedGenerationException(
+                            $"Schema '{typeName}' property '{property.Name}' is marked both readOnly and writeOnly through inheritance, which is not supported.",
+                            UnsupportedFeatureKind.Schema);
+                    }
+
+                    if (property.WriteOnly && !inheritedProperty.WriteOnly)
+                    {
+                        redeclaredWriteOnlyNames.Add(property.Name);
+                        inheritedPropertyRules.Add(new InheritedPropertyRule(property.Name, InheritedPropertyRuleKind.IgnoreInResponse));
+                    }
+
+                    if (property.ReadOnly && !inheritedProperty.ReadOnly)
+                    {
+                        inheritedPropertyRules.Add(new InheritedPropertyRule(property.Name, InheritedPropertyRuleKind.IgnoreInRequest));
+                    }
+
                     continue;
                 }
 
@@ -436,9 +477,10 @@ public sealed partial class ClientGenerator
                 {
                     if (inheritedProperties.TryGetValue(requiredName, out var inheritedProperty)
                         && !inheritedProperty.Required
-                        && !inheritedProperty.WriteOnly)
+                        && !inheritedProperty.WriteOnly
+                        && !redeclaredWriteOnlyNames.Contains(requiredName))
                     {
-                        inheritedRequiredPropertyNames.Add(requiredName);
+                        inheritedPropertyRules.Add(new InheritedPropertyRule(requiredName, InheritedPropertyRuleKind.RequireInResponse));
                     }
                 }
             }
@@ -468,7 +510,7 @@ public sealed partial class ClientGenerator
                 enumMembers,
                 polymorphicDerivedSchema?.DiscriminatorPropertyName,
                 polymorphicDerivedSchema?.SelfAndDescendantTypes,
-                inheritedRequiredPropertyNames);
+                inheritedPropertyRules);
         }
 
         private void RegisterOperationInlineSchemaNames()
