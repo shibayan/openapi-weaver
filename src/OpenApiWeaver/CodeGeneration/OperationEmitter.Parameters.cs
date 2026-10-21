@@ -83,6 +83,14 @@ internal sealed partial class OperationEmitter
 
     private static void EmitQueryParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)
     {
+        if (parameter.ObjectProperties is { } objectProperties)
+        {
+            // Optional parameters are already null-guarded; a required one may still allow null (`type: [object, null]`).
+            OperationRequestBodyEmitter.EmitIfNotNull(writer, parameter.ParameterName, parameter.Required && parameter.IsNullable, () =>
+                EmitQueryObjectAppend(writer, parameter.ParameterName, objectProperties));
+            return;
+        }
+
         var encodedWireName = Uri.EscapeDataString(parameter.WireName);
         if (parameter.IsArray)
         {
@@ -91,6 +99,28 @@ internal sealed partial class OperationEmitter
         }
 
         writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(EscapeStringLiteral(encodedWireName)).Append("\", OpenApiClientHelpers.FormatParameter(").Append(parameter.ParameterName).AppendLine("));");
+    }
+
+    private static void EmitQueryObjectAppend(IndentedStringBuilder writer, string parameterName, IReadOnlyList<RequestBodyPropertyInfo> properties)
+    {
+        // style: form, explode: true writes each object property as its own query parameter.
+        foreach (var property in properties)
+        {
+            var propertyAccess = $"{parameterName}.{property.PropertyName}";
+            var encodedWireName = EscapeStringLiteral(Uri.EscapeDataString(property.WireName));
+            OperationRequestBodyEmitter.EmitIfNotNull(writer, propertyAccess, property.IsNullable, () =>
+            {
+                if (property.Kind != RequestBodyValueKind.Collection)
+                {
+                    writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(encodedWireName).Append("\", OpenApiClientHelpers.FormatParameter(").Append(propertyAccess).AppendLine("));");
+                    return;
+                }
+
+                OperationRequestBodyEmitter.EmitCollectionLoop(writer, propertyAccess, () =>
+                    OperationRequestBodyEmitter.EmitIfNotNull(writer, "item", property.IsElementNullable, () =>
+                        writer.Append("OpenApiClientHelpers.AppendQueryParameter(pathBuilder, ref hasQuery, \"").Append(encodedWireName).AppendLine("\", OpenApiClientHelpers.FormatParameter(item));")));
+            });
+        }
     }
 
     private static void EmitHeaderParameterAppend(IndentedStringBuilder writer, ParameterInfo parameter)

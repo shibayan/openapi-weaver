@@ -584,12 +584,12 @@ public sealed partial class ClientGeneratorTests
 
         var source = GenerateSource(openApi);
 
-        Assert.Contains("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"kind\")]", source);
+        Assert.Contains("[JsonPolymorphic(TypeDiscriminatorPropertyName = \"kind\", IgnoreUnrecognizedTypeDiscriminators = true)]", source);
         Assert.Contains("[JsonDerivedType(typeof(Dog), typeDiscriminator: \"dog\")]", source);
         Assert.Contains("[JsonDerivedType(typeof(Cat), typeDiscriminator: \"cat\")]", source);
         Assert.Contains("public class Animal", source);
-        Assert.Contains("public sealed class Dog : Animal", source);
-        Assert.Contains("public sealed class Cat : Animal", source);
+        Assert.Contains("public class Dog : Animal", source);
+        Assert.Contains("public class Cat : Animal", source);
         Assert.Contains("public required string Name { get; init; }", source);
         Assert.Contains("public required bool Barks { get; init; }", source);
         Assert.Contains("public required int Lives { get; init; }", source);
@@ -1559,5 +1559,307 @@ public sealed partial class ClientGeneratorTests
         Assert.Contains("[JsonPropertyName(\"class\")]", source);
         Assert.Contains("public required string Class { get; init; }", source);
         Assert.Contains("[JsonPropertyName(\"default\")]", source);
+    }
+
+    [Fact]
+    public void MemberNamesMatchingEnclosingTypeName_AreRenamedToCompile()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Name Collision API
+              version: v1
+            tags:
+              - name: TestClient
+              - name: Dispose
+            paths:
+              /errors:
+                get:
+                  operationId: getError
+                  tags: [TestClient]
+                  responses:
+                    '204':
+                      description: ok
+              /disposals:
+                get:
+                  operationId: listDisposals
+                  tags: [Dispose]
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Error:
+                  type: object
+                  properties:
+                    error:
+                      type: string
+                    address:
+                      type: object
+                      properties:
+                        street:
+                          type: string
+                    addressModel:
+                      type: string
+                Status:
+                  type: string
+                  enum: [status, value, equals]
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("[JsonPropertyName(\"error\")]", source);
+        Assert.Contains("public string? Error2 { get; init; }", source);
+        Assert.Contains("public sealed class AddressModel", source);
+        Assert.Contains("public string? AddressModel2 { get; init; }", source);
+        Assert.Contains("public static readonly Status Status2 = new(\"status\");", source);
+        Assert.Contains("public static readonly Status Value2 = new(\"value\");", source);
+        Assert.Contains("public static readonly Status Equals2 = new(\"equals\");", source);
+        Assert.Contains("public TestClient2Client TestClient2 { get; }", source);
+        Assert.Contains("public Dispose2Client Dispose2 { get; }", source);
+    }
+
+    [Fact]
+    public void SubtypeNestedTypeNames_DoNotHideInheritedMembers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, detailModel]
+                  properties:
+                    petType:
+                      type: string
+                    detailModel:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        detail:
+                          type: object
+                          properties:
+                            color:
+                              type: string
+            """;
+
+        // `Cat.DetailModel` would hide the required inherited `Pet.DetailModel` property (CS9031); GenerateSource compiles the result.
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required string DetailModel { get; init; }", source);
+        Assert.Contains("public sealed class DetailModel2", source);
+        Assert.Contains("public Cat.DetailModel2? Detail { get; init; }", source);
+    }
+
+    [Fact]
+    public void SubtypeNestedTypeNames_AvoidSuffixedInheritedMemberNames()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+                    - type: object
+                      properties:
+                        detail_model3:
+                          type: string
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        detail:
+                          type: object
+                          properties:
+                            color:
+                              type: string
+                Pet:
+                  type: object
+                  required: [petType, detail_model, detailModel]
+                  properties:
+                    petType:
+                      type: string
+                    detail_model:
+                      type: string
+                    detailModel:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+            """;
+
+        // Pet's members become DetailModel and DetailModel2, so Cat's nested type must skip both suffixed names,
+        // even when subtypes are declared before their base; GenerateSource compiles the result.
+        var source = GenerateSource(openApi);
+
+        Assert.Contains("public required string DetailModel { get; init; }", source);
+        Assert.Contains("public required string DetailModel2 { get; init; }", source);
+        Assert.Contains("public Cat.DetailModel3? Detail { get; init; }", source);
+
+        // Siamese, declared first, still gets a property name that avoids every member it inherits from Pet.
+        Assert.Contains("[JsonPropertyName(\"detail_model3\")]", source);
+        Assert.Contains("public string? DetailModel3 { get; init; }", source);
+    }
+
+    [Fact]
+    public void EnumJsonConverterNames_DoNotCollideWithTypesOrMembers()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Converter Naming API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Status:
+                  type: string
+                  enum: [open, closed]
+                StatusJsonConverter:
+                  type: object
+                  properties:
+                    note:
+                      type: string
+                Order:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum: [placed, delivered]
+                    status_enum_json_converter:
+                      type: string
+                Pet:
+                  type: object
+                  required: [petType, statusEnumJsonConverter]
+                  properties:
+                    petType:
+                      type: string
+                    statusEnumJsonConverter:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        status:
+                          type: string
+                          enum: [hungry, asleep]
+            """;
+
+        // Each enum's `{Name}JsonConverter` class is reserved together with the enum; GenerateSource compiles the result.
+        var source = GenerateSource(openApi);
+
+        // A top-level component cannot take the converter name of the `Status` enum.
+        Assert.Contains("public sealed class StatusJsonConverter : JsonConverter<Status>", source);
+        Assert.Contains("public sealed class StatusJsonConverter2", source);
+
+        // A property cannot take the name of a nested enum's converter (CS0102).
+        Assert.Contains("public sealed class StatusEnumJsonConverter : JsonConverter<StatusEnum>", source);
+        Assert.Contains("public string? StatusEnumJsonConverter2 { get; init; }", source);
+
+        // A subtype's nested converter cannot hide a required inherited member (CS9031).
+        Assert.Contains("public required string StatusEnumJsonConverter { get; init; }", source);
+        Assert.Contains("public Cat.StatusEnum2? Status { get; init; }", source);
+        Assert.Contains("public sealed class StatusEnum2JsonConverter : JsonConverter<StatusEnum2>", source);
+    }
+
+    [Fact]
+    public void AliasComponentSchemas_ResolveToUnderlyingTypes()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Alias API
+              version: v1
+            paths:
+              /users:
+                get:
+                  operationId: getUser
+                  parameters:
+                    - name: id
+                      in: query
+                      required: true
+                      schema:
+                        $ref: '#/components/schemas/UserId'
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/User'
+            components:
+              schemas:
+                UserId:
+                  type: string
+                  format: uuid
+                Tags:
+                  type: array
+                  items:
+                    type: string
+                Addresses:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      street:
+                        type: string
+                Tree:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Tree'
+                User:
+                  type: object
+                  required: [id]
+                  properties:
+                    id:
+                      $ref: '#/components/schemas/UserId'
+                    tags:
+                      $ref: '#/components/schemas/Tags'
+                    addresses:
+                      $ref: '#/components/schemas/Addresses'
+                    tree:
+                      $ref: '#/components/schemas/Tree'
+            """;
+
+        var source = GenerateSource(openApi);
+
+        Assert.DoesNotContain("class UserId", source);
+        Assert.DoesNotContain("class Tags", source);
+        Assert.DoesNotContain("class Tree", source);
+        Assert.Contains("public required Guid Id { get; init; }", source);
+        Assert.Contains("public IReadOnlyList<string>? Tags { get; init; }", source);
+        Assert.Contains("public sealed class AddressesItem", source);
+        Assert.Contains("public IReadOnlyList<AddressesItem>? Addresses { get; init; }", source);
+        Assert.Contains("public IReadOnlyList<JsonElement>? Tree { get; init; }", source);
+        Assert.Contains("public async Task<User> GetUserAsync(Guid id, CancellationToken cancellationToken = default)", source);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var userType = assembly.Assembly.GetType("GeneratorTests.User");
+        Assert.NotNull(userType);
+
+        var user = JsonSerializer.Deserialize(
+            """{"id":"6f9619ff-8b86-d011-b42d-00cf4fc964ff","tags":["a","b"],"addresses":[{"street":"Main"}],"tree":[[]]}""",
+            userType!,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(user);
+        Assert.Equal(Guid.Parse("6f9619ff-8b86-d011-b42d-00cf4fc964ff"), userType!.GetProperty("Id")!.GetValue(user));
+        Assert.Equal(["a", "b"], Assert.IsAssignableFrom<IReadOnlyList<string>>(userType.GetProperty("Tags")!.GetValue(user)));
     }
 }

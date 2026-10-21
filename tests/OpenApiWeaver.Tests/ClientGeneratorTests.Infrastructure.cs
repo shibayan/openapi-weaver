@@ -63,7 +63,10 @@ public sealed partial class ClientGeneratorTests
         bool isOpenApiWeaverDocument = true)
     {
         var generator = new ClientGenerator();
-        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
+        // Mirror the symbols the SDK defines for a net10.0 project so version-conditional generated code compiles as in real builds.
+        var parseOptions = new CSharpParseOptions(
+            LanguageVersion.Preview,
+            preprocessorSymbols: ["NET", "NET10_0", "NETCOREAPP", "NET8_0_OR_GREATER", "NET9_0_OR_GREATER", "NET10_0_OR_GREATER"]);
         var syntaxTree = CSharpSyntaxTree.ParseText("public sealed class Marker {}", parseOptions);
 
         var compilation = CSharpCompilation.Create(
@@ -154,6 +157,18 @@ public sealed partial class ClientGeneratorTests
 
         Assert.Equal(diagnosticId, diagnostic.Id);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+        return diagnostic;
+    }
+
+    private static Diagnostic AssertOnlyOperationSkippedDiagnostic(GeneratorTestResult result, string diagnosticId, string skippedMethodName)
+    {
+        var diagnostic = Assert.Single(result.Diagnostics);
+
+        Assert.Equal(diagnosticId, diagnostic.Id);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("was skipped", diagnostic.GetMessage());
+        Assert.Contains(result.GeneratedSources, static source => source.Contains(": IDisposable", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.GeneratedSources, source => source.Contains($" {skippedMethodName}Async(", StringComparison.Ordinal));
         return diagnostic;
     }
 

@@ -20,7 +20,7 @@ internal sealed class ClientModel(
     public IReadOnlyList<SchemaDefinition> Schemas { get; } = schemas;
     public IReadOnlyList<TagGroup> TagGroups { get; } = tagGroups;
     public IReadOnlyList<SecuritySchemeBinding> SecuritySchemes { get; } = securitySchemes;
-    public bool HasDirectionalSchemaProperties => SerializerOptionsTypeName.Length > 0;
+    public bool HasSerializerMetadata => SerializerOptionsTypeName.Length > 0;
 }
 
 internal sealed class TagGroup(string propertyName, string className, string? description, IReadOnlyList<OperationGroupItem> operations)
@@ -101,15 +101,26 @@ internal sealed class TypeUsage
     public bool RequiresNonNullJsonResponse { get; }
 }
 
-internal sealed class ParameterInfo(string wireName, string parameterName, TypeUsage type, bool required, ParameterLocation location, string? description)
+internal sealed class ParameterInfo(
+    string wireName,
+    string parameterName,
+    TypeUsage type,
+    bool required,
+    ParameterLocation location,
+    string? description,
+    IReadOnlyList<RequestBodyPropertyInfo>? objectProperties = null)
 {
     public string WireName { get; } = wireName;
     public string ParameterName { get; } = parameterName;
     public string ParameterTypeName { get; } = type.CSharpTypeName;
     public bool IsArray { get; } = type.Shape == TypeShape.Array;
+    public bool IsNullable { get; } = type.CanBeNullInCSharp;
     public bool Required { get; } = required;
     public ParameterLocation Location { get; } = location;
     public string? Description { get; } = description;
+
+    // Set only for exploded form-style query objects, whose properties are written as separate name/value pairs.
+    public IReadOnlyList<RequestBodyPropertyInfo>? ObjectProperties { get; } = objectProperties;
 }
 
 internal sealed class SchemaDefinition(
@@ -125,7 +136,10 @@ internal sealed class SchemaDefinition(
     IReadOnlyList<SchemaDerivedTypeDefinition> derivedTypes,
     SchemaEnumKind enumKind,
     string? enumUnderlyingType,
-    IReadOnlyList<SchemaEnumMemberDefinition> enumMembers)
+    IReadOnlyList<SchemaEnumMemberDefinition> enumMembers,
+    string? inheritedDiscriminatorPropertyName = null,
+    IReadOnlyList<SchemaDerivedTypeDefinition>? selfAndDescendantTypes = null,
+    IReadOnlyList<InheritedPropertyRule>? inheritedPropertyRules = null)
 {
     public string QualifiedTypeName { get; } = typeName;
     public string DeclaredTypeName { get; } = declaredTypeName;
@@ -142,6 +156,28 @@ internal sealed class SchemaDefinition(
     public IReadOnlyList<SchemaEnumMemberDefinition> EnumMembers { get; } = enumMembers;
     public bool IsEnum { get; } = enumKind != SchemaEnumKind.None;
     public bool IsPolymorphicBase { get; } = !string.IsNullOrWhiteSpace(discriminatorPropertyName) && derivedTypes.Count > 0;
+
+    // Set for a derived type so it writes its own discriminator even when serialized by its own type,
+    // and can (de)serialize its own subtypes in multi-level hierarchies.
+    public string? InheritedDiscriminatorPropertyName { get; } = inheritedDiscriminatorPropertyName;
+    public IReadOnlyList<SchemaDerivedTypeDefinition>? SelfAndDescendantTypes { get; } = selfAndDescendantTypes;
+
+    // Constraints this subtype adds to inherited members, enforced through the serializer contract because
+    // the inherited CLR members themselves cannot change.
+    public IReadOnlyList<InheritedPropertyRule> InheritedPropertyRules { get; } = inheritedPropertyRules ?? [];
+}
+
+internal enum InheritedPropertyRuleKind
+{
+    RequireInResponse,
+    IgnoreInRequest,
+    IgnoreInResponse
+}
+
+internal sealed class InheritedPropertyRule(string jsonPropertyName, InheritedPropertyRuleKind kind)
+{
+    public string JsonPropertyName { get; } = jsonPropertyName;
+    public InheritedPropertyRuleKind Kind { get; } = kind;
 }
 
 internal sealed class SchemaDerivedTypeDefinition(string typeName, string discriminatorValue)
@@ -229,11 +265,14 @@ internal sealed class ResponseInfo(ResponseKind kind, TypeUsage? type, string? d
     public string? Documentation { get; } = documentation;
 }
 
+// Declaration order is the preference order when an operation offers several request body media types.
 internal enum RequestBodyKind
 {
     Json,
     FormUrlEncoded,
-    MultipartFormData
+    MultipartFormData,
+    Binary,
+    Text
 }
 
 internal enum ResponseKind

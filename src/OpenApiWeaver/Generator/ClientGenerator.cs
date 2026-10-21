@@ -80,7 +80,17 @@ public sealed partial class ClientGenerator : IIncrementalGenerator
 
         try
         {
-            var model = new Transformer(input.Path, input.RootNamespace, input.ClientName, document).Transform();
+            var transformer = new Transformer(input.Path, input.RootNamespace, input.ClientName, document);
+            var model = transformer.Transform();
+            foreach (var skippedOperation in transformer.SkippedOperations)
+            {
+                productionContext.ReportDiagnostic(OpenApiWeaverDiagnostics.CreateOperationSkipped(
+                    input.Path,
+                    skippedOperation.Kind,
+                    skippedOperation.Operation,
+                    skippedOperation.Message));
+            }
+
             var source = new Emitter(model).Emit();
             productionContext.AddSource($"{SanitizeHintName(input.Path)}.g.cs", SourceText.From(source, Encoding.UTF8));
         }

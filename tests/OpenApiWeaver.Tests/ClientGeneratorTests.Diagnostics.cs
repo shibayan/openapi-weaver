@@ -23,7 +23,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void PipeDelimitedQueryParameter_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void PipeDelimitedQueryParameter_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -54,13 +54,12 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, ParameterUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, ParameterUnsupportedDiagnosticId, "ListReports");
         Assert.Contains("PipeDelimited", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
-    public void NonExplodedArrayQueryParameter_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void NonExplodedArrayQueryParameter_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -91,9 +90,8 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, ParameterUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, ParameterUnsupportedDiagnosticId, "ListReports");
         Assert.Contains("explode: false", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -130,7 +128,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void InlineMultipartRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void InlineMultipartRequestBody_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -162,13 +160,12 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateUpload");
         Assert.Contains("multipart/form-data request bodies must reference a named component schema", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
-    public void AdditionalPropertiesFormRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void AdditionalPropertiesFormRequestBody_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -202,13 +199,12 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateReport");
         Assert.Contains("additionalProperties or patternProperties", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
-    public void AnyOfMultipartRequestBody_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void AnyOfMultipartRequestBody_ReportsUnsupportedDiagnostic_AndSkipsOperation()
     {
         const string openApi = """
             openapi: 3.0.1
@@ -249,9 +245,8 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertOnlyErrorDiagnostic(result, RequestBodyUnsupportedDiagnosticId);
+        var diagnostic = AssertOnlyOperationSkippedDiagnostic(result, RequestBodyUnsupportedDiagnosticId, "CreateUpload");
         Assert.Contains("uses oneOf/anyOf", diagnostic.GetMessage());
-        AssertNoClientSource(result);
     }
 
     [Fact]
@@ -283,7 +278,7 @@ public sealed partial class ClientGeneratorTests
     }
 
     [Fact]
-    public void DiscriminatorWithoutOneOf_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void DiscriminatorListingItselfAsMember_ReportsUnsupportedDiagnostic()
     {
         const string openApi = """
             openapi: 3.2.0
@@ -295,22 +290,158 @@ public sealed partial class ClientGeneratorTests
               schemas:
                 animal:
                   type: object
+                  required: [kind]
                   discriminator:
                     propertyName: kind
+                  oneOf:
+                    - $ref: '#/components/schemas/animal'
+                    - $ref: '#/components/schemas/dog'
                   properties:
                     kind:
                       type: string
+                dog:
+                  type: object
+                  properties:
+                    barks:
+                      type: boolean
+            """;
+
+        // Previously the subtype ancestor walk never terminated for a self-referencing member.
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains("lists itself as a discriminator oneOf member", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Theory]
+    [InlineData(
+        "additionalProperties:\n  type: string",
+        "uses additionalProperties or patternProperties in the 'Pet' discriminator hierarchy")]
+    [InlineData(
+        "properties:\n  name:\n    type: integer",
+        "redeclares inherited property 'name' as 'int' instead of 'string'")]
+    public void UnsupportedAllOfInheritanceShapes_ReportDiscriminatorDiagnostic(string catMemberYaml, string expectedMessage)
+    {
+        var indentedMember = string.Join("\n", catMemberYaml.Split('\n').Select(static line => "          " + line));
+        var openApi = $$"""
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType, name]
+                  properties:
+                    petType:
+                      type: string
+                    name:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+            {{indentedMember}}
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
             """;
 
         var result = RunGenerator(openApi);
 
         var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
-        Assert.Contains("without oneOf", diagnostic.GetMessage());
+        Assert.Contains(expectedMessage, diagnostic.GetMessage());
         AssertNoClientSource(result);
     }
 
     [Fact]
-    public void DiscriminatorWithAnyOf_ReportsUnsupportedDiagnostic_AndDoesNotGenerateSource()
+    public void AllOfSubtypeExtendingUnrelatedSubtypes_ReportsUnsupportedDiagnostic()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                Dog:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                CatDog:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+                    - $ref: '#/components/schemas/Dog'
+            """;
+
+        // Multiple inheritance cannot be represented, so it is rejected instead of silently picking one parent.
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains("'CatDog' extends both", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
+    public void NestedDiscriminatorHierarchy_ReportsUnsupportedDiagnostic()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      required: [catKind]
+                      properties:
+                        catKind:
+                          type: string
+                  discriminator:
+                    propertyName: catKind
+                Siamese:
+                  allOf:
+                    - $ref: '#/components/schemas/Cat'
+            """;
+
+        // Cat would need both Pet's and its own discriminator contract, which cannot round-trip.
+        var result = RunGenerator(openApi);
+
+        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
+        Assert.Contains("declares its own discriminator hierarchy", diagnostic.GetMessage());
+        AssertNoClientSource(result);
+    }
+
+    [Fact]
+    public void DiscriminatorWithoutDerivedSchemas_KeepsDiscriminatorAsOrdinaryProperty()
     {
         const string openApi = """
             openapi: 3.2.0
@@ -321,12 +452,10 @@ public sealed partial class ClientGeneratorTests
             components:
               schemas:
                 animal:
+                  type: object
+                  required: [kind]
                   discriminator:
                     propertyName: kind
-                  anyOf:
-                    - $ref: '#/components/schemas/dog'
-                dog:
-                  type: object
                   properties:
                     kind:
                       type: string
@@ -334,9 +463,11 @@ public sealed partial class ClientGeneratorTests
 
         var result = RunGenerator(openApi);
 
-        var diagnostic = AssertSingleErrorDiagnostic(result, DiscriminatorUnsupportedDiagnosticId);
-        Assert.Contains("discriminator with anyOf", diagnostic.GetMessage());
-        AssertNoClientSource(result);
+        Assert.Empty(result.Diagnostics);
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public sealed class Animal", source);
+        Assert.Contains("[JsonPropertyName(\"kind\")]", source);
+        Assert.DoesNotContain("JsonPolymorphic", source);
     }
 
     [Fact]

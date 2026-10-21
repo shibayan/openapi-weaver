@@ -123,21 +123,34 @@ public sealed class Order
 |---|---|
 | `allOf` | Flattened into a single class containing all properties |
 | `oneOf` / `anyOf` | Union-style nullable properties or nullable CLR primitives when the union is a primitive plus `null` |
-| `discriminator` + `oneOf` | Polymorphic base class annotated with `JsonPolymorphic` / `JsonDerivedType`, with referenced schemas emitted as derived classes |
+| `discriminator` + `oneOf` / `anyOf` / `allOf` inheritance | Polymorphic base class annotated with `JsonPolymorphic` / `JsonDerivedType`, with the subtypes emitted as derived classes |
 
 ### Discriminator-based polymorphism
 
-When a component schema declares `discriminator` and `oneOf` references named component schemas, OpenApiWeaver treats that schema as the polymorphic base type.
+When a component schema declares `discriminator`, OpenApiWeaver treats that schema as the polymorphic base type. Its subtypes are found in one of these ways:
 
-- The base type is emitted as `public class` instead of `public sealed class`
-- The base type receives `[JsonPolymorphic(TypeDiscriminatorPropertyName = "...")]`
-- Each `oneOf` member produces a `[JsonDerivedType(typeof(...), typeDiscriminator: "...")]` attribute
-- Referenced child schemas are emitted as derived classes
+- `oneOf` or `anyOf` entries that `$ref` named component schemas
+- Without `oneOf` / `anyOf`, the component schemas that extend the base with `allOf: [{ $ref: base }]` (the OpenAPI 3.0 inheritance pattern)
+
+For each hierarchy:
+
+- The base type and each derived type are emitted as `public class` instead of `public sealed class`
+- The base type receives `[JsonPolymorphic(TypeDiscriminatorPropertyName = "...", IgnoreUnrecognizedTypeDiscriminators = true)]`
+- Each subtype produces a `[JsonDerivedType(typeof(...), typeDiscriminator: "...")]` attribute
+- Each derived type also registers its own discriminator so it is written when the derived type is serialized directly, for example as a request body
 - `discriminator.mapping` keys are used as discriminator values when present; otherwise the schema names are used
+- An unrecognized discriminator value deserializes to the base type instead of throwing
+- On .NET 9 or later, the discriminator does not have to be the first JSON property
 
-To keep System.Text.Json polymorphic serialization consistent, the discriminator property is not emitted as a normal CLR property on the generated types.
+To keep System.Text.Json polymorphic serialization consistent, the discriminator property is not emitted as a normal CLR property on the generated types. A schema that declares `discriminator` but has no subtypes keeps the discriminator as an ordinary property.
 
-This feature currently requires all discriminator members to be `$ref` entries in `oneOf`. Using `anyOf`, inline `oneOf` members, duplicate discriminator values, or mappings that point outside `oneOf` is rejected with `OAW006`.
+A subtype that redeclares an inherited property with the same type reuses the inherited member, and a requirement a subtype adds to an inherited optional property is enforced when responses are deserialized.
+
+Inline `oneOf` / `anyOf` members, a schema listing itself as a member, duplicate discriminator values, mappings that point outside the subtypes, subtypes shared by several hierarchies, subtypes that declare their own discriminator hierarchy, `additionalProperties` / `patternProperties` within a hierarchy, and inherited properties redeclared with a different type are rejected with `OAW006`.
+
+## Alias schemas
+
+Component schemas that are not objects, enums, or dictionaries, such as `UserId: { type: string, format: uuid }` or `Tags: { type: array, items: { type: string } }`, do not produce a wrapper class. Each reference resolves to the underlying CLR type (`Guid`, `IReadOnlyList<string>`). A self-referential alias that has no finite CLR type falls back to `JsonElement`.
 
 ## Nullable type arrays (OpenAPI 3.2)
 

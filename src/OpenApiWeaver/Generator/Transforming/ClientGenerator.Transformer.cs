@@ -17,6 +17,10 @@ public sealed partial class ClientGenerator
         private readonly Dictionary<string, PolymorphicSchemaInfo> _polymorphicSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PolymorphicDerivedSchemaInfo> _polymorphicDerivedSchemasByTypeName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, SchemaDefinition> _schemaDefinitionsByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IOpenApiSchema> _schemaSourcesByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IOpenApiSchema> _componentSchemasByTypeName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Dictionary<string, string>> _propertyNamePlansByTypeName = new(StringComparer.Ordinal);
+        private readonly List<SkippedOperation> _skippedOperations = [];
 
         public Transformer(string documentPath, string rootNamespace, string? clientNameOverride, OpenApiDocument document)
         {
@@ -28,6 +32,8 @@ public sealed partial class ClientGenerator
             _schemaTypeResolver = new SchemaTypeResolver(_schemaCatalog, _schemaAnalysisCache, _schemaReferenceResolver, _schemaEnumResolver);
         }
 
+        public IReadOnlyList<SkippedOperation> SkippedOperations => _skippedOperations;
+
         public ClientModel Transform()
         {
             RegisterSchemaNames();
@@ -36,8 +42,9 @@ public sealed partial class ClientGenerator
 
             var securitySchemes = BuildSecuritySchemes();
             var schemas = BuildSchemaDefinitions();
-            var hasDirectionalSchemaProperties = schemas.Any(static schema => schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
-            var serializerOptionsTypeName = hasDirectionalSchemaProperties
+            var needsSerializerMetadata = schemas.Any(static schema => schema.InheritedPropertyRules.Count > 0
+                || schema.Properties.Any(static property => property.ReadOnly || property.WriteOnly));
+            var serializerOptionsTypeName = needsSerializerMetadata
                 ? _schemaCatalog.AllocateTypeName(parentTypeName: null, SupportTypeNames.CreateSerializerOptionsTypeName(_clientName))
                 : string.Empty;
             var tagGroups = BuildTagGroups(securitySchemes, serializerOptionsTypeName);

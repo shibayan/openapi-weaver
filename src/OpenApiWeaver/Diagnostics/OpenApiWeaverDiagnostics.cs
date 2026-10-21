@@ -41,9 +41,9 @@ internal static class OpenApiWeaverDiagnostics
     public static readonly DiagnosticDescriptor RequestBodyUnsupportedDescriptor = new(
         "OAW005",
         "OpenAPI request body uses an unsupported feature",
-        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+        "The OpenAPI document '{0}' operation '{1}' was skipped because its request body uses an unsupported feature: {2}",
         Category,
-        DiagnosticSeverity.Error,
+        DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
     public static readonly DiagnosticDescriptor DiscriminatorUnsupportedDescriptor = new(
@@ -65,9 +65,9 @@ internal static class OpenApiWeaverDiagnostics
     public static readonly DiagnosticDescriptor ParameterUnsupportedDescriptor = new(
         "OAW008",
         "OpenAPI parameter uses an unsupported feature",
-        "The OpenAPI document '{0}' uses an unsupported feature: {1}",
+        "The OpenAPI document '{0}' operation '{1}' was skipped because a parameter uses an unsupported feature: {2}",
         Category,
-        DiagnosticSeverity.Error,
+        DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
     public static Diagnostic CreateDocumentEmpty(string path)
@@ -82,13 +82,22 @@ internal static class OpenApiWeaverDiagnostics
     public static Diagnostic CreateDocumentUnsupported(string path, UnsupportedFeatureKind kind, string message)
         => Diagnostic.Create(GetUnsupportedDescriptor(kind), Location.None, path, message);
 
+    public static Diagnostic CreateOperationSkipped(string path, UnsupportedFeatureKind kind, string operation, string message)
+        => Diagnostic.Create(
+            kind == UnsupportedFeatureKind.Parameter ? ParameterUnsupportedDescriptor : RequestBodyUnsupportedDescriptor,
+            Location.None,
+            path,
+            operation,
+            message);
+
+    public static bool SkipsOperation(UnsupportedFeatureKind kind)
+        => kind is UnsupportedFeatureKind.RequestBody or UnsupportedFeatureKind.Parameter;
+
     private static DiagnosticDescriptor GetUnsupportedDescriptor(UnsupportedFeatureKind kind)
         => kind switch
         {
-            UnsupportedFeatureKind.RequestBody => RequestBodyUnsupportedDescriptor,
             UnsupportedFeatureKind.Discriminator => DiscriminatorUnsupportedDescriptor,
             UnsupportedFeatureKind.Schema => SchemaUnsupportedDescriptor,
-            UnsupportedFeatureKind.Parameter => ParameterUnsupportedDescriptor,
             _ => DocumentUnsupportedDescriptor
         };
 }

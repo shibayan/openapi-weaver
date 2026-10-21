@@ -11,6 +11,8 @@ internal sealed class SchemaTypeResolver(
     private static readonly TypeUsage s_requiredStringTypeUsage = new("string", TypeShape.String, schemaAllowsNull: false, isOptional: false);
     private static readonly TypeUsage s_optionalStringTypeUsage = new("string", TypeShape.String, schemaAllowsNull: false, isOptional: true);
 
+    private readonly HashSet<string> _resolvingSchemaIdentities = new(StringComparer.Ordinal);
+
     public TypeUsage ResolveTypeUsage(IOpenApiSchema? schema, bool required)
     {
         if (schema is null)
@@ -23,9 +25,23 @@ internal sealed class SchemaTypeResolver(
             return cachedTypeUsage;
         }
 
-        var typeUsage = CreateTypeUsage(schema, required);
-        cache.SetTypeUsage(schema, required, typeUsage);
-        return typeUsage;
+        // Self-referential aliases (e.g. `Tree: { type: array, items: { $ref: Tree } }`) have no finite C# type.
+        var identity = SchemaReferenceResolver.GetSchemaIdentity(schema);
+        if (!_resolvingSchemaIdentities.Add(identity))
+        {
+            return new TypeUsage("JsonElement", TypeShape.JsonElement, schemaAllowsNull: false, isOptional: !required);
+        }
+
+        try
+        {
+            var typeUsage = CreateTypeUsage(schema, required);
+            cache.SetTypeUsage(schema, required, typeUsage);
+            return typeUsage;
+        }
+        finally
+        {
+            _resolvingSchemaIdentities.Remove(identity);
+        }
     }
 
     private TypeUsage CreateTypeUsage(IOpenApiSchema schema, bool required)
@@ -301,7 +317,8 @@ internal sealed class SchemaTypeResolver(
             JsonSchemaType.Integer or JsonSchemaType.Number or JsonSchemaType.Boolean or JsonSchemaType.String => ResolveSimpleType(resolvedSchema).Shape,
             JsonSchemaType.Array => TypeShape.Array,
             JsonSchemaType.Object => TypeShape.Object,
-            _ when resolvedSchema.AllOf is { Count: > 0 } || (resolvedSchema.Properties?.Count ?? 0) > 0 => TypeShape.Object,
+            // A discriminator base such as `anyOf` + discriminator has no `type` but is still emitted as a class.
+            _ when resolvedSchema.Discriminator is not null || resolvedSchema.AllOf is { Count: > 0 } || (resolvedSchema.Properties?.Count ?? 0) > 0 => TypeShape.Object,
             _ => TypeShape.JsonElement
         };
     }

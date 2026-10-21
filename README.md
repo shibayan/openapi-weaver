@@ -48,7 +48,7 @@ The package includes the source generator and all required analyzer assemblies, 
 - **OpenAPI 3.0-3.2 support** — reads `.json`, `.yaml`, and `.yml` documents, including OpenAPI 3.2 features such as response summaries and nullable type arrays
 - **Tag-based sub-clients** — groups operations by OpenAPI tags and exposes them as properties on the root client
 - **Typed request / response models** — generates classes, enums, nested inline types, dictionaries, and composition-aware schema mappings from `components/schemas`, including discriminator-based polymorphic models
-- **Multiple request body formats** — supports `application/json`, `application/x-www-form-urlencoded`, and `multipart/form-data`
+- **Multiple request body formats** — supports `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/*`, and binary content such as `application/octet-stream`; operations that cannot be generated are skipped with a warning instead of failing the whole client
 - **Security scheme support** — supports OAuth2 and bearer tokens, together with API keys in headers, query strings, and cookies, while honoring operation-level security requirements
 - **Runtime error handling** — throws `OpenApiException`, with typed `OpenApiException<TError>` when error schemas are available
 - **OpenAPI-driven XML docs** — generates IntelliSense comments from document, tag, operation, response, and schema metadata, with HTML removed automatically
