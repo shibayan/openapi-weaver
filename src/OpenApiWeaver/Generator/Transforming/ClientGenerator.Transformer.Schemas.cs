@@ -241,12 +241,32 @@ public sealed partial class ClientGenerator
             // OpenAPI 3.0 inheritance: the base declares the discriminator and subtypes extend it, directly or through
             // other subtypes, with `allOf: [$ref: parent]`.
             var componentSchemas = _document.Components!.Schemas!;
+            // Named references are parent edges; inline `allOf` members are searched too, so
+            // `Cat: { allOf: [{ allOf: [$ref: Pet] }] }` still extends Pet, as property collection already assumes.
             List<string> GetReferencedSchemaNames(string componentName)
-                => componentSchemas[componentName].AllOf?
-                    .Select(static child => SchemaReferenceResolver.TryResolveSchemaReferenceId(child))
-                    .OfType<string>()
-                    .Where(name => !string.Equals(name, componentName, StringComparison.Ordinal))
-                    .ToList() ?? [];
+            {
+                var referencedNames = new List<string>();
+                void Collect(IOpenApiSchema schema)
+                {
+                    foreach (var member in schema.AllOf ?? [])
+                    {
+                        if (SchemaReferenceResolver.TryResolveSchemaReferenceId(member) is { } referencedName)
+                        {
+                            if (!string.Equals(referencedName, componentName, StringComparison.Ordinal))
+                            {
+                                referencedNames.Add(referencedName);
+                            }
+                        }
+                        else
+                        {
+                            Collect(member);
+                        }
+                    }
+                }
+
+                Collect(componentSchemas[componentName]);
+                return referencedNames;
+            }
 
             var hierarchyMembers = new List<string>();
             var hierarchy = new HashSet<string>(StringComparer.Ordinal) { schemaName };

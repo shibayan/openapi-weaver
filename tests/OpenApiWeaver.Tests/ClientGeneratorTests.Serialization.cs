@@ -867,6 +867,52 @@ public sealed partial class ClientGeneratorTests
         Assert.Equal("""{"kind":"Cat"}""", JsonSerializer.Serialize(cat, catType, options));
     }
 
+    [Fact]
+    public void AllOfSubtype_ReferencingBaseThroughNestedAllOf_IsDiscovered()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  type: object
+                  required: [petType]
+                  properties:
+                    petType:
+                      type: string
+                    name:
+                      type: string
+                  discriminator:
+                    propertyName: petType
+                Cat:
+                  allOf:
+                    - allOf:
+                        - $ref: '#/components/schemas/Pet'
+                    - type: object
+                      properties:
+                        lives:
+                          type: integer
+            """;
+
+        // Cat reaches Pet only through an inline allOf member; it must still be Pet's subtype.
+        var source = GenerateSource(openApi);
+        Assert.Contains("public class Cat : Pet", source);
+        Assert.Equal(1, source.Split("public string? Name { get; init; }").Length - 1);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var options = GetGeneratedSerializerOptions(assembly.Assembly);
+
+        var cat = JsonSerializer.Deserialize("""{"petType":"Cat","name":"Tama","lives":9}""", petType, options);
+        Assert.Equal(catType, cat!.GetType());
+        Assert.Equal(9, catType.GetProperty("Lives")!.GetValue(cat));
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!
