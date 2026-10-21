@@ -2582,6 +2582,7 @@ public sealed partial class ClientGeneratorTests
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/FilterList'", "array items with an object or array schema")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Cat'", "cannot be expanded into query parameters")]
     [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Shape'", "cannot be expanded into query parameters")]
+    [InlineData("in: query\nschema:\n  $ref: '#/components/schemas/Choice'", "schema 'Choice' uses oneOf/anyOf, which cannot be expanded into query parameters")]
     [InlineData("in: query\nschema:\n  oneOf:\n    - $ref: '#/components/schemas/Filter'\n    - $ref: '#/components/schemas/Nested'", "object or array schema that has no generated model")]
     [InlineData("in: query\nschema:\n  allOf:\n    - anyOf:\n        - type: object\n          properties:\n            a:\n              type: string\n        - type: string", "object or array schema that has no generated model")]
     [InlineData("in: query\nrequired: true\nschema:\n  oneOf:\n    - type: array\n      items:\n        $ref: '#/components/schemas/Filter'\n    - type: array\n      items:\n        $ref: '#/components/schemas/Nested'", "object or array schema that has no generated model")]
@@ -2639,6 +2640,11 @@ public sealed partial class ClientGeneratorTests
                       properties:
                         name:
                           type: string
+                Choice:
+                  type: object
+                  oneOf:
+                    - $ref: '#/components/schemas/Filter'
+                    - $ref: '#/components/schemas/Nested'
                 Shape:
                   required: [kind]
                   anyOf:
@@ -2992,6 +2998,62 @@ public sealed partial class ClientGeneratorTests
         var request = Assert.Single(handler.Requests);
         Assert.Equal("application/json", request.ContentType);
         Assert.Equal(json, request.Body);
+    }
+
+    [Fact]
+    public async Task MultipartComposedArrayOfNullableFiles_SkipsNullElements()
+    {
+        const string openApi = """
+            openapi: 3.1.0
+            info:
+              title: Test
+              version: v1
+            paths:
+              /uploads:
+                post:
+                  operationId: upload
+                  requestBody:
+                    required: true
+                    content:
+                      multipart/form-data:
+                        schema:
+                          $ref: '#/components/schemas/Upload'
+                  responses:
+                    '204':
+                      description: ok
+            components:
+              schemas:
+                Upload:
+                  type: object
+                  required: [files]
+                  properties:
+                    files:
+                      allOf:
+                        - type: array
+                          items:
+                            type: [string, 'null']
+                            format: binary
+            """;
+
+        // The element nullability must come from the composed array's items, as the collection classification does.
+        var source = GenerateSource(openApi);
+        Assert.Contains("public required IReadOnlyList<byte[]?> Files { get; init; }", source);
+        Assert.Contains("if (item is not null)", source);
+
+        using var generatedAssembly = LoadGeneratedAssembly(openApi);
+        var uploadType = generatedAssembly.Assembly.GetType("GeneratorTests.Upload")!;
+        var upload = Activator.CreateInstance(uploadType)!;
+        uploadType.GetProperty("Files")!.SetValue(upload, new byte[]?[] { [1, 2], null });
+
+        var clientType = Assert.Single(generatedAssembly.Assembly.GetTypes(), static type => type.Name == "TestClient");
+        var handler = new ContentCapturingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com/") };
+        var operationClient = Assert.Single(clientType.GetProperties()).GetValue(Activator.CreateInstance(clientType, httpClient));
+        Assert.NotNull(operationClient);
+
+        // Previously the null element reached `new ByteArrayContent(item)` and threw.
+        await Assert.IsAssignableFrom<Task>(operationClient.GetType().GetMethod("UploadAsync")!.Invoke(operationClient, [upload, CancellationToken.None]));
+        Assert.Single(handler.Requests);
     }
 
     [Fact]

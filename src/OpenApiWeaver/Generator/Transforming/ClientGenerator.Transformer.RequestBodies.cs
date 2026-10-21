@@ -140,8 +140,9 @@ public sealed partial class ClientGenerator
             var propertyType = _schemaTypeResolver.ResolveTypeUsage(property.Schema, property.Required);
             var valueKind = ClassifyValueKind(context, property.Name, property.Schema, isArrayItem: false, out var elementKind);
             var isNullable = propertyType.CanBeNullInCSharp;
+            // Items are found through compositions such as `allOf: [{ type: array, items: ... }]`, matching the classification.
             var elementNullable = valueKind == RequestBodyValueKind.Collection
-                && _schemaTypeResolver.ResolveTypeUsage(_schemaReferenceResolver.ResolveSchemaReference(property.Schema).Items, required: true).CanBeNullInCSharp;
+                && _schemaTypeResolver.ResolveTypeUsage(FindArrayItemsSchema(property.Schema, new HashSet<string>(StringComparer.Ordinal)), required: true).CanBeNullInCSharp;
 
             return new RequestBodyPropertyInfo(
                 property.Name,
@@ -193,7 +194,8 @@ public sealed partial class ClientGenerator
             }
 
             var schemaType = resolvedSchema.Type & ~JsonSchemaType.Null;
-            if (schemaType == 0 && resolvedSchema.AllOf is { Count: > 0 })
+            // `Type` is null when the schema declares no type, and only the null flag when it is `type: null`.
+            if ((schemaType is null || schemaType == 0) && resolvedSchema.AllOf is { Count: > 0 })
             {
                 var nonNullMembers = resolvedSchema.AllOf.Where(static s => !SchemaReferenceResolver.IsNullOnlySchema(s)).ToList();
                 if (nonNullMembers.Count == 1)

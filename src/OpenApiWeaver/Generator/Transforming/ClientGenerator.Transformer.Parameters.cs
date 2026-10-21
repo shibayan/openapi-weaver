@@ -172,6 +172,18 @@ public sealed partial class ClientGenerator
             return null;
         }
 
+        // Whether the schema, or anything it composes through allOf, has non-null oneOf / anyOf alternatives.
+        private static bool HasUnionMembers(IOpenApiSchema schema, HashSet<string> visited)
+        {
+            if (!visited.Add(SchemaReferenceResolver.GetSchemaIdentity(schema)))
+            {
+                return false;
+            }
+
+            return (schema.OneOf ?? []).Concat(schema.AnyOf ?? []).Any(static member => !SchemaReferenceResolver.IsNullOnlySchema(member))
+                || (schema.AllOf ?? []).Any(member => HasUnionMembers(member, visited));
+        }
+
         private List<RequestBodyPropertyInfo> ResolveQueryObjectProperties(IOpenApiParameter parameter, TypeUsage typeUsage)
         {
             var typeName = typeUsage.NonNullableCSharpTypeName;
@@ -182,6 +194,15 @@ public sealed partial class ClientGenerator
             {
                 throw new UnsupportedGenerationException(
                     $"Parameter '{parameter.Name}' uses an object schema that cannot be expanded into query parameters for compile-time code generation.",
+                    UnsupportedFeatureKind.Parameter);
+            }
+
+            // Property collection ignores oneOf/anyOf branches, so expanding such a model would silently drop
+            // branch-specific fields; the form-body path rejects these unions for the same reason.
+            if (HasUnionMembers(objectSchema, new HashSet<string>(StringComparer.Ordinal)))
+            {
+                throw new UnsupportedGenerationException(
+                    $"Parameter '{parameter.Name}' schema '{typeName}' uses oneOf/anyOf, which cannot be expanded into query parameters for compile-time code generation.",
                     UnsupportedFeatureKind.Parameter);
             }
 
