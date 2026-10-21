@@ -831,6 +831,42 @@ public sealed partial class ClientGeneratorTests
         Assert.Equal("seal", siameseType.GetProperty("PointColor")!.GetValue(viaCat));
     }
 
+    [Fact]
+    public void EmptyAllOfSubtype_OfUntypedDiscriminatorBase_GeneratesModel()
+    {
+        const string openApi = """
+            openapi: 3.0.1
+            info:
+              title: Polymorphism API
+              version: v1
+            paths: {}
+            components:
+              schemas:
+                Pet:
+                  required: [kind]
+                  discriminator:
+                    propertyName: kind
+                Cat:
+                  allOf:
+                    - $ref: '#/components/schemas/Pet'
+            """;
+
+        // Cat adds no fields and Pet declares neither `type` nor `properties`; Cat must still be a model, not an alias.
+        var result = RunGenerator(openApi);
+        Assert.Empty(result.Diagnostics);
+        var source = string.Join(Environment.NewLine, result.GeneratedSources);
+        Assert.Contains("public class Cat : Pet", source);
+
+        using var assembly = LoadGeneratedAssembly(openApi);
+        var petType = assembly.Assembly.GetType("GeneratorTests.Pet")!;
+        var catType = assembly.Assembly.GetType("GeneratorTests.Cat")!;
+        var options = GetGeneratedSerializerOptions(assembly.Assembly);
+
+        var cat = JsonSerializer.Deserialize("""{"kind":"Cat"}""", petType, options);
+        Assert.Equal(catType, cat!.GetType());
+        Assert.Equal("""{"kind":"Cat"}""", JsonSerializer.Serialize(cat, catType, options));
+    }
+
     private static JsonSerializerOptions GetGeneratedSerializerOptions(Assembly assembly)
         => Assert.IsType<JsonSerializerOptions>(
             assembly.GetType("GeneratorTests.OpenApiClientHelpers")!

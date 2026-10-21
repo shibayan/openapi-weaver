@@ -43,8 +43,11 @@ public sealed partial class ClientGenerator
                 return false;
             }
 
+            // A discriminator base is an object even without `type` or `properties`, so a subtype that only
+            // extends it (`Cat: { allOf: [$ref: Pet] }`) still gets a model.
             if ((schema.Type & ~JsonSchemaType.Null) == JsonSchemaType.Object
                 || (schema.Properties?.Count ?? 0) > 0
+                || schema.Discriminator is not null
                 || SchemaTypeResolver.IsDictionarySchema(schema))
             {
                 return true;

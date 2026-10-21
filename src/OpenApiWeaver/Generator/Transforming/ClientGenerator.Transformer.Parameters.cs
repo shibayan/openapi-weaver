@@ -101,17 +101,17 @@ public sealed partial class ClientGenerator
                         UnsupportedFeatureKind.Parameter);
                 case TypeShape.Object:
                     return ResolveQueryObjectProperties(parameter, typeUsage);
-                case TypeShape.JsonElement when SerializesAsObject(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)):
-                    // An object without a generated model would otherwise be formatted as its raw JSON text.
+                case TypeShape.JsonElement when SerializesAsCompositeValue(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)):
+                    // An object or array without a generated model would otherwise be formatted as its raw JSON text.
                     throw new UnsupportedGenerationException(
-                        $"Parameter '{parameter.Name}' uses an object schema that has no generated model, which is not supported for compile-time code generation.",
+                        $"Parameter '{parameter.Name}' uses an object or array schema that has no generated model, which is not supported for compile-time code generation.",
                         UnsupportedFeatureKind.Parameter);
                 case TypeShape.Array:
                     if (FindArrayItemsSchema(parameter.Schema!, new HashSet<string>(StringComparer.Ordinal)) is { } itemsSchema)
                     {
                         var itemShape = _schemaTypeResolver.ResolveTypeUsage(itemsSchema, required: true).Shape;
                         if (itemShape is TypeShape.Object or TypeShape.Dictionary or TypeShape.Array
-                            || (itemShape == TypeShape.JsonElement && SerializesAsObject(itemsSchema, new HashSet<string>(StringComparer.Ordinal))))
+                            || (itemShape == TypeShape.JsonElement && SerializesAsCompositeValue(itemsSchema, new HashSet<string>(StringComparer.Ordinal))))
                         {
                             throw new UnsupportedGenerationException(
                                 $"Parameter '{parameter.Name}' uses array items with an object or array schema, which is not supported for compile-time code generation.",
@@ -125,23 +125,25 @@ public sealed partial class ClientGenerator
             }
         }
 
-        // Whether a value of this schema can be an object on the wire, including through `oneOf` / `anyOf` alternatives.
+        // Whether a value of this schema can be an object or an array on the wire, including through allOf / oneOf / anyOf
+        // members. Such a value has no scalar form, so a JsonElement fallback would be sent as its raw JSON text.
         // Kept separate from ComposesObject, which decides whether a model is generated.
-        private static bool SerializesAsObject(IOpenApiSchema schema, HashSet<string> visited)
+        private static bool SerializesAsCompositeValue(IOpenApiSchema schema, HashSet<string> visited)
         {
             if (!visited.Add(SchemaReferenceResolver.GetSchemaIdentity(schema)))
             {
                 return false;
             }
 
-            if (schema.Discriminator is not null || ComposesObject(schema, new HashSet<string>(StringComparer.Ordinal)))
+            if ((schema.Type & JsonSchemaType.Array) == JsonSchemaType.Array
+                || ComposesObject(schema, new HashSet<string>(StringComparer.Ordinal)))
             {
                 return true;
             }
 
             // allOf members are walked too, so a union wrapped in allOf (e.g. `allOf: [{ anyOf: [object, string] }]`) is found.
             return (schema.AllOf ?? []).Concat(schema.OneOf ?? []).Concat(schema.AnyOf ?? [])
-                .Any(member => !SchemaReferenceResolver.IsNullOnlySchema(member) && SerializesAsObject(member, visited));
+                .Any(member => !SchemaReferenceResolver.IsNullOnlySchema(member) && SerializesAsCompositeValue(member, visited));
         }
 
         // Finds the items schema of the array a parameter resolves to, including arrays supplied through composition.
